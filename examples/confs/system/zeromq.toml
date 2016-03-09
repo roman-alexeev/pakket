@@ -1,5 +1,6 @@
 [Package]
 name      = "zeromq"
+category  = "system"
 version   = "1.4.1"
 directory = "zeromq-4.1.4"
 [Prereqs]
