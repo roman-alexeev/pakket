@@ -1,12 +1,19 @@
 #!/usr/bin/perl
 use strict;
 use warnings;
-use Getopt::Long qw<:config no_ignore_case>;
-use File::Path   qw<make_path remove_tree>;
+use Cwd                   qw<getcwd>;
+use Getopt::Long          qw<:config no_ignore_case>;
+use File::Path            qw<make_path remove_tree>;
+use Path::Tiny            qw<path>;
 use File::Copy::Recursive qw<dircopy>;
-use File::Basename qw<basename>;
+use File::Basename        qw<basename>;
 use TOML::Parser;
 use DDP;
+
+# TODO:
+# - replace "program" and "program name" with "package" and "package name"
+# - move all hardcoded values (confs) to constants
+# - rewrite in App::Cmd?
 
 my $LOG;
 sub help {
@@ -42,6 +49,9 @@ sub getopt {
         'build-dir=s',
     );
 
+    $opts{'help'}
+        and help();
+
     $opts{'build'}
         or die "Error: must provide an action\n";
 
@@ -57,30 +67,66 @@ sub getopt {
 sub LOG { $LOG && print STDERR "$_[0]\n" }
 
 sub run_build {
-    my $opts       = shift;
-    my $build_dir  = $opts->{'build-dir'} ||
-                     '/tmp/BUILD-' . int rand 9999;
+    my ( $opts, $program_name ) = @_;
+    # FIXME: we should have a config dir and a function that checks
+    #        for the existence of config files in it
+    my $config = readconf("$program_name.toml");
 
-    my $prefix_dir = "$build_dir/main";
+    # double check we have the right program configuration
+    my $config_name = $config->{'Package'}{'name'}
+        or die "Program config must provide 'name'\n";
 
-    if ( ! -d $build_dir ) {
-        LOG("Creating build dir $build_dir");
-        make_path($prefix_dir); # create it all through /main
+    $config_name eq $program_name
+        or die "$program_name configuration claims it is $config_name\n";
+
+    # FIXME: is this already built?
+    # once we're done building something, we should be moving it over
+    # to the "BUILT" directory (artifact repo) - then we can check if
+    # a package is already available there
+
+    # recursively build prereqs
+    # starting with system libraries
+    if ( my $system_prereqs = $config->{'Prereqs'}{'System'} ) {
+        foreach my $prereq ( keys %{$system_prereqs} ) {
+            print STDERR "I was going to build $prereq\n";
+            #run_build( $opts, $prereq, $system_prereqs->{$prereq} );
+        }
     }
 
+    if ( my $perl_prereqs = $config->{'Prereqs'}{'Perl'} ) {
+        foreach my $prereq ( keys %{$perl_prereqs} ) {
+            run_build( $opts, $prereq, $perl_prereqs->{$prereq} );
+        }
+    }
+
+    my $program_src_dir = $config->{'Package'}{'directory'};
+
     LOG('Copying program files');
-    -d $opts->{'build'}
-        or die "Cannot find build files: $opts->{'build'}\n";
+    -d $program_src_dir
+        or die "Cannot find source dir: $program_src_dir\n";
 
-    dircopy( $opts->{'build'}, "$build_dir/" . basename( $opts->{'build'} ) );
+    my $top_build_dir   = $opts->{'build-dir'};
+    my $program_dst_dir = path(
+        $top_build_dir,
+        'libs',
+        basename($program_src_dir),
+    );
 
-    LOG("Setting PKG_CONFIG_PATH=$build_dir/main/lib/pkgconfig");
-    local $ENV{'PKG_CONFIG_PATH'} = "$build_dir/main/lib/pkgconfig";
+    dircopy( $program_src_dir, $program_dst_dir );
 
-    LOG("Setting LD_LIBRARY_PATH=$build_dir/main");
-    local $ENV{'LD_LIBRARY_PATH'} = "$build_dir/main";
+    my $pkgconfig_path = path( $top_build_dir, qw<main lib pkgconfig> );
+    LOG("Setting PKG_CONFIG_PATH=$pkgconfig_path");
+    local $ENV{'PKG_CONFIG_PATH'} = $pkgconfig_path;
 
-    build_program( $build_dir, $prefix_dir, $opts->{'build'} );
+    my $main_build_dir = path( $top_build_dir, 'main' );
+    LOG("Setting LD_LIBRARY_PATH=$main_build_dir");
+    local $ENV{'LD_LIBRARY_PATH'} = $main_build_dir;
+
+    build_program(
+        $program_name,    # zeromq
+        $program_dst_dir, # /tmp/BUILD-1/libs/zeromq-1.4.1
+        $main_build_dir,  # /tmp/BUILD-1/main
+    );
 
     # FIXME: when to keep, when to clean up
     #        keep for now
@@ -89,19 +135,26 @@ sub run_build {
 }
 
 sub build_program {
-    my ( $build_dir, $prefix, $program ) = @_;
-    chdir "$build_dir/$program"
-        or die "Can't chdir to $build_dir/$program: $!\n";
-    system "pwd";
+    my ( $program, $build_dir, $prefix ) = @_;
+
+    LOG("Building $program");
+
+    my $original_dir = getcwd();
+
+    chdir $build_dir
+        or die "Can't chdir to $build_dir: $!\n";
 
     LOG("./configure --prefix=$prefix");
     system "./configure --prefix=$prefix";
 
-    LOG("make");
-    system "make";
+    LOG('make');
+    system 'make';
 
-    LOG("make install");
-    system "make install";
+    LOG('make install');
+    system 'make install';
+
+    chdir $original_dir;
+    LOG("Done preparing $program");
 }
 
 sub readconf {
@@ -109,33 +162,18 @@ sub readconf {
     return TOML::Parser->new( strict_mode => 1 )->parse_file($config_file);
 }
 
-sub build_system_prereqs {
-    my ( $opts, $prereqs ) = @_;
+sub main {
+    my $opts = getopt(@ARGV);
 
-    foreach my $prereq ( keys %{$prereqs} ) {
-        # readconf()
-        # foreach prereq, build_system_prereqs, etc.
-        # (basically the stuff from main())        
+    $opts->{'build-dir'} //= '/tmp/BUILD-' . int rand 9999;
+    $opts->{'prefix-dir'}  = path( $opts->{'build-dir'}, 'main' );
+
+    if ( ! -d ( my $dir = $opts->{'build-dir'} ) ) {
+        LOG("Creating build dir $dir");
+        make_path( $opts->{'prefix-dir'} ); # mkdir -p ...
     }
 
-}
-
-sub main {
-    my $opts   = getopt(@ARGV);
-
-    # FIXME: refactor this into a function so we could easily recurse
-    #        with deps
-
-    # FIXME: we should have a config dir and a function that checks
-    #        for the existence of config files in it
-    my $config = readconf( $opts->{'program'} . '.toml' );
-
-    # recursively build prereqs
-    # starting with system libraries
-    $config->{'Prereqs'}{'System'}
-        and build_system_prereqs( $opts, $config->{'Prereqs'}{'System'} );
-
-    run_build($opts);
+    run_build( $opts, $opts->{'program'} );
 }
 
 main();
