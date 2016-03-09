@@ -31,6 +31,8 @@ Options:
          --for          build for specific Perl version
                         (current not supported)
          --build-dir    reuse an existing build directory
+         --source-dir   sources directory
+         --config-dir   configuration directory
 _END_HELP
 
     exit 0;
@@ -47,6 +49,8 @@ sub getopt {
         'for=s',
         'build=s',
         'build-dir=s',
+        'source-dir=s',
+        'config-dir=s',
     );
 
     $opts{'help'}
@@ -59,6 +63,9 @@ sub getopt {
     # perspective
     $opts{'program'} = delete $opts{'build'};
 
+    $opts{'source-base'} = ( delete $opts{'source-dir'} || '.' ) . '/';
+    $opts{'config-base'} = ( delete $opts{'config-dir'} || '.' ) . '/';
+
     $LOG = $opts{'verbose'};
 
     return \%opts;
@@ -70,7 +77,7 @@ sub run_build {
     my ( $opts, $program_name ) = @_;
     # FIXME: we should have a config dir and a function that checks
     #        for the existence of config files in it
-    my $config = readconf("$program_name.toml");
+    my $config = readconf( $opts->{'config-base'} . "$program_name.toml" );
 
     # double check we have the right program configuration
     my $config_name = $config->{'Package'}{'name'}
@@ -98,7 +105,7 @@ sub run_build {
         }
     }
 
-    my $program_src_dir = $config->{'Package'}{'directory'};
+    my $program_src_dir = $opts->{'source-base'} . $config->{'Package'}{'directory'};
 
     LOG('Copying program files');
     -d $program_src_dir
