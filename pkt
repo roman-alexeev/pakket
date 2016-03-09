@@ -2,6 +2,8 @@
 use strict;
 use warnings;
 use Cwd                   qw<getcwd>;
+
+use Config;
 use Getopt::Long          qw<:config no_ignore_case>;
 use File::Path            qw<make_path remove_tree>;
 use Path::Tiny            qw<path>;
@@ -77,11 +79,15 @@ sub run_build {
     my ( $opts, $program_name ) = @_;
     # FIXME: we should have a config dir and a function that checks
     #        for the existence of config files in it
+    # FIXME: the config class should have "mandatory" fields, add checks
     my $config = readconf( $opts->{'config-base'} . "$program_name.toml" );
 
     # double check we have the right program configuration
     my $config_name = $config->{'Package'}{'name'}
         or die "Program config must provide 'name'\n";
+
+    my $config_category = $config->{'Package'}{'category'}
+        or die "Program config must provide 'category'\n";
 
     $config_name eq $program_name
         or die "$program_name configuration claims it is $config_name\n";
@@ -111,14 +117,7 @@ sub run_build {
     -d $program_src_dir
         or die "Cannot find source dir: $program_src_dir\n";
 
-    my $top_build_dir   = $opts->{'build-dir'};
-    my $program_dst_dir = path(
-        $top_build_dir,
-        'libs',
-        basename($program_src_dir),
-    );
-
-    dircopy( $program_src_dir, $program_dst_dir );
+    my $top_build_dir = $opts->{'build-dir'};
 
     my $pkgconfig_path = path( $top_build_dir, qw<main lib pkgconfig> );
     LOG("Setting PKG_CONFIG_PATH=$pkgconfig_path");
@@ -128,11 +127,40 @@ sub run_build {
     LOG("Setting LD_LIBRARY_PATH=$main_build_dir");
     local $ENV{'LD_LIBRARY_PATH'} = $main_build_dir;
 
-    build_program(
-        $program_name,    # zeromq
-        $program_dst_dir, # /tmp/BUILD-1/libs/zeromq-1.4.1
-        $main_build_dir,  # /tmp/BUILD-1/main
-    );
+    # FIXME: Remove in favor of a ::Build::System, ::Build::Perl, etc.
+    # FIXME: $program_dst_dir is dictated from the category
+    if ( $config_category eq 'system' ) {
+        my $program_dst_dir = path(
+            $top_build_dir,
+            'libs',
+            basename($program_src_dir),
+        );
+
+        dircopy( $program_src_dir, $program_dst_dir );
+
+        print STDERR "WAS GOING TO BUILD $program_name\n";
+        build_program(
+            $program_name,    # zeromq
+            $program_dst_dir, # /tmp/BUILD-1/libs/zeromq-1.4.1
+            $main_build_dir,  # /tmp/BUILD-1/main
+        ) if 0;
+    } elsif ( $config_category eq 'perl' ) {
+        my $program_dst_dir = path(
+            $top_build_dir,
+            'perl_libs',
+            basename($program_src_dir),
+        );
+
+        dircopy( $program_src_dir, $program_dst_dir );
+
+        build_perl_program(
+            $program_name,    # ZMQ::Constants
+            $program_dst_dir, # /tmp/BUILD-1/libs/ZMQ-Constants-...
+            $main_build_dir,  # /tmp/BUILD-1/main
+        );
+    } else {
+        die "Unrecognized category ($config_category), cannot build this.\n";
+    }
 
     # FIXME: when to keep, when to clean up
     #        keep for now
@@ -152,6 +180,33 @@ sub build_program {
 
     LOG("./configure --prefix=$prefix");
     system "./configure --prefix=$prefix";
+
+    LOG('make');
+    system 'make';
+
+    LOG('make install');
+    system 'make install';
+
+    chdir $original_dir;
+    LOG("Done preparing $program");
+}
+
+sub build_perl_program {
+    my ( $program, $build_dir, $prefix ) = @_;
+
+    LOG("Building Perl module: $program");
+
+    local $ENV{'PERL5LIB'} = join ':',
+        path( $prefix, qw<share perl>, $Config{'version'} ),
+        path( $prefix, qw<lib   perl>, $Config{'version'} );
+
+    my $original_dir = path('.');
+
+    chdir $build_dir
+        or die "Can't chdir to $build_dir: $!\n";
+
+    LOG("$^X Makefile.PL PREFIX=$prefix INSTALL_BASE=''");
+    system "$^X Makefile.PL PREFIX=$prefix INSTALL_BASE=''";
 
     LOG('make');
     system 'make';
