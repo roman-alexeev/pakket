@@ -64,8 +64,8 @@ sub getopt {
     # perspective
     $opts{'program'} = delete $opts{'build'};
 
-    $opts{'source-base'} = ( delete $opts{'source-dir'} || '.' ) . '/';
-    $opts{'config-base'} = ( delete $opts{'config-dir'} || '.' ) . '/';
+    $opts{'source-base'} = ( delete $opts{'source-dir'} || '.' );
+    $opts{'config-base'} = ( delete $opts{'config-dir'} || '.' );
 
     $LOG = $opts{'verbose'};
 
@@ -79,7 +79,9 @@ sub run_build {
     # FIXME: we should have a config dir and a function that checks
     #        for the existence of config files in it
     # FIXME: the config class should have "mandatory" fields, add checks
-    my $config = readconf( $opts->{'config-base'} . "$program_name.toml" );
+    my $config = readconf(
+        path( $opts->{'config-base'}, "$program_name.toml" )
+    );
 
     # double check we have the right program configuration
     my $config_name = $config->{'Package'}{'name'}
