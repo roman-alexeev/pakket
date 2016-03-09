@@ -1,0 +1,7 @@
+[Package]
+name      = "zeromq"
+version   = "1.4.1"
+directory = "zeromq-4.1.4"
+[Prereqs]
+    [Prereqs.System]
+    libsodium = { version = "1.0.8" }
