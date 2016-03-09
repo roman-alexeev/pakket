@@ -88,8 +88,7 @@ sub run_build {
     # starting with system libraries
     if ( my $system_prereqs = $config->{'Prereqs'}{'System'} ) {
         foreach my $prereq ( keys %{$system_prereqs} ) {
-            print STDERR "I was going to build $prereq\n";
-            #run_build( $opts, $prereq, $system_prereqs->{$prereq} );
+            run_build( $opts, $prereq, $system_prereqs->{$prereq} );
         }
     }
 
