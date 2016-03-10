@@ -49,11 +49,11 @@ sub validate_args {
 
     $self->{'program'} = $program || $cat;
 
-    $self->{'build_dir'} = $opt->{'build-dir'} || $opt->{b}
+    $self->{'build_dir'} = $opt->{'build-dir'}
         || '/tmp/BUILD-' . int rand 9999;
 
     $self->{'config_base'} = $opt->{'config'}  || '.';
-    $self->{'source_base'} = $opt->{'source'}  || $opt->{'s'} || '.';
+    $self->{'source_base'} = $opt->{'source'}  || '.';
     $self->{'log'}         = $opt->{'verbose'} || $opt->{'v'};
 }
 
