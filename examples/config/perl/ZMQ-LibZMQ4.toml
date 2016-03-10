@@ -1,0 +1,13 @@
+[Package]
+name      = "ZMQ-LibZMQ4"
+category  = "perl"
+version   = "1.04"
+directory = "ZMQ-LibZMQ4-0.01"
+[Prereqs]
+    # Prereqs for "system" category
+    [Prereqs.system]
+    zeromq = { version = "0" }
+
+    # Prereqs for "perl" category
+    [Prereqs.perl]
+    ZMQ-Constants = { version = "1.04" }
