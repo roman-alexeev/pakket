@@ -61,8 +61,8 @@ sub execute {
 
     $self->set_build_dir;
 
-    # run the build (passing `self.program` because of recursion)
-    $self->run_build( $self->{program} );
+    # run the build (passing `self.category` and `self.program` because of recursion)
+    $self->run_build( $self->{category}, $self->{program} );
 }
 
 sub set_build_dir {
@@ -77,7 +77,7 @@ sub set_build_dir {
 }
 
 sub run_build {
-    my ( $self, $program_name, $prereqs ) = @_;
+    my ( $self, $category, $program_name, $prereqs ) = @_;
 
     # FIXME: we should have a config dir and a function that checks
     #        for the existence of config files in it
@@ -88,6 +88,7 @@ sub run_build {
     eval {
         $config = read_config(
             $self->{config_base},
+            $category,
             "$program_name.toml"
         );
         1;
@@ -115,23 +116,13 @@ sub run_build {
     # starting with system libraries
     if ( my $system_prereqs = $config->{'Prereqs'}{'system'} ) {
         foreach my $prereq ( keys %{$system_prereqs} ) {
-            my $prereq_opts = {
-                %{$self},
-                category => 'system',
-                program  => $prereq,
-            };
-            $self->run_build( $prereq_opts, $prereq, $system_prereqs->{$prereq} );
+            $self->run_build( 'system', $prereq, $system_prereqs->{$prereq} );
         }
     }
 
     if ( my $perl_prereqs = $config->{'Prereqs'}{'perl'} ) {
         foreach my $prereq ( keys %{$perl_prereqs} ) {
-            my $prereq_opts = {
-                %{$self},
-                category => 'perl',
-                program  => $prereq,
-            };
-            $self->run_build( $self, $prereq, $perl_prereqs->{$prereq} );
+            $self->run_build( 'perl', $prereq, $perl_prereqs->{$prereq} );
         }
     }
 
@@ -244,8 +235,6 @@ sub build_perl_program {
 }
 
 sub read_config {
-    my ( $config_dir, $program ) = @_;
-
     my $config_file = path(@_);
     -r $config_file
         or die "could not find package information ($config_file)\n";
