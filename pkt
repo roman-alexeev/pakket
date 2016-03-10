@@ -15,6 +15,7 @@ use DDP;
 # - replace "program" and "program name" with "package" and "package name"
 # - move all hardcoded values (confs) to constants
 # - rewrite in App::Cmd?
+# - add make process log (and add it with -v -v)
 
 my $LOG;
 sub help {
@@ -49,6 +50,7 @@ sub getopt {
         'verbose|v+',
         'for=s',
         'build=s',
+        'category=s',
         'build-dir=s',
         'source-dir=s',
         'config-dir=s',
@@ -62,7 +64,18 @@ sub getopt {
 
     # rename "build" to "program" because that's clearer from our
     # perspective
-    $opts{'program'} = delete $opts{'build'};
+    my ( $cat, $program ) = split '/', delete $opts{'build'};
+    if ($program) {
+        if ( defined $opts{'category'} ) {
+            $opts{'category'} eq $cat
+                or die "You specified two categories: '$opts{'category'}' and '$cat'\n";
+        }
+
+        $opts{'category'} //= $cat;
+        $opts{'program'} = $program;
+    } else {
+        $opts{'program'} = $cat;
+    }
 
     $opts{'source-base'} = ( delete $opts{'source-dir'} || '.' );
     $opts{'config-base'} = ( delete $opts{'config-dir'} || '.' );
@@ -79,8 +92,13 @@ sub run_build {
     # FIXME: we should have a config dir and a function that checks
     #        for the existence of config files in it
     # FIXME: the config class should have "mandatory" fields, add checks
+
     my $config = readconf(
-        path( $opts->{'config-base'}, "$program_name.toml" )
+        path(
+            $opts->{'config-base'},
+            $opts->{'category'},
+            "$program_name.toml",
+        )
     );
 
     # double check we have the right program configuration
@@ -100,14 +118,24 @@ sub run_build {
 
     # recursively build prereqs
     # starting with system libraries
-    if ( my $system_prereqs = $config->{'Prereqs'}{'System'} ) {
+    if ( my $system_prereqs = $config->{'Prereqs'}{'system'} ) {
         foreach my $prereq ( keys %{$system_prereqs} ) {
-            run_build( $opts, $prereq, $system_prereqs->{$prereq} );
+            my $prereq_opts = {
+                %{$opts},
+                category => 'system',
+                program  => $prereq,
+            };
+            run_build( $prereq_opts, $prereq, $system_prereqs->{$prereq} );
         }
     }
 
-    if ( my $perl_prereqs = $config->{'Prereqs'}{'Perl'} ) {
+    if ( my $perl_prereqs = $config->{'Prereqs'}{'perl'} ) {
         foreach my $prereq ( keys %{$perl_prereqs} ) {
+            my $prereq_opts = {
+                %{$opts},
+                category => 'perl',
+                program  => $prereq,
+            };
             run_build( $opts, $prereq, $perl_prereqs->{$prereq} );
         }
     }
@@ -139,12 +167,11 @@ sub run_build {
 
         dircopy( $program_src_dir, $program_dst_dir );
 
-        print STDERR "WAS GOING TO BUILD $program_name\n";
         build_program(
             $program_name,    # zeromq
             $program_dst_dir, # /tmp/BUILD-1/libs/zeromq-1.4.1
             $main_build_dir,  # /tmp/BUILD-1/main
-        ) if 0;
+        );
     } elsif ( $config_category eq 'perl' ) {
         my $program_dst_dir = path(
             $top_build_dir,
@@ -174,19 +201,19 @@ sub build_program {
 
     LOG("Building $program");
 
-    my $original_dir = path('.');
+    my $original_dir = Path::Tiny->cwd;
 
     chdir $build_dir
         or die "Can't chdir to $build_dir: $!\n";
 
     LOG("./configure --prefix=$prefix");
-    system "./configure --prefix=$prefix";
+    system "./configure --prefix=$prefix >/dev/null 2>&1";
 
     LOG('make');
-    system 'make';
+    system 'make >/dev/null 2>&1';
 
     LOG('make install');
-    system 'make install';
+    system 'make install >/dev/null 2>&1';
 
     chdir $original_dir;
     LOG("Done preparing $program");
@@ -201,7 +228,7 @@ sub build_perl_program {
         path( $prefix, qw<share perl>, $Config{'version'} ),
         path( $prefix, qw<lib   perl>, $Config{'version'} );
 
-    my $original_dir = path('.');
+    my $original_dir = Path::Tiny->cwd;
 
     chdir $build_dir
         or die "Can't chdir to $build_dir: $!\n";
@@ -221,6 +248,10 @@ sub build_perl_program {
 
 sub readconf {
     my $config_file = shift;
+
+    -r $config_file
+        or die "Could not find package information ($config_file)\n";
+
     return TOML::Parser->new( strict_mode => 1 )->parse_file($config_file);
 }
 
