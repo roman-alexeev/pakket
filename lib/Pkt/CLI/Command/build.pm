@@ -1,9 +1,9 @@
 package Pkt::CLI::Command::build;
 
-use Pkt::CLI -command;
-
 use strict;
 use warnings;
+use Pkt::CLI -command;
+
 use Config;
 use File::Path            qw< make_path remove_tree >;
 use Path::Tiny            qw< path     >;
@@ -16,44 +16,45 @@ use TOML::Parser;
 # - move all hardcoded values (confs) to constants
 # - add make process log (and add it with -v -v)
 
-sub abstract    { "build" }
-sub description { "description" }
+sub abstract    { 'Build a package' }
+sub description { 'Build a package' }
 
 sub opt_spec {
     return (
-        [ "category=s", "build type (perl,system,etc.)" ],
-        [ "config=s", "config directory" ],
-        [ "b|build-dir=s", "build directory" ],
-        [ "s|source=s", "source directory" ],
-        [ "f|for=s",    "build for specific Perl version (current not supported)" ],
-        [ "v|verbose", "verbose log" ],
+        [ 'category=s',  'pkt category ("perl", "system", etc.)' ],
+        [ 'build-dir=s', 'use an existing build directory'       ],
+        [ 'config=s',    'directory holding the configurations'  ],
+        [ 'source=s',    'directory holding the sources'         ],
+        [ 'v|verbose',   'verbose log'                           ],
     );
 }
 
-sub LOG { $_[0]->{log} && print STDERR $_[1], "\n" }
+sub LOG { $_[0]->{'log'} && print STDERR $_[1], "\n" }
 
 sub validate_args {
     my ( $self, $opt, $args ) = @_;
 
-    $self->{category} = $opt->{category};
+    $self->{'category'} = $opt->{'category'};
 
-    $args->[0] or $self->usage_error("must specify action");
-    my ( $cat, $program ) = split '/' => $args->[0];
-    if ( $program ) {
-        $self->usage_error("you specified two categories: '" . $self->{category} . "' and '$cat'\n")
-            if $self->{category} and $self->{category} ne $cat;
-        $self->{category} //= $cat;
+    $args->[0]
+        or $self->usage_error('must specify action');
+
+    my ( $cat, $program ) = split '/', $args->[0];
+    if ($program) {
+        $self->usage_error("You specified two categories: '" . $self->{'category'} . "' and '$cat'\n")
+            if $self->{'category'} and $self->{'category'} ne $cat;
+
+        $self->{'category'} //= $cat;
     }
 
-    $self->{program} = $program || $cat;
+    $self->{'program'} = $program || $cat;
 
-    $self->{build_dir} = $opt->{'build-dir'} || $opt->{b}
+    $self->{'build_dir'} = $opt->{'build-dir'} || $opt->{b}
         || '/tmp/BUILD-' . int rand 9999;
 
-    $self->{config_base} = $opt->{config}  || '.';
-    $self->{source_base} = $opt->{source}  || $opt->{s} || '.';
-    $self->{for}         = $opt->{for}     || $opt->{f};
-    $self->{log}         = $opt->{verbose} || $opt->{v};
+    $self->{'config_base'} = $opt->{'config'}  || '.';
+    $self->{'source_base'} = $opt->{'source'}  || $opt->{'s'} || '.';
+    $self->{'log'}         = $opt->{'verbose'} || $opt->{'v'};
 }
 
 sub execute {
@@ -62,17 +63,17 @@ sub execute {
     $self->set_build_dir;
 
     # run the build (passing `self.category` and `self.program` because of recursion)
-    $self->run_build( $self->{category}, $self->{program} );
+    $self->run_build( $self->{'category'}, $self->{'program'} );
 }
 
 sub set_build_dir {
     my $self = shift;
 
-    my $prefix_dir = path( $self->{build_dir}, 'main' );
+    my $prefix_dir = path( $self->{'build_dir'}, 'main' );
 
     if ( ! -d $prefix_dir ) {
-        $self->LOG("Creating build dir " . $self->{build_dir});
-        make_path( $prefix_dir );
+        $self->LOG( 'Creating build dir ' . $self->{'build_dir'} );
+        make_path($prefix_dir);
     }
 }
 
@@ -87,13 +88,13 @@ sub run_build {
     my $config;
     eval {
         $config = read_config(
-            $self->{config_base},
+            $self->{'config_base'},
             $category,
             "$program_name.toml"
         );
         1;
     } or do {
-        my $err = $@ || "error reading config file";
+        my $err = $@ || 'Error reading config file';
         $self->usage_error($err);
     };
 
@@ -126,13 +127,16 @@ sub run_build {
         }
     }
 
-    my $program_src_dir = $self->{source_base} . $config->{'Package'}{'directory'};
+    my $program_src_dir = path(
+        $self->{'source_base'}
+        $config->{'Package'}{'directory'},
+    );
 
     $self->LOG('Copying program files');
     -d $program_src_dir
         or die "Cannot find source dir: $program_src_dir\n";
 
-    my $top_build_dir = $self->{build_dir};
+    my $top_build_dir = $self->{'build_dir'};
 
     my $pkgconfig_path = path( $top_build_dir, qw<main lib pkgconfig> );
     $self->LOG("Setting PKG_CONFIG_PATH=$pkgconfig_path");
