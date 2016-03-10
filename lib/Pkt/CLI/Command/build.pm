@@ -1,6 +1,6 @@
-package PKT::CLI::Command::build;
+package Pkt::CLI::Command::build;
 
-use PKT::CLI -command;
+use Pkt::CLI -command;
 
 use strict;
 use warnings;
