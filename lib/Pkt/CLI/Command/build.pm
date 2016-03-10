@@ -128,7 +128,7 @@ sub run_build {
     }
 
     my $program_src_dir = path(
-        $self->{'source_base'}
+        $self->{'source_base'},
         $config->{'Package'}{'directory'},
     );
 
