@@ -21,11 +21,11 @@ sub description { 'Build a package' }
 
 sub opt_spec {
     return (
-        [ 'category=s',  'pkt category ("perl", "system", etc.)' ],
-        [ 'build-dir=s', 'use an existing build directory'       ],
-        [ 'config=s',    'directory holding the configurations'  ],
-        [ 'source=s',    'directory holding the sources'         ],
-        [ 'v|verbose',   'verbose log'                           ],
+        [ 'category=s',   'pkt category ("perl", "system", etc.)' ],
+        [ 'build-dir=s',  'use an existing build directory'       ],
+        [ 'config-dir=s', 'directory holding the configurations'  ],
+        [ 'source-dir=s', 'directory holding the sources'         ],
+        [ 'verbose|v',    'verbose log'                           ],
     );
 }
 
@@ -37,7 +37,7 @@ sub validate_args {
     $self->{'category'} = $opt->{'category'};
 
     $args->[0]
-        or $self->usage_error('must specify action');
+        or $self->usage_error('Must specify package');
 
     my ( $cat, $program ) = split '/', $args->[0];
     if ($program) {
@@ -49,12 +49,12 @@ sub validate_args {
 
     $self->{'program'} = $program || $cat;
 
-    $self->{'build_dir'} = $opt->{'build-dir'}
-        || '/tmp/BUILD-' . int rand 9999;
+    $self->{'build_dir'} = $opt->{'build_dir'}
+                        || '/tmp/BUILD-' . int rand 9999;
 
-    $self->{'config_base'} = $opt->{'config'}  || '.';
-    $self->{'source_base'} = $opt->{'source'}  || '.';
-    $self->{'log'}         = $opt->{'verbose'} || $opt->{'v'};
+    $self->{'config_base'} = $opt->{'config_dir'} || '.';
+    $self->{'source_base'} = $opt->{'source_dir'} || '.';
+    $self->{'log'}         = $opt->{'verbose'};
 }
 
 sub execute {
