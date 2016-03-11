@@ -40,17 +40,42 @@ sub validate_args {
         or $self->usage_error('Must specify package');
 
     my ( $cat, $program ) = split '/', $args->[0];
-    if ($program) {
-        $self->usage_error("You specified two categories: '" . $self->{'category'} . "' and '$cat'\n")
-            if $self->{'category'} and $self->{'category'} ne $cat;
 
+    # did we get a full path spec (category/program)
+    if ($program) {
+        # if there is a category, it *has* to match
+        # the category provided by the full spec
+        $self->{'category'} && $self->{'category'} ne $cat
+            and $self->usage_error(
+                sprintf "You specified two categories: '%s' and '%s'\n",
+                        $self->{'category'},
+                        $cat
+            );
+
+        # use the category we got from the full spec if we don't
+        # have one defined already
+        # (and if we do, they will match anyway - see check above)
         $self->{'category'} //= $cat;
     }
 
+    # if there is no program, the first item (now in $cat)
+    # is the program name
     $self->{'program'} = $program || $cat;
 
-    $self->{'build_dir'} = $opt->{'build_dir'}
-                        || '/tmp/BUILD-' . int rand 9999;
+    if ( $opt->{'build_dir'} ) {
+        -d $opt->{'build_dir'}
+            or die "You asked to use a build dir that does not exist.\n";
+    } else {
+        # make sure we got a directory
+        my $count;
+        while ( my $build_dir = '/tmp/BUILD-' . int rand 999 ) {
+            ++$count == 100
+                and die "Gave up on creating a new build dir.\n";
+
+            -d $build_dir
+                or $self->{'_build_dir'} = $build_dir, last;
+        }
+    }
 
     $self->{'config_base'} = $opt->{'config_dir'} || '.';
     $self->{'source_base'} = $opt->{'source_dir'} || '.';
@@ -62,7 +87,7 @@ sub execute {
 
     $self->set_build_dir;
 
-    # run the build (passing `self.category` and `self.program` because of recursion)
+    # method should get category and program to allow clean recursion
     $self->run_build( $self->{'category'}, $self->{'program'} );
 }
 
@@ -85,17 +110,23 @@ sub run_build {
     # FIXME: the config class should have "mandatory" fields, add checks
 
     # read the configuration
+    my $config_file = path(
+        $self->{'config_base'},
+        $category,
+        "$program_name.toml"
+    );
+
     my $config;
+
+    -r $config_file
+        or die "Could not find package information ($config_file)\n";
+
     eval {
-        $config = read_config(
-            $self->{'config_base'},
-            $category,
-            "$program_name.toml"
-        );
+        $config = TOML::Parser->new( strict_mode => 1 )->parse_file($config_file);
         1;
     } or do {
-        my $err = $@ || 'Error reading config file';
-        $self->usage_error($err);
+        my $err = $@ || 'Unknown error';
+        $self->usage_error("Cannot read $config_file: $err");
     };
 
     # double check we have the right program configuration
@@ -236,14 +267,6 @@ sub build_perl_program {
 
     chdir $original_dir;
     $self->LOG("Done preparing $program");
-}
-
-sub read_config {
-    my $config_file = path(@_);
-    -r $config_file
-        or die "could not find package information ($config_file)\n";
-
-    return TOML::Parser->new( strict_mode => 1 )->parse_file($config_file);
 }
 
 1;
