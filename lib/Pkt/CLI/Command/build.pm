@@ -128,7 +128,7 @@ sub run_build {
     my $config_file = path(
         $self->{'config_base'},
         $category,
-        "$package_name.toml"
+        "$package_name.toml",
     );
 
     my $config;
