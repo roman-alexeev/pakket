@@ -20,11 +20,12 @@ sub description { 'Build a package' }
 
 sub opt_spec {
     return (
-        [ 'category=s',   'pkt category ("perl", "system", etc.)' ],
-        [ 'build-dir=s',  'use an existing build directory'       ],
-        [ 'config-dir=s', 'directory holding the configurations'  ],
-        [ 'source-dir=s', 'directory holding the sources'         ],
-        [ 'verbose|v',    'verbose log'                           ],
+        [ 'category=s',     'pkt category ("perl", "system", etc.)'    ],
+        [ 'build-prefix=s', 'use an existing prefix for the build dir' ],
+        [ 'build-dir=s',    'use an existing build directory'          ],
+        [ 'config-dir=s',   'directory holding the configurations'     ],
+        [ 'source-dir=s',   'directory holding the sources'            ],
+        [ 'verbose|v',      'verbose log'                              ],
     );
 }
 
@@ -64,18 +65,25 @@ sub validate_args {
     $self->{'category'}
         or $self->usage_error('You must provide a category');
 
+    $opt->{'build_prefix'} && $opt->{'build_dir'}
+        and die "Cannot provide both --build-prefix and --build-dir\n";
+
+    my $build_prefix = $opt->{'build_prefix'} || '/tmp';
+    -d $build_prefix or mkdir $build_prefix
+        or die "Cannot create $build_prefix: $!\n";
+
     if ( $opt->{'build_dir'} ) {
         -d $opt->{'build_dir'}
             or die "You asked to use a build dir that does not exist.\n";
     } else {
         # make sure we got a directory
         my $count;
-        while ( my $build_dir = '/tmp/BUILD-' . int rand 999 ) {
+        while ( my $dir = path( $build_prefix, 'BUILD-' . int rand 9999 ) ) {
             ++$count == 100
                 and die "Gave up on creating a new build dir.\n";
 
-            -d $build_dir
-                or $self->{'build_dir'} = $build_dir, last;
+            -d $dir
+                or $self->{'build_dir'} = $dir, last;
         }
     }
 
