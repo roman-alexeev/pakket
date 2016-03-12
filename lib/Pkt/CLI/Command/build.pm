@@ -65,6 +65,9 @@ sub validate_args {
     $self->{'category'}
         or $self->usage_error('You must provide a category');
 
+    $self->{'category'}
+        or $self->usage_error('I don\'t have a category for this package.');
+
     $opt->{'build_prefix'} && $opt->{'build_dir'}
         and die "Cannot provide both --build-prefix and --build-dir\n";
 
