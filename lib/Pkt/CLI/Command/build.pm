@@ -61,6 +61,9 @@ sub validate_args {
     # is the package name
     $self->{'package'} = $package || $cat;
 
+    $self->{'category'}
+        or $self->usage_error('You must provide a category');
+
     if ( $opt->{'build_dir'} ) {
         -d $opt->{'build_dir'}
             or die "You asked to use a build dir that does not exist.\n";
@@ -72,7 +75,7 @@ sub validate_args {
                 and die "Gave up on creating a new build dir.\n";
 
             -d $build_dir
-                or $self->{'_build_dir'} = $build_dir, last;
+                or $self->{'build_dir'} = $build_dir, last;
         }
     }
 
@@ -104,8 +107,6 @@ sub set_build_dir {
 sub run_build {
     my ( $self, $category, $package_name, $prereqs ) = @_;
 
-    # FIXME: we should have a config dir and a function that checks
-    #        for the existence of config files in it
     # FIXME: the config class should have "mandatory" fields, add checks
 
     # read the configuration
@@ -181,7 +182,8 @@ sub run_build {
     if ( $config_category eq 'system' ) {
         my $package_dst_dir = path(
             $top_build_dir,
-            'libs',
+            'src',
+            $category,
             basename($package_src_dir),
         );
 
@@ -189,14 +191,15 @@ sub run_build {
 
         $self->build_package(
             $package_name,    # zeromq
-            $package_dst_dir, # /tmp/BUILD-1/libs/zeromq-1.4.1
+            $package_dst_dir, # /tmp/BUILD-1/src/system/zeromq-1.4.1
             $main_build_dir,  # /tmp/BUILD-1/main
         );
     }
     elsif ( $config_category eq 'perl' ) {
         my $package_dst_dir = path(
             $top_build_dir,
-            'perl_libs',
+            'src',
+            $category,
             basename($package_src_dir),
         );
 
@@ -204,7 +207,7 @@ sub run_build {
 
         $self->build_perl_package(
             $package_name,    # ZMQ::Constants
-            $package_dst_dir, # /tmp/BUILD-1/libs/ZMQ-Constants-...
+            $package_dst_dir, # /tmp/BUILD-1/src/perl/ZMQ-Constants-...
             $main_build_dir,  # /tmp/BUILD-1/main
         );
     }
