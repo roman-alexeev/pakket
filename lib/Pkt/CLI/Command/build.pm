@@ -12,7 +12,6 @@ use File::Basename        qw< basename >;
 use TOML::Parser;
 
 # TODO:
-# - replace "program" and "program name" with "package" and "package name"
 # - move all hardcoded values (confs) to constants
 # - add make process log (and add it with -v -v)
 
@@ -39,10 +38,10 @@ sub validate_args {
     $args->[0]
         or $self->usage_error('Must specify package');
 
-    my ( $cat, $program ) = split '/', $args->[0];
+    my ( $cat, $package ) = split '/', $args->[0];
 
-    # did we get a full path spec (category/program)
-    if ($program) {
+    # did we get a full path spec (category/package)
+    if ($package) {
         # if there is a category, it *has* to match
         # the category provided by the full spec
         $self->{'category'} && $self->{'category'} ne $cat
@@ -58,9 +57,9 @@ sub validate_args {
         $self->{'category'} //= $cat;
     }
 
-    # if there is no program, the first item (now in $cat)
-    # is the program name
-    $self->{'program'} = $program || $cat;
+    # if there is no package, the first item (now in $cat)
+    # is the package name
+    $self->{'package'} = $package || $cat;
 
     if ( $opt->{'build_dir'} ) {
         -d $opt->{'build_dir'}
@@ -87,8 +86,8 @@ sub execute {
 
     $self->set_build_dir;
 
-    # method should get category and program to allow clean recursion
-    $self->run_build( $self->{'category'}, $self->{'program'} );
+    # method should get category and package to allow clean recursion
+    $self->run_build( $self->{'category'}, $self->{'package'} );
 }
 
 sub set_build_dir {
@@ -103,7 +102,7 @@ sub set_build_dir {
 }
 
 sub run_build {
-    my ( $self, $category, $program_name, $prereqs ) = @_;
+    my ( $self, $category, $package_name, $prereqs ) = @_;
 
     # FIXME: we should have a config dir and a function that checks
     #        for the existence of config files in it
@@ -113,7 +112,7 @@ sub run_build {
     my $config_file = path(
         $self->{'config_base'},
         $category,
-        "$program_name.toml"
+        "$package_name.toml"
     );
 
     my $config;
@@ -129,15 +128,15 @@ sub run_build {
         $self->usage_error("Cannot read $config_file: $err");
     };
 
-    # double check we have the right program configuration
+    # double check we have the right package configuration
     my $config_name = $config->{'Package'}{'name'}
-        or die "Program config must provide 'name'\n";
+        or die "Package config must provide 'name'\n";
 
     my $config_category = $config->{'Package'}{'category'}
-        or die "Program config must provide 'category'\n";
+        or die "Package config must provide 'category'\n";
 
-    $config_name eq $program_name
-        or die "$program_name configuration claims it is $config_name\n";
+    $config_name eq $package_name
+        or die "$package_name configuration claims it is $config_name\n";
 
     # FIXME: is this already built?
     # once we're done building something, we should be moving it over
@@ -158,14 +157,14 @@ sub run_build {
         }
     }
 
-    my $program_src_dir = path(
+    my $package_src_dir = path(
         $self->{'source_base'},
         $config->{'Package'}{'directory'},
     );
 
-    $self->LOG('Copying program files');
-    -d $program_src_dir
-        or die "Cannot find source dir: $program_src_dir\n";
+    $self->LOG('Copying package files');
+    -d $package_src_dir
+        or die "Cannot find source dir: $package_src_dir\n";
 
     my $top_build_dir = $self->{'build_dir'};
 
@@ -178,34 +177,34 @@ sub run_build {
     local $ENV{'LD_LIBRARY_PATH'} = $main_build_dir;
 
     # FIXME: Remove in favor of a ::Build::System, ::Build::Perl, etc.
-    # FIXME: $program_dst_dir is dictated from the category
+    # FIXME: $package_dst_dir is dictated from the category
     if ( $config_category eq 'system' ) {
-        my $program_dst_dir = path(
+        my $package_dst_dir = path(
             $top_build_dir,
             'libs',
-            basename($program_src_dir),
+            basename($package_src_dir),
         );
 
-        dircopy( $program_src_dir, $program_dst_dir );
+        dircopy( $package_src_dir, $package_dst_dir );
 
-        $self->build_program(
-            $program_name,    # zeromq
-            $program_dst_dir, # /tmp/BUILD-1/libs/zeromq-1.4.1
+        $self->build_package(
+            $package_name,    # zeromq
+            $package_dst_dir, # /tmp/BUILD-1/libs/zeromq-1.4.1
             $main_build_dir,  # /tmp/BUILD-1/main
         );
     }
     elsif ( $config_category eq 'perl' ) {
-        my $program_dst_dir = path(
+        my $package_dst_dir = path(
             $top_build_dir,
             'perl_libs',
-            basename($program_src_dir),
+            basename($package_src_dir),
         );
 
-        dircopy( $program_src_dir, $program_dst_dir );
+        dircopy( $package_src_dir, $package_dst_dir );
 
-        $self->build_perl_program(
-            $program_name,    # ZMQ::Constants
-            $program_dst_dir, # /tmp/BUILD-1/libs/ZMQ-Constants-...
+        $self->build_perl_package(
+            $package_name,    # ZMQ::Constants
+            $package_dst_dir, # /tmp/BUILD-1/libs/ZMQ-Constants-...
             $main_build_dir,  # /tmp/BUILD-1/main
         );
     }
@@ -219,10 +218,10 @@ sub run_build {
     #remove_tree($build_dir);
 }
 
-sub build_program {
-    my ( $self, $program, $build_dir, $prefix ) = @_;
+sub build_package {
+    my ( $self, $package, $build_dir, $prefix ) = @_;
 
-    $self->LOG("Building $program");
+    $self->LOG("Building $package");
 
     my $original_dir = Path::Tiny->cwd;
 
@@ -239,13 +238,13 @@ sub build_program {
     system 'make install >/dev/null 2>&1';
 
     chdir $original_dir;
-    $self->LOG("Done preparing $program");
+    $self->LOG("Done preparing $package");
 }
 
-sub build_perl_program {
-    my ( $self, $program, $build_dir, $prefix ) = @_;
+sub build_perl_package {
+    my ( $self, $package, $build_dir, $prefix ) = @_;
 
-    $self->LOG("Building Perl module: $program");
+    $self->LOG("Building Perl module: $package");
 
     local $ENV{'PERL5LIB'} = join ':',
         path( $prefix, qw<share perl>, $Config{'version'} ),
@@ -266,7 +265,7 @@ sub build_perl_program {
     system 'make install';
 
     chdir $original_dir;
-    $self->LOG("Done preparing $program");
+    $self->LOG("Done preparing $package");
 }
 
 1;
