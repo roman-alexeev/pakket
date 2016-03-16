@@ -107,6 +107,10 @@ sub set_build_dir {
 sub run_build {
     my ( $self, $category, $package_name, $prereqs ) = @_;
 
+    my $full_package_name = "$category/$package_name";
+    $self->{'is_built'}{$full_package_name}
+        and return;
+
     # FIXME: the config class should have "mandatory" fields, add checks
 
     # read the configuration
@@ -214,6 +218,8 @@ sub run_build {
     else {
         die "Unrecognized category ($config_category), cannot build this.\n";
     }
+
+    $self->{'is_built'}{$full_package_name} = 1;
 
     # FIXME: when to keep, when to clean up
     #        keep for now
