@@ -9,6 +9,10 @@ use Pkt::Builder;
 # TODO:
 # - move all hardcoded values (confs) to constants
 # - add make process log (and add it with -v -v)
+# - check all operations (chdir, mkpath, etc.) (move() already checked)
+# - should we detect a file change during BUILD and die/warn?
+# - stop calling system(), use a proper Open module instead so we can
+#   easily check the success/fail and protect against possible injects
 
 sub abstract    { 'Build a package' }
 sub description { 'Build a package' }
@@ -19,6 +23,7 @@ sub opt_spec {
         [ 'build-dir=s',    'use an existing build directory'                 ],
         [ 'config-dir=s',   'directory holding the configurations'            ],
         [ 'source-dir=s',   'directory holding the sources'                   ],
+        [ 'output-dir=s',   'output directory (default: .)'                   ],
         [ 'verbose|v+',     'verbose output (can be provided multiple times)' ],
     );
 }
@@ -26,7 +31,8 @@ sub opt_spec {
 sub validate_args {
     my ( $self, $opt, $args ) = @_;
 
-    $self->{'category'} = $opt->{'category'};
+    $self->{'category'}   = $opt->{'category'};
+    $self->{'output_dir'} = $opt->{'output_dir'};
 
     $args->[0]
         or $self->usage_error('Must specify package');
@@ -63,6 +69,8 @@ sub validate_args {
     if ( $opt->{'build_dir'} ) {
         -d $opt->{'build_dir'}
             or die "You asked to use a build dir that does not exist.\n";
+
+        $self->{'build_dir'} = $opt->{'build_dir'};
     }
 
     $self->{'config_dir'} = $opt->{'config_dir'};
@@ -74,7 +82,7 @@ sub execute {
     my $self    = shift;
     my $builder = Pkt::Builder->new(
         map +( defined $self->{$_} ? ( $_ => $self->{$_} ) : () ), qw<
-            config_dir source_dir build_dir log
+            config_dir source_dir build_dir output_dir log
         >
     );
 

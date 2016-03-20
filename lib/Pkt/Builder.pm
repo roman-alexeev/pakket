@@ -3,10 +3,13 @@ package Pkt::Builder;
 
 use Moose;
 use Config;
-use File::Path qw< make_path remove_tree >;
-use Path::Tiny qw< path >;
-use File::Copy::Recursive qw< dircopy  >;
-use File::Basename        qw< basename >;
+use File::Spec;
+use File::Path                qw< make_path remove_tree >;
+use Path::Tiny                qw< path        >;
+use File::Find                qw< find        >;
+use File::Copy::Recursive     qw< dircopy     >;
+use File::Basename            qw< basename dirname >;
+use Algorithm::Diff::Callback qw< diff_hashes >;
 use TOML::Parser;
 
 has config_dir => (
@@ -28,6 +31,13 @@ has build_dir => (
     default => sub { Path::Tiny->tempdir('BUILD-XXXXXX')->stringify },
 );
 
+# TODO: should output_dir should default to '.'?
+has output_dir => (
+    is      => 'ro',
+    isa     => 'Str',
+    default => sub { Path::Tiny->cwd->stringify },
+);
+
 has log => (
     is      => 'ro',
     isa     => 'Int',
@@ -35,6 +45,12 @@ has log => (
 );
 
 has is_built => (
+    is      => 'ro',
+    isa     => 'HashRef',
+    default => sub { +{} },
+);
+
+has files_manifest => (
     is      => 'ro',
     isa     => 'HashRef',
     default => sub { +{} },
@@ -204,6 +220,20 @@ sub run_build {
     }
 
     $self->is_built->{$full_package_name} = 1;
+    $self->_log('Scanning for new files.');
+
+    # scan for new files (add_new_files creates the package - not very
+    # good naming here... small FIXME there)
+    # XXX: this is just a bit of a smarter && dumber rsync(1):
+    # rsync -qaz BUILD/main/ output_dir/
+    # the reason is that we need the diff. if you can make it happen
+    # with rsync, please remove all of this. :P
+    # rsync(1) should be used to deploy the package files though
+    # (because then we want *all* content)
+    # (only if unpacking it directly into the directory fails)
+    $self->add_new_files( $category, $package_name, $main_build_dir );
+
+    $self->_log('Finished scanning for new files.');
 
     # FIXME: when to keep, when to clean up
     #        keep for now
@@ -214,6 +244,161 @@ sub run_build {
 sub run_command {
     my ($self, $cmd) = @_;
     system "$cmd >> $self->{'build_log_path'} 2>&1";
+}
+
+sub add_new_files {
+    my ( $self, $category, $package_name, $build_dir ) = @_;
+
+    my $nodes = $self->scan_directory($build_dir);
+
+    $self->{'provides'}{$category}{$package_name} ||=
+        $self->_diff_nodes_list( $self->files_manifest, $nodes );
+
+    # XXX should we create package files for bare installation
+    # without include files?
+    # pro: smaller binary packages with JUST the libraries
+    # con: different SO have different binary, we might miss important
+    # files, we need to maintain two different packages, adds complexity
+    # (plus, size of header files are a joke anyway)
+    $self->create_package_file( $category, $package_name, $build_dir );
+}
+
+sub scan_directory {
+    my ( $self, $dir ) = @_;
+    my $nodes = {};
+
+    # FIXME: add skipped directories?
+    # (such as "man", "share/man")
+    File::Find::find( sub {
+        # $File::Find::dir  = '/some/path'
+        # $_                = 'foo.ext'
+        # $File::Find::name = '/some/path/foo.ext'
+        my $filename = $File::Find::name;
+
+        # skip directories, we only want files
+        -f $filename or return;
+
+        # save the symlink path in order to symlink them
+        if ( -l $filename ) {
+            # FIXME: this should be supported, but I'm too lazy right now
+            # the problem with a full path symlink is that is can be either
+            # to a build you've done or to a file outside the build/package
+            # the first means we need to normalize it later when creating the
+            # package (or now, if we're smart enough). the latter is not that
+            # much of a problem.
+            # -- SX.
+            path( $nodes->{$filename} = readlink $filename )->is_absolute
+                and die "Error. Absolute path symlinks aren't supported.\n";
+        } else {
+            $nodes->{$filename} = '';
+        }
+    }, $dir );
+
+    return $nodes;
+}
+
+# There is a possible micro optimization gain here
+# if we diff and copy in the same loop
+# instead of two steps
+sub _diff_nodes_list {
+    my ( $self, $old_nodes, $new_nodes ) = @_;
+
+    my %nodes_diff;
+    diff_hashes(
+        $old_nodes,
+        $new_nodes,
+        added   => sub { $nodes_diff{ $_[0] } = $_[1] },
+        deleted => sub {
+            die "Last build deleted previously existing file: $_[0]\n";
+        },
+    );
+
+    return \%nodes_diff;
+}
+
+sub create_package_file {
+    my ( $self, $category, $package_name, $build_dir ) = @_;
+
+    my $files = $self->{'provides'}{$category}{$package_name};
+
+    keys %{$files}
+        or die 'This is odd. Build did not generate new files. '
+             . "Cannot package.\n";
+
+    my $original_dir = Path::Tiny->cwd;
+    # totally arbitrary, maybe add to constants?
+    my $bundle_path = path( $self->output_dir, "BUNDLE-$package_name" );
+    $bundle_path->mkpath;
+    chdir $bundle_path->stringify;
+
+    foreach my $orig_file ( keys %{$files} ) {
+        my $new_fullname = $self->_rebase_build_to_output_dir(
+            $build_dir, $orig_file
+        );
+
+        if ( -e $new_fullname ) {
+            # FIXME: should this overwrite the file?
+            #        should this die?
+            #        should this be configurable? which default?
+            warn 'Odd. File already seems to exist in packaging dir. '
+               . "Skipping.\n";
+        }
+
+        # create directories
+        $new_fullname->parent->mkpath;
+
+        # regular file
+        if ( $files->{$orig_file} eq '' ) {
+            path($orig_file)->copy($new_fullname)
+                or die "Failed to copy $orig_file to $new_fullname\n";
+
+            my $raw_mode = (stat($orig_file))[2];
+            # FIXME: Perl::Critic complains about this if:
+            # 07777
+            # is used instead of:
+            # oct('07777')
+            # even though perldoc perlfunc suggests it
+            my $mode_str = sprintf '%04o', $raw_mode & oct('07777');
+            chmod oct($mode_str), $new_fullname;
+        } else {
+            my $new_symlink = $self->_rebase_build_to_output_dir(
+                $build_dir, $files->{$orig_file}
+            );
+
+            # there is a "FIXME" comment above on supporting absolute
+            # symlinks. Until that is fixed, we can at least know for
+            # sure that this symlink is relative, which means we can
+            # safely link to it directly
+            # -- SX.
+
+            my $previous_dir = Path::Tiny->cwd;
+            chdir $new_fullname->parent;
+            symlink $new_symlink, $new_fullname->basename;
+            chdir $previous_dir;
+        }
+    }
+
+    # FIXME: I want to add versioning here for the file
+    # but that means pulling the version variable in this sub
+    # and this sub is already called from a weird chain that needs
+    # to be cleaned up, so we'll do it after
+    # -- SX.
+
+    # FIXME: should we include the metadata (currently the TOML file)
+    # in this archive?
+
+    # FIXME: we need a special extension so we know its ours
+    # .pkt for now?
+    my $bundle_filename = path("$package_name.pkt");
+    system "tar -cJf $bundle_filename *";
+    my $new_location = path(
+        path('.')->parent, $category, $package_name
+    );
+
+    $new_location->mkpath;
+    $bundle_filename->move( path( $new_location, $bundle_filename ) );
+
+    chdir $original_dir;
 }
 
 sub build_package {
@@ -266,6 +451,21 @@ sub build_perl_package {
     $self->_log("Done preparing $package");
 }
 
+sub _rebase_build_to_output_dir {
+    my ( $self, $build_dir, $orig_filename ) = @_;
+    ( my $new_filename = $orig_filename ) =~ s/^$build_dir//;
+    my @parts = File::Spec->splitdir($new_filename);
+
+    # in case the path is absolute (leading slash)
+    # the split function will generate an empty first element
+    # if it's relative, it will have value and shouldn't be removed
+    $parts[0] eq '' and shift @parts;
+
+    return path(@parts);
+}
+
 __PACKAGE__->meta->make_immutable;
 
 1;
+
+__END__
