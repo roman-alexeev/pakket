@@ -1,4 +1,5 @@
 package Pkt::CLI::Command::build;
+# ABSTRACT: The pkt build command
 
 use strict;
 use warnings;
