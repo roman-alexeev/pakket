@@ -12,6 +12,10 @@ use File::Basename            qw< basename dirname >;
 use Algorithm::Diff::Callback qw< diff_hashes >;
 use TOML::Parser;
 
+use constant {
+    ALL_PACKAGES_KEY => '',
+};
+
 use Pkt::Bundler;
 
 has config_dir => (
@@ -47,6 +51,12 @@ has log => (
 );
 
 has is_built => (
+    is      => 'ro',
+    isa     => 'HashRef',
+    default => sub { +{} },
+);
+
+has build_files_manifest => (
     is      => 'ro',
     isa     => 'HashRef',
     default => sub { +{} },
@@ -247,22 +257,25 @@ sub run_build {
     # rsync(1) should be used to deploy the package files though
     # (because then we want *all* content)
     # (only if unpacking it directly into the directory fails)
-    my $files = $self->add_new_files(
+    my $package_files = $self->add_new_files(
         $category, $package_name, $main_build_dir
     );
 
-    keys %{$files}
+    keys %{$package_files}
         or die 'This is odd. Build did not generate new files. '
              . "Cannot package. Stopping.\n";
 
-    #$self->create_package_file( $category, $package_name, $build_dir );
     $self->_log("Bundling $full_package_name");
     $self->bundler->bundle(
         $main_build_dir,
         $category,
         $package_name,
-        $self->{'provides'}{$category}{$package_name},
+        $package_files,
     );
+
+    # store per all packages to get the diff
+    @{ $self->build_files_manifest }{ keys %{$package_files} } =
+        values %{$package_files};
 
     # FIXME: when to keep, when to clean up
     #        keep for now
@@ -278,12 +291,13 @@ sub run_command {
 sub add_new_files {
     my ( $self, $category, $package_name, $build_dir ) = @_;
 
-    my $nodes = $self->scan_directory($build_dir);
+    my $nodes     = $self->scan_directory($build_dir);
+    my $new_files = $self->_diff_nodes_list(
+        $self->build_files_manifest,
+        $nodes,
+    );
 
-    $self->{'provides'}{$category}{$package_name} ||=
-        $self->_diff_nodes_list( $self->bundler->files_manifest, $nodes );
-
-    return $self->{'provides'}{$category}{$package_name} || {};
+    return $new_files;
 }
 
 sub scan_directory {

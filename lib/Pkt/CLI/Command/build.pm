@@ -14,6 +14,8 @@ use Pkt::Builder;
 # - stop calling system(), use a proper Open module instead so we can
 #   easily check the success/fail and protect against possible injects
 
+# FIXME: pass on the "output-dir" to the bundler
+
 sub abstract    { 'Build a package' }
 sub description { 'Build a package' }
 

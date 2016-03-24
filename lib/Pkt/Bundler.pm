@@ -9,12 +9,13 @@ use constant {
     PKT_EXTENSION => 'pkt',
 };
 
-# XXX should we create package files for bare installation
-# without include files?
+# XXX should we separate the development files into development
+# package files, the way dists usually do?
 # pro: smaller binary packages with JUST the libraries
-# con: different SO have different binary, we might miss important
-# files, we need to maintain two different packages, adds complexity
-# (plus, size of header files are a joke anyway)
+# con: we'll probably need to maintain a list of files because we don't
+#      know which files are needed during run-time, we will need to
+#      maintain two different packages, it adds complexity
+# (plus, the size of development files are rather small)
 
 # this is where we bundle it all
 # at the end the file will end up here
@@ -31,6 +32,8 @@ has files_manifest => (
     isa     => 'HashRef',
     default => sub { +{} },
 );
+
+# FIXME: we're getting a "file already exists" errors - why?!
 
 sub bundle {
     my ( $self, $build_dir, $category, $package_name, $files ) = @_;
