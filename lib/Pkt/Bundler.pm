@@ -33,8 +33,6 @@ has files_manifest => (
     default => sub { +{} },
 );
 
-# FIXME: we're getting a "file already exists" errors - why?!
-
 sub bundle {
     my ( $self, $build_dir, $category, $package_name, $files ) = @_;
 
