@@ -110,6 +110,8 @@ sub bundle {
     $bundle_filename->move( path( $new_location, $bundle_filename ) );
 
     chdir $original_dir;
+
+    $bundle_path->remove_tree;
 }
 
 sub _rebase_build_to_output_dir {

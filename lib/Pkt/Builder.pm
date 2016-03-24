@@ -4,7 +4,7 @@ package Pkt::Builder;
 use Moose;
 use Config;
 use File::Spec;
-use File::Path                qw< make_path remove_tree >;
+use File::Path                qw< make_path   >;
 use Path::Tiny                qw< path        >;
 use File::Find                qw< find        >;
 use File::Copy::Recursive     qw< dircopy     >;
@@ -35,6 +35,12 @@ has build_dir => (
     isa     => 'Str',
     lazy    => 1,
     default => sub { Path::Tiny->tempdir('BUILD-XXXXXX')->stringify },
+);
+
+has keep_build_dir => (
+    is      => 'ro',
+    isa     => 'Bool',
+    default => sub {0},
 );
 
 # TODO: should output_dir should default to '.'?
@@ -106,8 +112,13 @@ sub build {
     local $| = 1;
 
     $self->_reset_build_log;
-    $self->_setup_build_dir;
+    my $build_dir = $self->_setup_build_dir;
     $self->run_build( $category, $package );
+
+    if ( ! $self->keep_build_dir ) {
+        $self->_log("Removing build dir $build_dir");
+        path($build_dir)->remove_tree;
+    }
 }
 
 sub _reset_build_log {
@@ -125,6 +136,8 @@ sub _setup_build_dir {
 
     -d $prefix_dir
         or make_path($prefix_dir);
+
+    return $self->build_dir;
 }
 
 sub run_build {
@@ -274,11 +287,6 @@ sub run_build {
     # store per all packages to get the diff
     @{ $self->build_files_manifest }{ keys %{$package_files} } =
         values %{$package_files};
-
-    # FIXME: when to keep, when to clean up
-    #        keep for now
-    #$self->_log("Removing build dir $build_dir");
-    #remove_tree($build_dir);
 }
 
 sub run_command {
