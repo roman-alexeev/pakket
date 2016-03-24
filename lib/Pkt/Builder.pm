@@ -1,5 +1,5 @@
 package Pkt::Builder;
-# ABSTRACT: The Pkt builder
+# ABSTRACT: Build pkt packages
 
 use Moose;
 use Config;
@@ -11,6 +11,8 @@ use File::Copy::Recursive     qw< dircopy     >;
 use File::Basename            qw< basename dirname >;
 use Algorithm::Diff::Callback qw< diff_hashes >;
 use TOML::Parser;
+
+use Pkt::Bundler;
 
 has config_dir => (
     is      => 'ro',
@@ -50,10 +52,17 @@ has is_built => (
     default => sub { +{} },
 );
 
-has files_manifest => (
+has bundler => (
     is      => 'ro',
-    isa     => 'HashRef',
-    default => sub { +{} },
+    isa     => 'Pkt::Bundler',
+    lazy    => 1,
+    builder => '_build_bundler',
+);
+
+has bundler_args => (
+    is        => 'ro',
+    isa       => 'HashRef',
+    predicate => 'has_bundler_args',
 );
 
 sub _log {
@@ -74,6 +83,13 @@ sub _log_fail {
     my ($self, $msg) = @_;
     $self->_log($msg);
     die "";
+}
+
+sub _build_bundler {
+    my $self = shift;
+    Pkt::Bundler->new(
+        $self->has_bundler_args ? $self->bundler_args : (),
+    );
 }
 
 sub build {
@@ -220,8 +236,8 @@ sub run_build {
     }
 
     $self->is_built->{$full_package_name} = 1;
-    $self->_log('Scanning for new files.');
 
+    $self->_log('Scanning directory.');
     # scan for new files (add_new_files creates the package - not very
     # good naming here... small FIXME there)
     # XXX: this is just a bit of a smarter && dumber rsync(1):
@@ -231,9 +247,22 @@ sub run_build {
     # rsync(1) should be used to deploy the package files though
     # (because then we want *all* content)
     # (only if unpacking it directly into the directory fails)
-    $self->add_new_files( $category, $package_name, $main_build_dir );
+    my $files = $self->add_new_files(
+        $category, $package_name, $main_build_dir
+    );
 
-    $self->_log('Finished scanning for new files.');
+    keys %{$files}
+        or die 'This is odd. Build did not generate new files. '
+             . "Cannot package. Stopping.\n";
+
+    #$self->create_package_file( $category, $package_name, $build_dir );
+    $self->_log("Bundling $full_package_name");
+    $self->bundler->bundle(
+        $main_build_dir,
+        $category,
+        $package_name,
+        $self->{'provides'}{$category}{$package_name},
+    );
 
     # FIXME: when to keep, when to clean up
     #        keep for now
@@ -252,15 +281,9 @@ sub add_new_files {
     my $nodes = $self->scan_directory($build_dir);
 
     $self->{'provides'}{$category}{$package_name} ||=
-        $self->_diff_nodes_list( $self->files_manifest, $nodes );
+        $self->_diff_nodes_list( $self->bundler->files_manifest, $nodes );
 
-    # XXX should we create package files for bare installation
-    # without include files?
-    # pro: smaller binary packages with JUST the libraries
-    # con: different SO have different binary, we might miss important
-    # files, we need to maintain two different packages, adds complexity
-    # (plus, size of header files are a joke anyway)
-    $self->create_package_file( $category, $package_name, $build_dir );
+    return $self->{'provides'}{$category}{$package_name} || {};
 }
 
 sub scan_directory {
@@ -316,91 +339,6 @@ sub _diff_nodes_list {
     return \%nodes_diff;
 }
 
-sub create_package_file {
-    my ( $self, $category, $package_name, $build_dir ) = @_;
-
-    my $files = $self->{'provides'}{$category}{$package_name};
-
-    keys %{$files}
-        or die 'This is odd. Build did not generate new files. '
-             . "Cannot package.\n";
-
-    my $original_dir = Path::Tiny->cwd;
-    # totally arbitrary, maybe add to constants?
-    my $bundle_path = path( $self->output_dir, "BUNDLE-$package_name" );
-    $bundle_path->mkpath;
-    chdir $bundle_path->stringify;
-
-    foreach my $orig_file ( keys %{$files} ) {
-        my $new_fullname = $self->_rebase_build_to_output_dir(
-            $build_dir, $orig_file
-        );
-
-        if ( -e $new_fullname ) {
-            # FIXME: should this overwrite the file?
-            #        should this die?
-            #        should this be configurable? which default?
-            warn 'Odd. File already seems to exist in packaging dir. '
-               . "Skipping.\n";
-        }
-
-        # create directories
-        $new_fullname->parent->mkpath;
-
-        # regular file
-        if ( $files->{$orig_file} eq '' ) {
-            path($orig_file)->copy($new_fullname)
-                or die "Failed to copy $orig_file to $new_fullname\n";
-
-            my $raw_mode = (stat($orig_file))[2];
-            # FIXME: Perl::Critic complains about this if:
-            # 07777
-            # is used instead of:
-            # oct('07777')
-            # even though perldoc perlfunc suggests it
-            my $mode_str = sprintf '%04o', $raw_mode & oct('07777');
-            chmod oct($mode_str), $new_fullname;
-        } else {
-            my $new_symlink = $self->_rebase_build_to_output_dir(
-                $build_dir, $files->{$orig_file}
-            );
-
-            # there is a "FIXME" comment above on supporting absolute
-            # symlinks. Until that is fixed, we can at least know for
-            # sure that this symlink is relative, which means we can
-            # safely link to it directly
-            # -- SX.
-
-            my $previous_dir = Path::Tiny->cwd;
-            chdir $new_fullname->parent;
-            symlink $new_symlink, $new_fullname->basename;
-            chdir $previous_dir;
-        }
-    }
-
-    # FIXME: I want to add versioning here for the file
-    # but that means pulling the version variable in this sub
-    # and this sub is already called from a weird chain that needs
-    # to be cleaned up, so we'll do it after
-    # -- SX.
-
-    # FIXME: should we include the metadata (currently the TOML file)
-    # in this archive?
-
-    # FIXME: we need a special extension so we know its ours
-    # .pkt for now?
-    my $bundle_filename = path("$package_name.pkt");
-    system "tar -cJf $bundle_filename *";
-    my $new_location = path(
-        path('.')->parent, $category, $package_name
-    );
-
-    $new_location->mkpath;
-    $bundle_filename->move( path( $new_location, $bundle_filename ) );
-
-    chdir $original_dir;
-}
-
 sub build_package {
     my ( $self, $package, $build_dir, $prefix ) = @_;
 
@@ -449,19 +387,6 @@ sub build_perl_package {
 
     chdir $original_dir;
     $self->_log("Done preparing $package");
-}
-
-sub _rebase_build_to_output_dir {
-    my ( $self, $build_dir, $orig_filename ) = @_;
-    ( my $new_filename = $orig_filename ) =~ s/^$build_dir//;
-    my @parts = File::Spec->splitdir($new_filename);
-
-    # in case the path is absolute (leading slash)
-    # the split function will generate an empty first element
-    # if it's relative, it will have value and shouldn't be removed
-    $parts[0] eq '' and shift @parts;
-
-    return path(@parts);
 }
 
 __PACKAGE__->meta->make_immutable;
