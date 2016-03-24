@@ -23,6 +23,7 @@ sub opt_spec {
     return (
         [ 'category=s',     'pkt category ("perl", "system", etc.)'           ],
         [ 'build-dir=s',    'use an existing build directory'                 ],
+        [ 'keep-build-dir', 'do not delete the build directory'               ],
         [ 'config-dir=s',   'directory holding the configurations'            ],
         [ 'source-dir=s',   'directory holding the sources'                   ],
         [ 'output-dir=s',   'output directory (default: .)'                   ],
@@ -75,9 +76,10 @@ sub validate_args {
         $self->{'build_dir'} = $opt->{'build_dir'};
     }
 
-    $self->{'builder'}{'config_dir'} = $opt->{'config_dir'};
-    $self->{'builder'}{'source_dir'} = $opt->{'source_dir'};
-    $self->{'builder'}{'log'}        = $opt->{'verbose'};
+    $self->{'builder'}{'keep_build_dir'} = $opt->{'keep_build_dir'};
+    $self->{'builder'}{'config_dir'}     = $opt->{'config_dir'};
+    $self->{'builder'}{'source_dir'}     = $opt->{'source_dir'};
+    $self->{'builder'}{'log'}            = $opt->{'verbose'};
 }
 
 sub execute {
@@ -88,7 +90,7 @@ sub execute {
             defined $self->{'builder'}{$_}
                 ? ( $_ => $self->{'builder'}{$_} )
                 : ()
-        ), qw< config_dir source_dir build_dir log > ),
+        ), qw< config_dir source_dir build_dir log keep_build_dir > ),
 
         # bundler args
         bundler_args => {
