@@ -33,8 +33,8 @@ sub opt_spec {
 sub validate_args {
     my ( $self, $opt, $args ) = @_;
 
-    $self->{'category'}   = $opt->{'category'};
-    $self->{'output_dir'} = $opt->{'output_dir'};
+    $self->{'category'}              = $opt->{'category'};
+    $self->{'bundler'}{'bundle_dir'} = $opt->{'output_dir'};
 
     $args->[0]
         or $self->usage_error('Must specify package');
@@ -75,17 +75,29 @@ sub validate_args {
         $self->{'build_dir'} = $opt->{'build_dir'};
     }
 
-    $self->{'config_dir'} = $opt->{'config_dir'};
-    $self->{'source_dir'} = $opt->{'source_dir'};
-    $self->{'log'}        = $opt->{'verbose'};
+    $self->{'builder'}{'config_dir'} = $opt->{'config_dir'};
+    $self->{'builder'}{'source_dir'} = $opt->{'source_dir'};
+    $self->{'builder'}{'log'}        = $opt->{'verbose'};
 }
 
 sub execute {
     my $self    = shift;
     my $builder = Pkt::Builder->new(
-        map +( defined $self->{$_} ? ( $_ => $self->{$_} ) : () ), qw<
-            config_dir source_dir build_dir output_dir log
-        >
+        # default main object
+        map( +(
+            defined $self->{'builder'}{$_}
+                ? ( $_ => $self->{'builder'}{$_} )
+                : ()
+        ), qw< config_dir source_dir build_dir log > ),
+
+        # bundler args
+        bundler_args => {
+            map( +(
+                defined $self->{'bundler'}{$_}
+                    ? ( $_ => $self->{'bundler'}{$_} )
+                    : ()
+            ), qw< bundle_dir > )
+        },
     );
 
     $builder->build( $self->{'category'}, $self->{'package'} );

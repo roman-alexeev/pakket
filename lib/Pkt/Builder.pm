@@ -72,7 +72,7 @@ has bundler => (
 has bundler_args => (
     is        => 'ro',
     isa       => 'HashRef',
-    predicate => 'has_bundler_args',
+    default   => sub { +{} },
 );
 
 sub _log {
@@ -97,9 +97,7 @@ sub _log_fail {
 
 sub _build_bundler {
     my $self = shift;
-    Pkt::Bundler->new(
-        $self->has_bundler_args ? $self->bundler_args : (),
-    );
+    Pkt::Bundler->new( $self->bundler_args );
 }
 
 sub build {
