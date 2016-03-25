@@ -175,7 +175,11 @@ sub run_build {
         or $self->_log_fail("Package config must provide 'category'\n");
 
     $config_name eq $package_name
-        or $self->_log_fail("$package_name configuration claims it is $config_name\n");
+        or $self->_log_fail("Mismatch package names ($package_name / $config_name\n");
+
+    $config_category eq $package_category
+        or $self->_log_fail("Mismatch package categories "
+             . "($package_category / $config_category)\n");
 
     # FIXME: is this already built?
     # once we're done building something, we should be moving it over
