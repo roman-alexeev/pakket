@@ -132,8 +132,7 @@ sub _setup_build_dir {
     $self->_log( 'Creating build dir ' . $self->build_dir );
     my $prefix_dir = path( $self->build_dir, 'main' );
 
-    -d $prefix_dir
-        or make_path($prefix_dir);
+    -d $prefix_dir or $prefix_dir->mkpath;
 
     return $self->build_dir;
 }
