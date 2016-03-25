@@ -50,13 +50,9 @@ sub bundle {
             $build_dir, $orig_file
         );
 
-        if ( -e $new_fullname ) {
-            # FIXME: should this overwrite the file?
-            #        should this die?
-            #        should this be configurable? which default?
-            warn 'Odd. File already seems to exist in packaging dir. '
-               . "Skipping.\n";
-        }
+        -e $new_fullname
+            and die 'Odd. File already seems to exist in packaging dir. '
+                  . "Stopping.\n";
 
         # create directories
         $new_fullname->parent->mkpath;
