@@ -110,8 +110,13 @@ sub build {
     local $| = 1;
 
     $self->_reset_build_log;
-    my $build_dir = $self->_setup_build_dir;
+    $self->_setup_build_dir;
     $self->run_build( $category, $package );
+}
+
+sub DEMOLISH {
+    my $self      = shift;
+    my $build_dir = $self->build_dir;
 
     if ( ! $self->keep_build_dir ) {
         $self->_log("Removing build dir $build_dir");
@@ -133,8 +138,6 @@ sub _setup_build_dir {
     my $prefix_dir = path( $self->build_dir, 'main' );
 
     -d $prefix_dir or $prefix_dir->mkpath;
-
-    return $self->build_dir;
 }
 
 sub run_build {
@@ -177,9 +180,9 @@ sub run_build {
     $config_name eq $package_name
         or $self->_log_fail("Mismatch package names ($package_name / $config_name\n");
 
-    $config_category eq $package_category
+    $config_category eq $category
         or $self->_log_fail("Mismatch package categories "
-             . "($package_category / $config_category)\n");
+             . "($category / $config_category)\n");
 
     # FIXME: is this already built?
     # once we're done building something, we should be moving it over
