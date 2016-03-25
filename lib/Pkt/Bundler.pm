@@ -38,8 +38,11 @@ sub bundle {
 
     my $original_dir = Path::Tiny->cwd;
     # totally arbitrary, maybe add to constants?
-    my $bundle_path = path( $self->bundle_dir, "BUNDLE-$package_name" );
-    $bundle_path->mkpath;
+    my $bundle_path = Path::Tiny->tempdir(
+        TEMPLATE => 'BUNDLE-XXXXXX',
+        CLEANUP  => 1,
+    );
+
     chdir $bundle_path->stringify;
 
     foreach my $orig_file ( keys %{$files} ) {
@@ -110,8 +113,6 @@ sub bundle {
     $bundle_filename->move( path( $new_location, $bundle_filename ) );
 
     chdir $original_dir;
-
-    $bundle_path->remove_tree;
 }
 
 sub _rebase_build_to_output_dir {
