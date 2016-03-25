@@ -3,8 +3,6 @@ package Pkt::Builder;
 
 use Moose;
 use Config;
-use File::Spec;
-use File::Path                qw< make_path   >;
 use Path::Tiny                qw< path        >;
 use File::Find                qw< find        >;
 use File::Copy::Recursive     qw< dircopy     >;
@@ -12,11 +10,11 @@ use File::Basename            qw< basename dirname >;
 use Algorithm::Diff::Callback qw< diff_hashes >;
 use TOML::Parser;
 
+use Pkt::Bundler;
+
 use constant {
     ALL_PACKAGES_KEY => '',
 };
-
-use Pkt::Bundler;
 
 has config_dir => (
     is      => 'ro',
@@ -259,8 +257,6 @@ sub run_build {
     $self->is_built->{$full_package_name} = 1;
 
     $self->_log('Scanning directory.');
-    # scan for new files (add_new_files creates the package - not very
-    # good naming here... small FIXME there)
     # XXX: this is just a bit of a smarter && dumber rsync(1):
     # rsync -qaz BUILD/main/ output_dir/
     # the reason is that we need the diff. if you can make it happen
@@ -268,7 +264,7 @@ sub run_build {
     # rsync(1) should be used to deploy the package files though
     # (because then we want *all* content)
     # (only if unpacking it directly into the directory fails)
-    my $package_files = $self->add_new_files(
+    my $package_files = $self->retrieve_new_files(
         $category, $package_name, $main_build_dir
     );
 
@@ -294,7 +290,7 @@ sub run_command {
     system "$cmd >> $self->{'build_log_path'} 2>&1";
 }
 
-sub add_new_files {
+sub retrieve_new_files {
     my ( $self, $category, $package_name, $build_dir ) = @_;
 
     my $nodes     = $self->scan_directory($build_dir);

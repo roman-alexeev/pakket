@@ -63,7 +63,7 @@ sub bundle {
             path($orig_file)->copy($new_fullname)
                 or die "Failed to copy $orig_file to $new_fullname\n";
 
-            my $raw_mode = (stat($orig_file))[2];
+            my $raw_mode = ( stat($orig_file) )[2];
             # FIXME: Perl::Critic complains about this if:
             # 07777
             # is used instead of:
