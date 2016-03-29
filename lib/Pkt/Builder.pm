@@ -47,6 +47,12 @@ sub _log {
     (say $build_log $msg and close $build_log) if open($build_log, '>>',$self->{'build_log_path'});
 }
 
+sub _log_fail {
+    my ($self, $msg) = @_;
+    $self->_log($msg);
+    die "";
+}
+
 sub build {
     my ( $self, $category, $package ) = @_;
 
@@ -57,8 +63,8 @@ sub build {
 
 sub _create_build_log {
     my $self = $_[0];
-    $self->{'build_log_path'} = path(Path::Tiny->cwd, 'build.log');
-    open(my $build_log, '>', $self->{'build_log_path'}) or die "Could not create build.log\n";
+    $self->{'build_log_path'} = path(Cwd::abs_path, 'build.log');
+    open(my $build_log, '>', $self->{'build_log_path'}) or $self->_log_fail("Could not create build.log\n");
     close $build_log;
 }
 
@@ -91,7 +97,7 @@ sub run_build {
     );
 
     -r $config_file
-        or die "Could not find package information ($config_file)\n";
+        or $self->_log_fail("Could not find package information ($config_file)\n");
 
     my $config;
     eval {
@@ -99,18 +105,18 @@ sub run_build {
         1;
     } or do {
         my $err = $@ || 'Unknown error';
-        die "Cannot read $config_file: $err\n";
+        $self->_log_fail("Cannot read $config_file: $err\n");
     };
 
     # double check we have the right package configuration
     my $config_name = $config->{'Package'}{'name'}
-        or die "Package config must provide 'name'\n";
+        or $self->_log_fail("Package config must provide 'name'\n");
 
     my $config_category = $config->{'Package'}{'category'}
-        or die "Package config must provide 'category'\n";
+        or $self->_log_fail("Package config must provide 'category'\n");
 
     $config_name eq $package_name
-        or die "$package_name configuration claims it is $config_name\n";
+        or $self->_log_fail("$package_name configuration claims it is $config_name\n");
 
     # FIXME: is this already built?
     # once we're done building something, we should be moving it over
@@ -139,7 +145,7 @@ sub run_build {
 
     $self->_log('Copying package files');
     -d $package_src_dir
-        or die "Cannot find source dir: $package_src_dir\n";
+        or $self->_log_fail("Cannot find source dir: $package_src_dir\n");
 
     my $top_build_dir = $self->build_dir;
 
@@ -185,7 +191,7 @@ sub run_build {
             $main_build_dir,  # /tmp/BUILD-1/main
         );
     } else {
-        die "Unrecognized category ($config_category), cannot build this.\n";
+        $self->_log_fail("Unrecognized category ($config_category), cannot build this.\n");
     }
 
     $self->is_built->{$full_package_name} = 1;
@@ -209,7 +215,7 @@ sub build_package {
     my $original_dir = Path::Tiny->cwd;
 
     chdir $build_dir
-        or die "Can't chdir to $build_dir: $!\n";
+        or $self->_log_fail("Can't chdir to $build_dir: $!\n");
 
     $self->_log("./configure --prefix=$prefix");
     $self->run_command("./configure --prefix=$prefix");
@@ -236,7 +242,7 @@ sub build_perl_package {
     my $original_dir = Path::Tiny->cwd;
 
     chdir $build_dir
-        or die "Can't chdir to $build_dir: $!\n";
+        or $self->_log_fail("Can't chdir to $build_dir: $!\n");
 
     $self->_log("$^X Makefile.PL PREFIX=$prefix INSTALL_BASE=''");
     $self->run_command("$^X Makefile.PL PREFIX=$prefix INSTALL_BASE=''");
