@@ -40,13 +40,26 @@ has is_built => (
     default => sub { +{} },
 );
 
-sub _log { $_[0]->log and print STDERR $_[1], "\n" }
+sub _log {
+    my ($self, $msg, $build_log) = @_;
+    $self->log and print STDERR $msg, "\n";
+    open($build_log, '>>', $self->{'build_log_path'}) or die "Could not open build.log\n";
+    (say $build_log $msg and close $build_log) if open($build_log, '>>',$self->{'build_log_path'});
+}
 
 sub build {
     my ( $self, $category, $package ) = @_;
 
+    $self->_create_build_log;
     $self->_setup_build_dir;
     $self->run_build( $category, $package );
+}
+
+sub _create_build_log {
+    my $self = $_[0];
+    $self->{'build_log_path'} = path(Path::Tiny->cwd, 'build.log');
+    open(my $build_log, '>', $self->{'build_log_path'}) or die "Could not create build.log\n";
+    close $build_log;
 }
 
 sub _setup_build_dir {
@@ -183,6 +196,11 @@ sub run_build {
     #remove_tree($build_dir);
 }
 
+sub run_command {
+    my ($self, $cmd) = @_;
+    system "$cmd >>$self->{'build_log_path'} 2>&1";
+}
+
 sub build_package {
     my ( $self, $package, $build_dir, $prefix ) = @_;
 
@@ -194,13 +212,13 @@ sub build_package {
         or die "Can't chdir to $build_dir: $!\n";
 
     $self->_log("./configure --prefix=$prefix");
-    system "./configure --prefix=$prefix >/dev/null 2>&1";
+    $self->run_command("./configure --prefix=$prefix");
 
     $self->_log('make');
-    system 'make >/dev/null 2>&1';
+    $self->run_command('make');
 
     $self->_log('make install');
-    system 'make install >/dev/null 2>&1';
+    $self->run_command('make install');
 
     chdir $original_dir;
     $self->_log("Done preparing $package");
@@ -221,13 +239,13 @@ sub build_perl_package {
         or die "Can't chdir to $build_dir: $!\n";
 
     $self->_log("$^X Makefile.PL PREFIX=$prefix INSTALL_BASE=''");
-    system "$^X Makefile.PL PREFIX=$prefix INSTALL_BASE=''";
+    $self->run_command("$^X Makefile.PL PREFIX=$prefix INSTALL_BASE=''");
 
     $self->_log('make');
-    system 'make';
+    $self->run_command('make');
 
     $self->_log('make install');
-    system 'make install';
+    $self->run_command('make install');
 
     chdir $original_dir;
     $self->_log("Done preparing $package");
