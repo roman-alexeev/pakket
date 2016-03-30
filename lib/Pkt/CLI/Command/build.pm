@@ -15,11 +15,11 @@ sub description { 'Build a package' }
 
 sub opt_spec {
     return (
-        [ 'category=s',     'pkt category ("perl", "system", etc.)'    ],
-        [ 'build-dir=s',    'use an existing build directory'          ],
-        [ 'config-dir=s',   'directory holding the configurations'     ],
-        [ 'source-dir=s',   'directory holding the sources'            ],
-        [ 'verbose|v',      'verbose log'                              ],
+        [ 'category=s',     'pkt category ("perl", "system", etc.)'           ],
+        [ 'build-dir=s',    'use an existing build directory'                 ],
+        [ 'config-dir=s',   'directory holding the configurations'            ],
+        [ 'source-dir=s',   'directory holding the sources'                   ],
+        [ 'verbose|v+',     'verbose output (can be provided multiple times)' ],
     );
 }
 
