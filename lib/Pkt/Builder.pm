@@ -30,7 +30,7 @@ has build_dir => (
 
 has log => (
     is      => 'ro',
-    isa     => 'Bool',
+    isa     => 'Int',
     default => sub {0},
 );
 
@@ -42,9 +42,15 @@ has is_built => (
 
 sub _log {
     my ($self, $msg, $build_log) = @_;
-    $self->log and print STDERR $msg, "\n";
-    open($build_log, '>>', $self->{'build_log_path'}) or die "Could not open build.log\n";
-    (say $build_log $msg and close $build_log) if open($build_log, '>>',$self->{'build_log_path'});
+
+    $self->log > 1
+        and print $msg, "\n";
+
+    open($build_log, '>>', $self->{'build_log_path'})
+        or die "Could not open build.log\n";
+
+    say $build_log $msg;
+    close $build_log;
 }
 
 sub _log_fail {
@@ -55,6 +61,8 @@ sub _log_fail {
 
 sub build {
     my ( $self, $category, $package ) = @_;
+
+    local $| = 1;
 
     $self->_create_build_log;
     $self->_setup_build_dir;
@@ -204,7 +212,7 @@ sub run_build {
 
 sub run_command {
     my ($self, $cmd) = @_;
-    system "$cmd >>$self->{'build_log_path'} 2>&1";
+    system "$cmd >> $self->{'build_log_path'} 2>&1";
 }
 
 sub build_package {
