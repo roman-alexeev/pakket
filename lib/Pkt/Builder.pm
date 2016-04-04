@@ -41,15 +41,16 @@ has is_built => (
 );
 
 sub _log {
-    my ($self, $msg, $build_log) = @_;
+    my ($self, $msg) = @_;
 
     $self->log > 1
-        and print $msg, "\n";
+        and print "$msg\n";
 
-    open($build_log, '>>', $self->{'build_log_path'})
+    open my $build_log, '>>', $self->{'build_log_path'}
         or die "Could not open build.log\n";
 
-    say $build_log $msg;
+    print {$build_log} "$msg\n";
+
     close $build_log;
 }
 
@@ -64,12 +65,12 @@ sub build {
 
     local $| = 1;
 
-    $self->_create_build_log;
+    $self->_reset_build_log;
     $self->_setup_build_dir;
     $self->run_build( $category, $package );
 }
 
-sub _create_build_log {
+sub _reset_build_log {
     my $self = $_[0];
     $self->{'build_log_path'} = path(Cwd::abs_path, 'build.log');
     open(my $build_log, '>', $self->{'build_log_path'}) or $self->_log_fail("Could not create build.log\n");
