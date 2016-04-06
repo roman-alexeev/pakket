@@ -8,6 +8,7 @@ use File::Find                qw< find        >;
 use File::Copy::Recursive     qw< dircopy     >;
 use File::Basename            qw< basename dirname >;
 use Algorithm::Diff::Callback qw< diff_hashes >;
+use Types::Path::Tiny         qw< Path >;
 use TOML::Parser;
 
 use Pkt::Bundler;
@@ -18,21 +19,21 @@ use constant {
 
 has config_dir => (
     is      => 'ro',
-    isa     => 'Str',
-    default => sub { Path::Tiny->cwd->stringify },
+    isa     => Path,
+    default => sub { Path::Tiny->cwd },
 );
 
 has source_dir => (
     is      => 'ro',
     isa     => 'Str',
-    default => sub { Path::Tiny->cwd->stringify },
+    default => sub { Path::Tiny->cwd },
 );
 
 has build_dir => (
     is      => 'ro',
-    isa     => 'Str',
+    isa     => Path,
     lazy    => 1,
-    default => sub { Path::Tiny->tempdir('BUILD-XXXXXX')->stringify },
+    default => sub { Path::Tiny->tempdir('BUILD-XXXXXX', CLEANUP => 0 ) },
 );
 
 has keep_build_dir => (
