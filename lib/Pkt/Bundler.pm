@@ -53,11 +53,6 @@ sub bundle {
                 or die "Failed to copy $orig_file to $new_fullname\n";
 
             my $raw_mode = ( stat($orig_file) )[2];
-            # FIXME: Perl::Critic complains about this if:
-            # 07777
-            # is used instead of:
-            # oct('07777')
-            # even though perldoc perlfunc suggests it
             my $mode_str = sprintf '%04o', $raw_mode & oct('07777');
             chmod oct($mode_str), $new_fullname;
         } else {
