@@ -4,6 +4,7 @@ package Pkt::Bundler;
 use Moose;
 use Path::Tiny qw< path >;
 use File::Spec;
+use Types::Path::Tiny qw< AbsPath >;
 
 use constant {
     PKT_EXTENSION => 'pkt',
@@ -23,8 +24,8 @@ use constant {
 # to the appropriate location
 has bundle_dir => (
     is      => 'ro',
-    isa     => 'Str',
-    default => sub { Path::Tiny->cwd->stringify },
+    isa     => AbsPath,
+    default => sub { Path::Tiny->cwd->absolute->stringify },
 );
 
 has files_manifest => (
