@@ -8,6 +8,7 @@ use File::Find                qw< find        >;
 use File::Copy::Recursive     qw< dircopy     >;
 use File::Basename            qw< basename dirname >;
 use Algorithm::Diff::Callback qw< diff_hashes >;
+use Types::Path::Tiny         qw< Path >;
 use TOML::Parser;
 
 use Pkt::Bundler;
@@ -18,34 +19,27 @@ use constant {
 
 has config_dir => (
     is      => 'ro',
-    isa     => 'Str',
-    default => sub { Path::Tiny->cwd->stringify },
+    isa     => Path,
+    default => sub { Path::Tiny->cwd },
 );
 
 has source_dir => (
     is      => 'ro',
     isa     => 'Str',
-    default => sub { Path::Tiny->cwd->stringify },
+    default => sub { Path::Tiny->cwd },
 );
 
 has build_dir => (
     is      => 'ro',
-    isa     => 'Str',
+    isa     => Path,
     lazy    => 1,
-    default => sub { Path::Tiny->tempdir('BUILD-XXXXXX')->stringify },
+    default => sub { Path::Tiny->tempdir('BUILD-XXXXXX', CLEANUP => 0 ) },
 );
 
 has keep_build_dir => (
     is      => 'ro',
     isa     => 'Bool',
     default => sub {0},
-);
-
-# TODO: should output_dir should default to '.'?
-has output_dir => (
-    is      => 'ro',
-    isa     => 'Str',
-    default => sub { Path::Tiny->cwd->stringify },
 );
 
 has log => (
@@ -82,7 +76,7 @@ has bundler_args => (
 sub _log {
     my ($self, $msg) = @_;
 
-    $self->log > 1
+    $self->log >= 1
         and print "$msg\n";
 
     open my $build_log, '>>', $self->{'build_log_path'}
@@ -188,11 +182,6 @@ sub run_build {
         or $self->_log_fail("Mismatch package categories "
              . "($category / $config_category)\n");
 
-    # FIXME: is this already built?
-    # once we're done building something, we should be moving it over
-    # to the "BUILT" directory (artifact repo) - then we can check if
-    # a package is already available there
-
     # recursively build prereqs
     # starting with system libraries
     # FIXME: we're currently not using the third parameter
@@ -267,11 +256,11 @@ sub run_build {
     $self->is_built->{$full_package_name} = 1;
 
     $self->_log('Scanning directory.');
-    # XXX: this is just a bit of a smarter && dumber rsync(1):
+    # this is just a bit of a smarter && dumber rsync(1):
     # rsync -qaz BUILD/main/ output_dir/
-    # the reason is that we need the diff. if you can make it happen
-    # with rsync, please remove all of this. :P
-    # rsync(1) should be used to deploy the package files though
+    # the reason is that we need the diff.
+    # if you can make it happen with rsync, remove all of this. :P
+    # perhaps rsync(1) should be used to deploy the package files
     # (because then we want *all* content)
     # (only if unpacking it directly into the directory fails)
     my $package_files = $self->retrieve_new_files(
@@ -316,8 +305,6 @@ sub scan_directory {
     my ( $self, $dir ) = @_;
     my $nodes = {};
 
-    # FIXME: add skipped directories?
-    # (such as "man", "share/man")
     File::Find::find( sub {
         # $File::Find::dir  = '/some/path'
         # $_                = 'foo.ext'
@@ -329,13 +316,6 @@ sub scan_directory {
 
         # save the symlink path in order to symlink them
         if ( -l $filename ) {
-            # FIXME: this should be supported, but I'm too lazy right now
-            # the problem with a full path symlink is that is can be either
-            # to a build you've done or to a file outside the build/package
-            # the first means we need to normalize it later when creating the
-            # package (or now, if we're smart enough). the latter is not that
-            # much of a problem.
-            # -- SX.
             path( $nodes->{$filename} = readlink $filename )->is_absolute
                 and die "Error. Absolute path symlinks aren't supported.\n";
         } else {
