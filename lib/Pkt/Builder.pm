@@ -75,7 +75,7 @@ has bundler_args => (
 sub _log {
     my ($self, $msg) = @_;
 
-    $self->log > 1
+    $self->log >= 1
         and print "$msg\n";
 
     open my $build_log, '>>', $self->{'build_log_path'}
