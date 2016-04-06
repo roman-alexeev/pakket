@@ -5,10 +5,17 @@ use strict;
 use warnings;
 use Pkt::CLI -command;
 use Pkt::Builder;
+use Path::Tiny qw< path >;
 
 # TODO:
 # - move all hardcoded values (confs) to constants
 # - add make process log (and add it with -v -v)
+# - check all operations (chdir, mkpath, etc.) (move() already checked)
+# - should we detect a file change during BUILD and die/warn?
+# - stop calling system(), use a proper Open module instead so we can
+#   easily check the success/fail and protect against possible injects
+
+# FIXME: pass on the "output-dir" to the bundler
 
 sub abstract    { 'Build a package' }
 sub description { 'Build a package' }
@@ -17,8 +24,10 @@ sub opt_spec {
     return (
         [ 'category=s',     'pkt category ("perl", "system", etc.)'           ],
         [ 'build-dir=s',    'use an existing build directory'                 ],
+        [ 'keep-build-dir', 'do not delete the build directory'               ],
         [ 'config-dir=s',   'directory holding the configurations'            ],
         [ 'source-dir=s',   'directory holding the sources'                   ],
+        [ 'output-dir=s',   'output directory (default: .)'                   ],
         [ 'verbose|v+',     'verbose output (can be provided multiple times)' ],
     );
 }
@@ -26,7 +35,8 @@ sub opt_spec {
 sub validate_args {
     my ( $self, $opt, $args ) = @_;
 
-    $self->{'category'} = $opt->{'category'};
+    $self->{'category'}              = $opt->{'category'};
+    $self->{'bundler'}{'bundle_dir'} = path( $opt->{'output_dir'} )->absolute;
 
     $args->[0]
         or $self->usage_error('Must specify package');
@@ -63,19 +73,34 @@ sub validate_args {
     if ( $opt->{'build_dir'} ) {
         -d $opt->{'build_dir'}
             or die "You asked to use a build dir that does not exist.\n";
+
+        $self->{'build_dir'} = $opt->{'build_dir'};
     }
 
-    $self->{'config_dir'} = $opt->{'config_dir'};
-    $self->{'source_dir'} = $opt->{'source_dir'};
-    $self->{'log'}        = $opt->{'verbose'};
+    $self->{'builder'}{'keep_build_dir'} = $opt->{'keep_build_dir'};
+    $self->{'builder'}{'config_dir'}     = $opt->{'config_dir'};
+    $self->{'builder'}{'source_dir'}     = $opt->{'source_dir'};
+    $self->{'builder'}{'log'}            = $opt->{'verbose'};
 }
 
 sub execute {
     my $self    = shift;
     my $builder = Pkt::Builder->new(
-        map +( defined $self->{$_} ? ( $_ => $self->{$_} ) : () ), qw<
-            config_dir source_dir build_dir log
-        >
+        # default main object
+        map( +(
+            defined $self->{'builder'}{$_}
+                ? ( $_ => $self->{'builder'}{$_} )
+                : ()
+        ), qw< config_dir source_dir build_dir log keep_build_dir > ),
+
+        # bundler args
+        bundler_args => {
+            map( +(
+                defined $self->{'bundler'}{$_}
+                    ? ( $_ => $self->{'bundler'}{$_} )
+                    : ()
+            ), qw< bundle_dir > )
+        },
     );
 
     $builder->build( $self->{'category'}, $self->{'package'} );
