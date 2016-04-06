@@ -35,8 +35,11 @@ sub opt_spec {
 sub validate_args {
     my ( $self, $opt, $args ) = @_;
 
-    $self->{'category'}              = $opt->{'category'};
-    $self->{'bundler'}{'bundle_dir'} = path( $opt->{'output_dir'} )->absolute;
+    $self->{'category'} = $opt->{'category'};
+
+    if ( defined ( my $output_dir = $opt->{'output_dir'} ) ) {
+        $self->{'bundler'}{'bundle_dir'} = path($output_dir)->absolute;
+    }
 
     $args->[0]
         or $self->usage_error('Must specify package');
