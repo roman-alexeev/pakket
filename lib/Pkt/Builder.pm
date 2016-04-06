@@ -25,7 +25,7 @@ has config_dir => (
 
 has source_dir => (
     is      => 'ro',
-    isa     => 'Str',
+    isa     => Path,
     default => sub { Path::Tiny->cwd },
 );
 

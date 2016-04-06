@@ -81,8 +81,8 @@ sub validate_args {
     }
 
     $self->{'builder'}{'keep_build_dir'} = $opt->{'keep_build_dir'};
-    $self->{'builder'}{'config_dir'}     = $opt->{'config_dir'};
-    $self->{'builder'}{'source_dir'}     = $opt->{'source_dir'};
+    $self->{'builder'}{'config_dir'}     = path( $opt->{'config_dir'} );
+    $self->{'builder'}{'source_dir'}     = path( $opt->{'source_dir'} );
     $self->{'builder'}{'log'}            = $opt->{'verbose'};
 }
 
