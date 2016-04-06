@@ -41,13 +41,6 @@ has keep_build_dir => (
     default => sub {0},
 );
 
-# TODO: should output_dir should default to '.'?
-has output_dir => (
-    is      => 'ro',
-    isa     => 'Str',
-    default => sub { Path::Tiny->cwd->stringify },
-);
-
 has log => (
     is      => 'ro',
     isa     => 'Int',
