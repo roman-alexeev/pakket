@@ -120,7 +120,11 @@ sub DEMOLISH {
 
     if ( ! $self->keep_build_dir ) {
         $self->_log("Removing build dir $build_dir");
-        path($build_dir)->remove_tree;
+
+        # "safe" is false because it might hit files which it does not have
+        # proper permissions to delete (example: ZMQ::Constants.3pm)
+        # which means it won't be able to remove the directory
+        path($build_dir)->remove_tree( { safe => 0 } );
     }
 }
 
