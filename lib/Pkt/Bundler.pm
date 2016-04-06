@@ -38,6 +38,7 @@ sub bundle {
     my ( $self, $build_dir, $category, $package_name, $files ) = @_;
 
     my $original_dir = Path::Tiny->cwd;
+
     # totally arbitrary, maybe add to constants?
     my $bundle_path = Path::Tiny->tempdir(
         TEMPLATE => 'BUNDLE-XXXXXX',
@@ -102,12 +103,17 @@ sub bundle {
 
     # TODO: use Archive::Any instead?
     system "tar -cJf $bundle_filename *";
-    my $new_location = path(
-        Path::Tiny->cwd->parent, $category, $package_name
-    );
-
+    my $new_location = path( $self->bundle_dir, $category, $package_name );
     $new_location->mkpath;
-    $bundle_filename->move( path( $new_location, $bundle_filename ) );
+
+    # A lot of Unix systems simply don't allow the mv command to work between different devices
+    # (or even different partitions on the same device).
+    # The solution is to copy the file over, and then delete the original - or use GNU mv,
+    # which will do the same thing automaticaly.
+    #   -- http://www.perlmonks.org/?node_id=338699
+    # (this happened because it was installed in /tmp which was a different FS -- SX.)
+    $bundle_filename->copy( path( $new_location, $bundle_filename ) );
+    $bundle_filename->remove();
 
     chdir $original_dir;
 }
