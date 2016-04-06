@@ -5,6 +5,7 @@ use strict;
 use warnings;
 use Pkt::CLI -command;
 use Pkt::Builder;
+use Path::Tiny qw< path >;
 
 # TODO:
 # - move all hardcoded values (confs) to constants
@@ -35,7 +36,7 @@ sub validate_args {
     my ( $self, $opt, $args ) = @_;
 
     $self->{'category'}              = $opt->{'category'};
-    $self->{'bundler'}{'bundle_dir'} = $opt->{'output_dir'};
+    $self->{'bundler'}{'bundle_dir'} = path( $opt->{'output_dir'} )->absolute;
 
     $args->[0]
         or $self->usage_error('Must specify package');
