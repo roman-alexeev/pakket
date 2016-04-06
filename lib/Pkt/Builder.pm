@@ -1,13 +1,20 @@
 package Pkt::Builder;
-# ABSTRACT: The Pkt builder
+# ABSTRACT: Build pkt packages
 
 use Moose;
 use Config;
-use File::Path qw< make_path remove_tree >;
-use Path::Tiny qw< path >;
-use File::Copy::Recursive qw< dircopy  >;
-use File::Basename        qw< basename >;
+use Path::Tiny                qw< path        >;
+use File::Find                qw< find        >;
+use File::Copy::Recursive     qw< dircopy     >;
+use File::Basename            qw< basename dirname >;
+use Algorithm::Diff::Callback qw< diff_hashes >;
 use TOML::Parser;
+
+use Pkt::Bundler;
+
+use constant {
+    ALL_PACKAGES_KEY => '',
+};
 
 has config_dir => (
     is      => 'ro',
@@ -28,6 +35,19 @@ has build_dir => (
     default => sub { Path::Tiny->tempdir('BUILD-XXXXXX')->stringify },
 );
 
+has keep_build_dir => (
+    is      => 'ro',
+    isa     => 'Bool',
+    default => sub {0},
+);
+
+# TODO: should output_dir should default to '.'?
+has output_dir => (
+    is      => 'ro',
+    isa     => 'Str',
+    default => sub { Path::Tiny->cwd->stringify },
+);
+
 has log => (
     is      => 'ro',
     isa     => 'Int',
@@ -38,6 +58,25 @@ has is_built => (
     is      => 'ro',
     isa     => 'HashRef',
     default => sub { +{} },
+);
+
+has build_files_manifest => (
+    is      => 'ro',
+    isa     => 'HashRef',
+    default => sub { +{} },
+);
+
+has bundler => (
+    is      => 'ro',
+    isa     => 'Pkt::Bundler',
+    lazy    => 1,
+    builder => '_build_bundler',
+);
+
+has bundler_args => (
+    is        => 'ro',
+    isa       => 'HashRef',
+    default   => sub { +{} },
 );
 
 sub _log {
@@ -60,6 +99,11 @@ sub _log_fail {
     die "";
 }
 
+sub _build_bundler {
+    my $self = shift;
+    Pkt::Bundler->new( $self->bundler_args );
+}
+
 sub build {
     my ( $self, $category, $package ) = @_;
 
@@ -68,6 +112,20 @@ sub build {
     $self->_reset_build_log;
     $self->_setup_build_dir;
     $self->run_build( $category, $package );
+}
+
+sub DEMOLISH {
+    my $self      = shift;
+    my $build_dir = $self->build_dir;
+
+    if ( ! $self->keep_build_dir ) {
+        $self->_log("Removing build dir $build_dir");
+
+        # "safe" is false because it might hit files which it does not have
+        # proper permissions to delete (example: ZMQ::Constants.3pm)
+        # which means it won't be able to remove the directory
+        path($build_dir)->remove_tree( { safe => 0 } );
+    }
 }
 
 sub _reset_build_log {
@@ -83,8 +141,7 @@ sub _setup_build_dir {
     $self->_log( 'Creating build dir ' . $self->build_dir );
     my $prefix_dir = path( $self->build_dir, 'main' );
 
-    -d $prefix_dir
-        or make_path($prefix_dir);
+    -d $prefix_dir or $prefix_dir->mkpath;
 }
 
 sub run_build {
@@ -125,7 +182,11 @@ sub run_build {
         or $self->_log_fail("Package config must provide 'category'\n");
 
     $config_name eq $package_name
-        or $self->_log_fail("$package_name configuration claims it is $config_name\n");
+        or $self->_log_fail("Mismatch package names ($package_name / $config_name\n");
+
+    $config_category eq $category
+        or $self->_log_fail("Mismatch package categories "
+             . "($category / $config_category)\n");
 
     # FIXME: is this already built?
     # once we're done building something, we should be moving it over
@@ -205,15 +266,103 @@ sub run_build {
 
     $self->is_built->{$full_package_name} = 1;
 
-    # FIXME: when to keep, when to clean up
-    #        keep for now
-    #$self->_log("Removing build dir $build_dir");
-    #remove_tree($build_dir);
+    $self->_log('Scanning directory.');
+    # XXX: this is just a bit of a smarter && dumber rsync(1):
+    # rsync -qaz BUILD/main/ output_dir/
+    # the reason is that we need the diff. if you can make it happen
+    # with rsync, please remove all of this. :P
+    # rsync(1) should be used to deploy the package files though
+    # (because then we want *all* content)
+    # (only if unpacking it directly into the directory fails)
+    my $package_files = $self->retrieve_new_files(
+        $category, $package_name, $main_build_dir
+    );
+
+    keys %{$package_files}
+        or die 'This is odd. Build did not generate new files. '
+             . "Cannot package. Stopping.\n";
+
+    $self->_log("Bundling $full_package_name");
+    $self->bundler->bundle(
+        $main_build_dir,
+        $category,
+        $package_name,
+        $package_files,
+    );
+
+    # store per all packages to get the diff
+    @{ $self->build_files_manifest }{ keys %{$package_files} } =
+        values %{$package_files};
 }
 
 sub run_command {
     my ($self, $cmd) = @_;
     system "$cmd >> $self->{'build_log_path'} 2>&1";
+}
+
+sub retrieve_new_files {
+    my ( $self, $category, $package_name, $build_dir ) = @_;
+
+    my $nodes     = $self->scan_directory($build_dir);
+    my $new_files = $self->_diff_nodes_list(
+        $self->build_files_manifest,
+        $nodes,
+    );
+
+    return $new_files;
+}
+
+sub scan_directory {
+    my ( $self, $dir ) = @_;
+    my $nodes = {};
+
+    # FIXME: add skipped directories?
+    # (such as "man", "share/man")
+    File::Find::find( sub {
+        # $File::Find::dir  = '/some/path'
+        # $_                = 'foo.ext'
+        # $File::Find::name = '/some/path/foo.ext'
+        my $filename = $File::Find::name;
+
+        # skip directories, we only want files
+        -f $filename or return;
+
+        # save the symlink path in order to symlink them
+        if ( -l $filename ) {
+            # FIXME: this should be supported, but I'm too lazy right now
+            # the problem with a full path symlink is that is can be either
+            # to a build you've done or to a file outside the build/package
+            # the first means we need to normalize it later when creating the
+            # package (or now, if we're smart enough). the latter is not that
+            # much of a problem.
+            # -- SX.
+            path( $nodes->{$filename} = readlink $filename )->is_absolute
+                and die "Error. Absolute path symlinks aren't supported.\n";
+        } else {
+            $nodes->{$filename} = '';
+        }
+    }, $dir );
+
+    return $nodes;
+}
+
+# There is a possible micro optimization gain here
+# if we diff and copy in the same loop
+# instead of two steps
+sub _diff_nodes_list {
+    my ( $self, $old_nodes, $new_nodes ) = @_;
+
+    my %nodes_diff;
+    diff_hashes(
+        $old_nodes,
+        $new_nodes,
+        added   => sub { $nodes_diff{ $_[0] } = $_[1] },
+        deleted => sub {
+            die "Last build deleted previously existing file: $_[0]\n";
+        },
+    );
+
+    return \%nodes_diff;
 }
 
 sub build_package {
@@ -269,3 +418,5 @@ sub build_perl_package {
 __PACKAGE__->meta->make_immutable;
 
 1;
+
+__END__
