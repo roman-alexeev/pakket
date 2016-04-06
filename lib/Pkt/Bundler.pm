@@ -25,7 +25,7 @@ use constant {
 has bundle_dir => (
     is      => 'ro',
     isa     => AbsPath,
-    default => sub { Path::Tiny->cwd->absolute->stringify },
+    default => sub { path('output')->absolute },
 );
 
 has files_manifest => (
