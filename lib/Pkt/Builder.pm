@@ -275,8 +275,11 @@ sub run_build {
     $self->_log( 1, "Bundling $full_package_name" );
     $self->bundler->bundle(
         $main_build_dir,
-        $category,
-        $package_name,
+        {
+            category => $category,
+            name     => $package_name,
+            version  => $config->{'Package'}{'version'},
+        },
         $package_files,
     );
 
