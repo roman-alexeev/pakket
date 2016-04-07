@@ -125,7 +125,7 @@ sub DEMOLISH {
 
 sub _reset_build_log {
     my $self = $_[0];
-    $self->{'build_log_path'} = path(Cwd::abs_path, 'build.log');
+    $self->{'build_log_path'} = path( Path::Tiny->cwd, 'build.log');
     open my $build_log, '>', $self->{'build_log_path'}
         or $self->_log_fail("Could not create build.log");
     close $build_log;
