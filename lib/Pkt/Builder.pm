@@ -81,12 +81,12 @@ sub _log {
         and print "$msg\n";
 
     open my $build_log, '>>', $self->{'build_log_path'}
-        or die "Could not open build.log\n";
+        or die "Could not open build.log: $!\n";
 
     print {$build_log} "$msg\n";
 
     close $build_log
-        or die "Could not close build.log\n";
+        or die "Could not close build.log: $!\n";
 }
 
 sub _log_fatal {
