@@ -49,6 +49,12 @@ has log => (
     default => sub {0},
 );
 
+has log_file => (
+    is      => 'ro',
+    isa     => Path,
+    default => sub { path( Path::Tiny->cwd, 'build.log' ) },
+);
+
 has is_built => (
     is      => 'ro',
     isa     => 'HashRef',
@@ -80,13 +86,15 @@ sub _log {
     $self->log >= $msg_level
         and print "$msg\n";
 
-    open my $build_log, '>>', $self->{'build_log_path'}
-        or die "Could not open build.log: $!\n";
+    my $log_file = $self->log_file;
+
+    open my $build_log, '>>', $log_file
+        or die "Could not open $log_file: $!\n";
 
     print {$build_log} "$msg\n";
 
     close $build_log
-        or die "Could not close build.log: $!\n";
+        or die "Could not close $log_file: $!\n";
 }
 
 sub _log_fatal {
@@ -125,12 +133,14 @@ sub DEMOLISH {
 }
 
 sub _reset_build_log {
-    my $self = $_[0];
-    $self->{'build_log_path'} = path( Path::Tiny->cwd, 'build.log');
-    open my $build_log, '>', $self->{'build_log_path'}
-        or die "Could not create build.log: $!\n";
+    my $self     = $_[0];
+    my $log_file = $self->log_file;
+
+    open my $build_log, '>', $log_file
+        or die "Could not create $log_file: $!\n";
+
     close $build_log
-        or die "Could not close build.log: $!\n";
+        or die "Could not close $log_file: $!\n";
 }
 
 sub _setup_build_dir {
@@ -294,7 +304,7 @@ sub run_build {
 sub run_command {
     my ($self, $cmd) = @_;
     $self->_log( 1, $cmd );
-    system "$cmd >> $self->{'build_log_path'} 2>&1";
+    system "$cmd >> $self->log_file 2>&1";
 }
 
 sub retrieve_new_files {
