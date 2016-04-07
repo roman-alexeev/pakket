@@ -81,7 +81,7 @@ sub _log {
         and print "$msg\n";
 
     open my $build_log, '>>', $self->{'build_log_path'}
-        or $self->_log_fail("Could not open build.log\n");
+        or $self->_log_fail("Could not open build.log");
 
     print {$build_log} "$msg\n";
 
@@ -126,7 +126,7 @@ sub DEMOLISH {
 sub _reset_build_log {
     my $self = $_[0];
     $self->{'build_log_path'} = path(Cwd::abs_path, 'build.log');
-    open(my $build_log, '>', $self->{'build_log_path'}) or $self->_log_fail("Could not create build.log\n");
+    open(my $build_log, '>', $self->{'build_log_path'}) or $self->_log_fail("Could not create build.log");
     close $build_log;
 }
 
@@ -158,7 +158,7 @@ sub run_build {
     );
 
     -r $config_file
-        or $self->_log_fail("Could not find package information ($config_file)\n");
+        or $self->_log_fail("Could not find package information ($config_file)");
 
     my $config;
     eval {
@@ -166,22 +166,22 @@ sub run_build {
         1;
     } or do {
         my $err = $@ || 'Unknown error';
-        $self->_log_fail("Cannot read $config_file: $err\n");
+        $self->_log_fail("Cannot read $config_file: $err");
     };
 
     # double check we have the right package configuration
     my $config_name = $config->{'Package'}{'name'}
-        or $self->_log_fail( "Package config must provide 'name'\n");
+        or $self->_log_fail( "Package config must provide 'name'");
 
     my $config_category = $config->{'Package'}{'category'}
-        or $self->_log_fail("Package config must provide 'category'\n");
+        or $self->_log_fail("Package config must provide 'category'");
 
     $config_name eq $package_name
-        or $self->_log_fail("Mismatch package names ($package_name / $config_name\n");
+        or $self->_log_fail("Mismatch package names ($package_name / $config_name");
 
     $config_category eq $category
         or $self->_log_fail( "Mismatch package categories "
-             . "($category / $config_category)\n" );
+             . "($category / $config_category)" );
 
     # recursively build prereqs
     # starting with system libraries
@@ -205,7 +205,7 @@ sub run_build {
 
     $self->_log( 1, 'Copying package files' );
     -d $package_src_dir
-        or $self->_log_fail("Cannot find source dir: $package_src_dir\n");
+        or $self->_log_fail("Cannot find source dir: $package_src_dir");
 
     my $top_build_dir = $self->build_dir;
 
@@ -251,7 +251,7 @@ sub run_build {
             $main_build_dir,  # /tmp/BUILD-1/main
         );
     } else {
-        $self->_log_fail("Unrecognized category ($config_category), cannot build this.\n");
+        $self->_log_fail("Unrecognized category ($config_category), cannot build this.");
     }
 
     $self->is_built->{$full_package_name} = 1;
@@ -270,7 +270,7 @@ sub run_build {
 
     keys %{$package_files}
         or $self->_log_fail( 'This is odd. Build did not generate new files. '
-             . "Cannot package. Stopping.\n" );
+             . "Cannot package. Stopping." );
 
     $self->_log( 1, "Bundling $full_package_name" );
     $self->bundler->bundle(
@@ -322,7 +322,7 @@ sub scan_directory {
         # save the symlink path in order to symlink them
         if ( -l $filename ) {
             path( $nodes->{$filename} = readlink $filename )->is_absolute
-                and $self->_log_fail("Error. Absolute path symlinks aren't supported.\n");
+                and $self->_log_fail("Error. Absolute path symlinks aren't supported.");
         } else {
             $nodes->{$filename} = '';
         }
@@ -343,7 +343,7 @@ sub _diff_nodes_list {
         $new_nodes,
         added   => sub { $nodes_diff{ $_[0] } = $_[1] },
         deleted => sub {
-            $self->_log_fail("Last build deleted previously existing file: $_[0]\n");
+            $self->_log_fail("Last build deleted previously existing file: $_[0]");
         },
     );
 
