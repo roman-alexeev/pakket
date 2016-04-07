@@ -23,7 +23,10 @@ has files_manifest => (
 );
 
 sub bundle {
-    my ( $self, $build_dir, $category, $package_name, $files ) = @_;
+    my ( $self, $build_dir, $pkg_data, $files ) = @_;
+
+    my ( $package_category, $package_name, $package_version ) =
+        @{$pkg_data}{qw< category name version >};
 
     my $original_dir = Path::Tiny->cwd;
 
@@ -73,10 +76,15 @@ sub bundle {
     # to be cleaned up, so we'll do it after
     # -- SX.
 
-    my $bundle_filename = path( join '.', $package_name, PKT_EXTENSION );
+    my $bundle_filename = path(
+        join '.', "$package_name-$package_version", PKT_EXTENSION
+    );
 
     system "tar -cJf $bundle_filename *";
-    my $new_location = path( $self->bundle_dir, $category, $package_name );
+    my $new_location = path(
+        $self->bundle_dir, $package_category, $package_name,
+    );
+
     $new_location->mkpath;
 
     # "A lot of Unix systems simply don't allow the mv command to work between
