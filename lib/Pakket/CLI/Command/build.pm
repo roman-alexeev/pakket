@@ -1,10 +1,10 @@
-package Pkt::CLI::Command::build;
-# ABSTRACT: The pkt build command
+package Pakket::CLI::Command::build;
+# ABSTRACT: The pakket build command
 
 use strict;
 use warnings;
-use Pkt::CLI -command;
-use Pkt::Builder;
+use Pakket::CLI -command;
+use Pakket::Builder;
 use Path::Tiny qw< path >;
 
 # TODO:
@@ -22,7 +22,7 @@ sub description { 'Build a package' }
 
 sub opt_spec {
     return (
-        [ 'category=s',     'pkt category ("perl", "system", etc.)'           ],
+        [ 'category=s',     'pakket category ("perl", "system", etc.)'        ],
         [ 'build-dir=s',    'use an existing build directory'                 ],
         [ 'keep-build-dir', 'do not delete the build directory'               ],
         [ 'config-dir=s',   'directory holding the configurations'            ],
@@ -88,7 +88,7 @@ sub validate_args {
 
 sub execute {
     my $self    = shift;
-    my $builder = Pkt::Builder->new(
+    my $builder = Pakket::Builder->new(
         # default main object
         map( +(
             defined $self->{'builder'}{$_}
