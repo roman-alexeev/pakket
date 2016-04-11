@@ -1,5 +1,5 @@
-package Pkt::Builder;
-# ABSTRACT: Build pkt packages
+package Pakket::Builder;
+# ABSTRACT: Build pakket packages
 
 use Moose;
 use Config;
@@ -12,7 +12,7 @@ use Types::Path::Tiny         qw< Path >;
 use TOML::Parser;
 use System::Command;
 
-use Pkt::Bundler;
+use Pakket::Bundler;
 
 use constant {
     ALL_PACKAGES_KEY => '',
@@ -69,7 +69,7 @@ has build_files_manifest => (
 
 has bundler => (
     is      => 'ro',
-    isa     => 'Pkt::Bundler',
+    isa     => 'Pakket::Bundler',
     lazy    => 1,
     builder => '_build_bundler',
 );
@@ -105,7 +105,7 @@ sub _log_fatal {
 
 sub _build_bundler {
     my $self = shift;
-    Pkt::Bundler->new( $self->bundler_args );
+    Pakket::Bundler->new( $self->bundler_args );
 }
 
 sub build {
