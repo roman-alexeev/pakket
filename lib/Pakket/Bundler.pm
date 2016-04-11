@@ -1,5 +1,5 @@
-package Pkt::Bundler;
-# ABSTRACT: Bundle pkt packages into a package file
+package Pakket::Bundler;
+# ABSTRACT: Bundle pakket packages into a package file
 
 use Moose;
 use Path::Tiny qw< path >;
