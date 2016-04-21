@@ -26,9 +26,9 @@ has base_dir => (
     isa     => Path,
     default => sub {
         my $self = shift;
-        # 1. $ENV{'PKT_DIR'}: pre-enabled pakket installation
-        $ENV{'PKT_DIR'} && -d $ENV{'PKT_DIR'}
-            and return path( $ENV{'PKT_DIR'} );
+        # 1. $ENV{'PAKKET_DIR'}: pre-enabled pakket installation
+        $ENV{'PAKKET_DIR'} && -d $ENV{'PAKKET_DIR'}
+            and return path( $ENV{'PAKKET_DIR'} );
 
         # 2. /usr/local/pakket
         my $base_dir = path( Path::Tiny->rootdir, qw< usr local pakket > );
