@@ -76,6 +76,8 @@ sub fetch_package;
 sub install_file {
     my ( $self, $filename ) = @_;
     my $install_dir = $self->install_dir;
+    -d $install_dir
+        or $install_dir->mkpath();
 
     -r( my $bundle_file = path($filename) )
         or die "Bundle file '$filename' does not exist or can't be read\n";
