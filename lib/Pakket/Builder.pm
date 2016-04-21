@@ -82,6 +82,7 @@ has bundler_args => (
 
 sub _log {
     my ($self, $msg_level, $msg) = @_;
+    $msg =~ s{\n}{}g;
 
     $self->log >= $msg_level
         and print "$msg\n";
@@ -91,7 +92,7 @@ sub _log {
     open my $build_log, '>>', $log_file
         or die "Could not open $log_file: $!\n";
 
-    print {$build_log} $msg;
+    print {$build_log} "$msg\n";
 
     close $build_log
         or die "Could not close $log_file: $!\n";
