@@ -175,12 +175,12 @@ sub run_build {
     -r $config_file
         or $self->_log_fatal("Could not find package information ($config_file)");
 
-    my $config_object = Pakket::ConfigReader->new(
+    my $config_reader = Pakket::ConfigReader->new(
         'type' => 'TOML',
-        'args' => ['filename' => $config_file],
+        'args' => [ filename => $config_file ],
     );
 
-    my $config = $config_object->get_config;
+    my $config = $config_reader->read_config;
 
     # double check we have the right package configuration
     my $config_name = $config->{'Package'}{'name'}
