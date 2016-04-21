@@ -1,7 +1,7 @@
 package Pakket::Role::ConfigReader;
-
+# ABSTRACT: A ConfigReader role
 use Moose::Role;
 
-requires 'get_config';
+requires qw< read_config >;
 
 1;

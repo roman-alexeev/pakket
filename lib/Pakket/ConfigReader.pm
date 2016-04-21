@@ -1,4 +1,5 @@
 package Pakket::ConfigReader;
+# ABSTRACT: The Pakket config reader
 
 use Moose;
 use Module::Runtime qw< use_module >;
@@ -12,12 +13,12 @@ has type => (
 has args => (
 	is      => 'ro',
 	isa     => 'ArrayRef',
-	default => sub { [] },
+	default => sub { +[] },
 );
 
 has config_object => (
 	is      => 'ro',
-	isa     => 'Object',
+    does    => 'Pakket::Role::ConfigReader',
 	lazy    => 1,
 	builder => '_build_config_object',
 );
@@ -30,9 +31,9 @@ sub _build_config_object {
 	return use_module($package)->new( @{ $self->args } );
 }
 
-sub get_config {
+sub read_config {
 	my ( $self, @args ) = @_;
-	my $config = $self->config_object->get_config(@args);
+	my $config = $self->config_object->read_config(@args);
 	return $config;
 }
 
