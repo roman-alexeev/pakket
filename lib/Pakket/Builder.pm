@@ -102,7 +102,7 @@ sub _log {
 sub _log_fatal {
     my ($self, $msg) = @_;
     $self->_log( 0, $msg );
-    die "";
+    die;
 }
 
 sub _build_bundler {
