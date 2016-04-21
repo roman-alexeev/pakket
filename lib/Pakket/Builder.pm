@@ -13,6 +13,7 @@ use TOML::Parser;
 use System::Command;
 
 use Pakket::Bundler;
+use Pakket::ConfigReader;
 
 use constant {
     ALL_PACKAGES_KEY => '',
@@ -174,14 +175,12 @@ sub run_build {
     -r $config_file
         or $self->_log_fatal("Could not find package information ($config_file)");
 
-    my $config;
-    eval {
-        $config = TOML::Parser->new( strict_mode => 1 )->parse_file($config_file);
-        1;
-    } or do {
-        my $err = $@ || 'Unknown error';
-        $self->_log_fatal("Cannot read $config_file: $err");
-    };
+    my $config_reader = Pakket::ConfigReader->new(
+        'type' => 'TOML',
+        'args' => [ filename => $config_file ],
+    );
+
+    my $config = $config_reader->read_config;
 
     # double check we have the right package configuration
     my $config_name = $config->{'Package'}{'name'}
