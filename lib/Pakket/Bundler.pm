@@ -7,7 +7,7 @@ use File::Spec;
 use Types::Path::Tiny qw< AbsPath >;
 
 use constant {
-    PKT_EXTENSION => 'pkt',
+    PAKKET_EXTENSION => 'pkt',
 };
 
 has bundle_dir => (
@@ -77,7 +77,7 @@ sub bundle {
     # -- SX.
 
     my $bundle_filename = path(
-        join '.', "$package_name-$package_version", PKT_EXTENSION
+        join '.', "$package_name-$package_version", PAKKET_EXTENSION
     );
 
     system "tar -cJf $bundle_filename *";
