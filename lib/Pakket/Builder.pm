@@ -91,7 +91,7 @@ sub _log {
     open my $build_log, '>>', $log_file
         or die "Could not open $log_file: $!\n";
 
-    print {$build_log} "$msg\n";
+    print {$build_log} $msg;
 
     close $build_log
         or die "Could not close $log_file: $!\n";
