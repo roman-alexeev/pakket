@@ -2,7 +2,6 @@ package Pakket::Builder;
 # ABSTRACT: Build pakket packages
 
 use Moose;
-use Config;
 use Path::Tiny                qw< path        >;
 use File::Find                qw< find        >;
 use File::Copy::Recursive     qw< dircopy     >;
@@ -364,24 +363,29 @@ sub _diff_nodes_list {
 }
 
 sub run_system_command {
-    my ($self, $dir, $sys_cmds) = @_;
+    my ( $self, $dir, $sys_cmds, $extra_opts ) = @_;
     $self->_log( 1, join ' ', @{$sys_cmds} );
 
     my %opt = (
-            'cwd' => $dir,
-            # 'trace' => $ENV{SYSTEM_COMMAND_TRACE},
-        );
+        cwd => $dir,
 
-    my $cmd = System::Command->new(@{$sys_cmds}, \%opt);
+        %{ $extra_opts || {} },
+
+        # 'trace' => $ENV{SYSTEM_COMMAND_TRACE},
+    );
+
+    my $cmd = System::Command->new( @{$sys_cmds}, \%opt );
+
     $cmd->loop_on(
         stdout => sub {
-                my $msg = shift;
-                $self->_log( 2, $msg );
-            },
+            my $msg = shift;
+            $self->_log( 2, $msg );
+        },
+
         stderr => sub {
-                my $msg = shift;
-                $self->_log( 0, $msg );
-            },
+            my $msg = shift;
+            $self->_log( 0, $msg );
+        },
     );
 }
 
@@ -390,11 +394,14 @@ sub build_package {
 
     $self->_log( 1, "Building $package" );
 
-    $self->run_system_command($build_dir, ['./configure', "--prefix=$prefix"]);
+    $self->run_system_command(
+        $build_dir,
+        [ './configure', "--prefix=$prefix" ],
+    );
 
-    $self->run_system_command($build_dir, ['make']);
+    $self->run_system_command( $build_dir, ['make'] );
 
-    $self->run_system_command($build_dir, ['make', 'install']);
+    $self->run_system_command( $build_dir, ['make', 'install'] );
 
     $self->_log( 1, "Done preparing $package" );
 }
@@ -404,20 +411,23 @@ sub build_perl_package {
 
     $self->_log( 1, "Building Perl module: $package" );
 
-    local $ENV{'PERL5LIB'} = join ':',
-        path( $prefix, qw<share perl>, $Config{'version'} ),
-        path( $prefix, qw<lib   perl>, $Config{'version'} );
+    my $opts = {
+        env => {
+            PERL5LIB => path( $prefix, qw<lib perl5> ),
+        },
+    };
 
     my $original_dir = Path::Tiny->cwd;
 
     $self->run_system_command(
         $build_dir,
         [ "$^X", 'Makefile.PL', "INSTALL_BASE=$prefix" ],
+        $opts,
     );
 
-    $self->run_system_command($build_dir, ['make']);
+    $self->run_system_command( $build_dir, ['make'], $opts );
 
-    $self->run_system_command($build_dir, ['make', 'install']);
+    $self->run_system_command( $build_dir, ['make', 'install'], $opts );
 
     $self->_log( 1, "Done preparing $package" );
 }
