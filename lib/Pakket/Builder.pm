@@ -411,7 +411,10 @@ sub build_perl_package {
 
     my $original_dir = Path::Tiny->cwd;
 
-    $self->run_system_command($build_dir, ["$^X", 'Makefile.PL', "PREFIX=$prefix"]);
+    $self->run_system_command(
+        $build_dir,
+        [ "$^X", 'Makefile.PL', "INSTALL_BASE=$prefix" ],
+    );
 
     $self->run_system_command($build_dir, ['make']);
 
