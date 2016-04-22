@@ -14,6 +14,11 @@ use System::Command;
 use Pakket::Bundler;
 use Pakket::ConfigReader;
 
+use Log::Contextual qw< :log set_logger >,
+    -levels => [qw< debug info notice warning error critical alert emergency >];
+
+with qw< Pakket::Role::Log >;
+
 use constant {
     ALL_PACKAGES_KEY => '',
 };
@@ -43,18 +48,6 @@ has keep_build_dir => (
     default => sub {0},
 );
 
-has log => (
-    is      => 'ro',
-    isa     => 'Int',
-    default => sub {0},
-);
-
-has log_file => (
-    is      => 'ro',
-    isa     => Path,
-    default => sub { path( Path::Tiny->cwd, 'build.log' ) },
-);
-
 has is_built => (
     is      => 'ro',
     isa     => 'HashRef',
@@ -80,30 +73,6 @@ has bundler_args => (
     default   => sub { +{} },
 );
 
-sub _log {
-    my ($self, $msg_level, $msg) = @_;
-    $msg =~ s{\n}{}g;
-
-    $self->log >= $msg_level
-        and print "$msg\n";
-
-    my $log_file = $self->log_file;
-
-    open my $build_log, '>>', $log_file
-        or die "Could not open $log_file: $!\n";
-
-    print {$build_log} "$msg\n";
-
-    close $build_log
-        or die "Could not close $log_file: $!\n";
-}
-
-sub _log_fatal {
-    my ($self, $msg) = @_;
-    $self->_log( 0, $msg );
-    die;
-}
-
 sub _build_bundler {
     my $self = shift;
     Pakket::Bundler->new( $self->bundler_args );
@@ -124,7 +93,7 @@ sub DEMOLISH {
     my $build_dir = $self->build_dir;
 
     if ( ! $self->keep_build_dir ) {
-        $self->_log( 1, "Removing build dir $build_dir" );
+        log_info { "Removing build dir $build_dir" }
 
         # "safe" is false because it might hit files which it does not have
         # proper permissions to delete (example: ZMQ::Constants.3pm)
@@ -147,7 +116,7 @@ sub _reset_build_log {
 sub _setup_build_dir {
     my $self = shift;
 
-    $self->_log( 1, 'Creating build dir ' . $self->build_dir );
+    log_info { 'Creating build dir ' . $self->build_dir };
     my $prefix_dir = path( $self->build_dir, 'main' );
 
     -d $prefix_dir or $prefix_dir->mkpath;
@@ -160,7 +129,7 @@ sub run_build {
     my $full_package_name = "$category/$package_name";
 
     if ( $self->is_built->{$full_package_name} ) {
-        $self->_log( 1, "We already built $full_package_name, skipping..." );
+        log_info { "We already built $full_package_name, skipping..." };
         return;
     }
 
@@ -172,7 +141,7 @@ sub run_build {
     );
 
     -r $config_file
-        or $self->_log_fatal("Could not find package information ($config_file)");
+        or log_fatal { "Could not find package information ($config_file)" };
 
     my $config_reader = Pakket::ConfigReader->new(
         'type' => 'TOML',
@@ -183,17 +152,17 @@ sub run_build {
 
     # double check we have the right package configuration
     my $config_name = $config->{'Package'}{'name'}
-        or $self->_log_fatal( "Package config must provide 'name'");
+        or log_fatal { q{Package config must provide 'name'} };
 
     my $config_category = $config->{'Package'}{'category'}
-        or $self->_log_fatal("Package config must provide 'category'");
+        or log_fatal { q{Package config must provide 'category'} };
 
     $config_name eq $package_name
-        or $self->_log_fatal("Mismatch package names ($package_name / $config_name");
+        or log_fatal { "Mismatch package names ($package_name / $config_name" };
 
     $config_category eq $category
-        or $self->_log_fatal( "Mismatch package categories "
-             . "($category / $config_category)" );
+        or log_fatal { "Mismatch package categories "
+                     . "($category / $config_category)" };
 
     # recursively build prereqs
     # starting with system libraries
@@ -215,19 +184,19 @@ sub run_build {
         $config->{'Package'}{'directory'},
     );
 
-    $self->_log( 1, 'Copying package files' );
+    log_info { 'Copying package files' };
     -d $package_src_dir
-        or $self->_log_fatal("Cannot find source dir: $package_src_dir");
+        or log_fatal { "Cannot find source dir: $package_src_dir" };
 
     my $top_build_dir = $self->build_dir;
 
     # FIXME: we shouldn't be generating PKG_CONFIG_PATH every time
     my $pkgconfig_path = path( $top_build_dir, qw<main lib pkgconfig> );
-    $self->_log( 1, "Setting PKG_CONFIG_PATH=$pkgconfig_path" );
+    log_info { "Setting PKG_CONFIG_PATH=$pkgconfig_path" };
     local $ENV{'PKG_CONFIG_PATH'} = $pkgconfig_path;
 
     my $main_build_dir = path( $top_build_dir, 'main' );
-    $self->_log( 1, "Setting LD_LIBRARY_PATH=$main_build_dir" );
+    log_info { "Setting LD_LIBRARY_PATH=$main_build_dir" };
     local $ENV{'LD_LIBRARY_PATH'} = $main_build_dir;
 
     # FIXME: Remove in favor of a ::Build::System, ::Build::Perl, etc.
@@ -263,12 +232,14 @@ sub run_build {
             $main_build_dir,  # /tmp/BUILD-1/main
         );
     } else {
-        $self->_log_fatal("Unrecognized category ($config_category), cannot build this.");
+        log_fatal {
+            "Unrecognized category ($config_category), cannot build this."
+        };
     }
 
     $self->is_built->{$full_package_name} = 1;
 
-    $self->_log( 1, 'Scanning directory.' );
+    log_info { 'Scanning directory.' };
     # XXX: this is just a bit of a smarter && dumber rsync(1):
     # rsync -qaz BUILD/main/ output_dir/
     # the reason is that we need the diff.
@@ -281,10 +252,10 @@ sub run_build {
     );
 
     keys %{$package_files}
-        or $self->_log_fatal( 'This is odd. Build did not generate new files. '
-             . "Cannot package. Stopping." );
+        or log_fatal { 'This is odd. Build did not generate new files. '
+                     . 'Cannot package. Stopping.' };
 
-    $self->_log( 1, "Bundling $full_package_name" );
+    log_info { "Bundling $full_package_name" };
     $self->bundler->bundle(
         $main_build_dir,
         {
@@ -302,7 +273,7 @@ sub run_build {
 
 sub run_command {
     my ($self, $cmd) = @_;
-    $self->_log( 1, $cmd );
+    log_info { $cmd };
     system "$cmd >> $self->log_file 2>&1";
 }
 
@@ -334,7 +305,7 @@ sub scan_directory {
         # save the symlink path in order to symlink them
         if ( -l $filename ) {
             path( $nodes->{$filename} = readlink $filename )->is_absolute
-                and $self->_log_fatal("Error. Absolute path symlinks aren't supported.");
+                and log_fatal { 'Error. Absolute path symlinks aren\'t supported.' };
         } else {
             $nodes->{$filename} = '';
         }
@@ -355,7 +326,7 @@ sub _diff_nodes_list {
         $new_nodes,
         added   => sub { $nodes_diff{ $_[0] } = $_[1] },
         deleted => sub {
-            $self->_log_fatal("Last build deleted previously existing file: $_[0]");
+            log_fatal { "Last build deleted previously existing file: $_[0]" };
         },
     );
 
@@ -364,7 +335,7 @@ sub _diff_nodes_list {
 
 sub run_system_command {
     my ( $self, $dir, $sys_cmds, $extra_opts ) = @_;
-    $self->_log( 1, join ' ', @{$sys_cmds} );
+    log_info { join ' ', @{$sys_cmds} };
 
     my %opt = (
         cwd => $dir,
@@ -379,12 +350,16 @@ sub run_system_command {
     $cmd->loop_on(
         stdout => sub {
             my $msg = shift;
-            $self->_log( 2, $msg );
+            chomp $msg;
+            log_debug { $msg };
+            1;
         },
 
         stderr => sub {
             my $msg = shift;
-            $self->_log( 0, $msg );
+            chomp $msg;
+            log_notice { $msg };
+            1;
         },
     );
 }
@@ -392,7 +367,7 @@ sub run_system_command {
 sub build_package {
     my ( $self, $package, $build_dir, $prefix ) = @_;
 
-    $self->_log( 1, "Building $package" );
+    log_info { "Building $package" };
 
     $self->run_system_command(
         $build_dir,
@@ -403,13 +378,13 @@ sub build_package {
 
     $self->run_system_command( $build_dir, ['make', 'install'] );
 
-    $self->_log( 1, "Done preparing $package" );
+    log_info { "Done preparing $package" };
 }
 
 sub build_perl_package {
     my ( $self, $package, $build_dir, $prefix ) = @_;
 
-    $self->_log( 1, "Building Perl module: $package" );
+    log_info { "Building Perl module: $package" };
 
     my $opts = {
         env => {
@@ -429,7 +404,7 @@ sub build_perl_package {
 
     $self->run_system_command( $build_dir, ['make', 'install'], $opts );
 
-    $self->_log( 1, "Done preparing $package" );
+    log_info { "Done preparing $package" };
 }
 
 __PACKAGE__->meta->make_immutable;
