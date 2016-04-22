@@ -271,12 +271,6 @@ sub run_build {
         values %{$package_files};
 }
 
-sub run_command {
-    my ($self, $cmd) = @_;
-    log_info { $cmd };
-    system "$cmd >> $self->log_file 2>&1";
-}
-
 sub retrieve_new_files {
     my ( $self, $category, $package_name, $build_dir ) = @_;
 
