@@ -83,7 +83,7 @@ sub validate_args {
     $self->{'builder'}{'keep_build_dir'} = $opt->{'keep_build_dir'};
     $self->{'builder'}{'config_dir'}     = path( $opt->{'config_dir'} );
     $self->{'builder'}{'source_dir'}     = path( $opt->{'source_dir'} );
-    $self->{'builder'}{'log'}            = $opt->{'verbose'};
+    $self->{'builder'}{'verbose'}        = $opt->{'verbose'};
 }
 
 sub execute {
@@ -94,7 +94,7 @@ sub execute {
             defined $self->{'builder'}{$_}
                 ? ( $_ => $self->{'builder'}{$_} )
                 : ()
-        ), qw< config_dir source_dir build_dir log keep_build_dir > ),
+        ), qw< config_dir source_dir build_dir verbose keep_build_dir > ),
 
         # bundler args
         bundler_args => {
