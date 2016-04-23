@@ -5,6 +5,7 @@ use strict;
 use warnings;
 use Pakket::CLI -command;
 use Pakket::Builder;
+use Pakket::Log;
 use Path::Tiny      qw< path >;
 use Log::Contextual qw< set_logger >;
 
@@ -107,30 +108,8 @@ sub execute {
         },
     );
 
-    my $verbose      = $self->{'builder'}{'verbose'};
-    my $screen_level =
-        $verbose >= 3 ? 'debug'  : # log 2
-        $verbose == 2 ? 'info'   : # log 1
-        $verbose == 1 ? 'notice' : # log 0
-                        'warning';
-
-    my $logger = Log::Dispatch->new(
-        outputs => [
-            [
-                'File',
-                min_level => 'debug',
-                filename  => path( Path::Tiny->cwd, 'build.log' )->stringify,
-                newline   => 1,
-            ],
-
-            [
-                'Screen',
-                min_level => $screen_level,
-                newline   => 1,
-            ],
-        ],
-    );
-
+    my $verbose = $self->{'builder'}{'verbose'};
+    my $logger  = Pakket::Log->cli_logger($verbose);
     set_logger $logger;
 
     $builder->build( $self->{'category'}, $self->{'package'} );
