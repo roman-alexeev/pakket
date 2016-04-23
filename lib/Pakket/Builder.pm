@@ -9,7 +9,6 @@ use File::Basename            qw< basename dirname >;
 use Algorithm::Diff::Callback qw< diff_hashes >;
 use Types::Path::Tiny         qw< Path >;
 use TOML::Parser;
-use System::Command;
 
 use Pakket::Log;
 use Pakket::Bundler;
@@ -18,6 +17,8 @@ use Pakket::ConfigReader;
 use constant {
     ALL_PACKAGES_KEY => '',
 };
+
+with 'Pakket::Role::RunCommand';
 
 has config_dir => (
     is      => 'ro',
@@ -308,50 +309,19 @@ sub _diff_nodes_list {
     return \%nodes_diff;
 }
 
-sub run_system_command {
-    my ( $self, $dir, $sys_cmds, $extra_opts ) = @_;
-    log_info { join ' ', @{$sys_cmds} };
-
-    my %opt = (
-        cwd => $dir,
-
-        %{ $extra_opts || {} },
-
-        # 'trace' => $ENV{SYSTEM_COMMAND_TRACE},
-    );
-
-    my $cmd = System::Command->new( @{$sys_cmds}, \%opt );
-
-    $cmd->loop_on(
-        stdout => sub {
-            my $msg = shift;
-            chomp $msg;
-            log_debug { $msg };
-            1;
-        },
-
-        stderr => sub {
-            my $msg = shift;
-            chomp $msg;
-            log_notice { $msg };
-            1;
-        },
-    );
-}
-
 sub build_package {
     my ( $self, $package, $build_dir, $prefix ) = @_;
 
     log_info { "Building $package" };
 
-    $self->run_system_command(
+    $self->run_command(
         $build_dir,
         [ './configure', "--prefix=$prefix" ],
     );
 
-    $self->run_system_command( $build_dir, ['make'] );
+    $self->run_command( $build_dir, ['make'] );
 
-    $self->run_system_command( $build_dir, ['make', 'install'] );
+    $self->run_command( $build_dir, ['make', 'install'] );
 
     log_info { "Done preparing $package" };
 }
@@ -369,15 +339,15 @@ sub build_perl_package {
 
     my $original_dir = Path::Tiny->cwd;
 
-    $self->run_system_command(
+    $self->run_command(
         $build_dir,
         [ "$^X", 'Makefile.PL', "INSTALL_BASE=$prefix" ],
         $opts,
     );
 
-    $self->run_system_command( $build_dir, ['make'], $opts );
+    $self->run_command( $build_dir, ['make'], $opts );
 
-    $self->run_system_command( $build_dir, ['make', 'install'], $opts );
+    $self->run_command( $build_dir, ['make', 'install'], $opts );
 
     log_info { "Done preparing $package" };
 }
