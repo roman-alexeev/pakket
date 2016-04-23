@@ -5,7 +5,9 @@ use strict;
 use warnings;
 use Pakket::CLI -command;
 use Pakket::Builder;
-use Path::Tiny qw< path >;
+use Pakket::Log;
+use Path::Tiny      qw< path >;
+use Log::Contextual qw< set_logger >;
 
 # TODO:
 # - move all hardcoded values (confs) to constants
@@ -94,7 +96,7 @@ sub execute {
             defined $self->{'builder'}{$_}
                 ? ( $_ => $self->{'builder'}{$_} )
                 : ()
-        ), qw< config_dir source_dir build_dir verbose keep_build_dir > ),
+        ), qw< config_dir source_dir build_dir keep_build_dir > ),
 
         # bundler args
         bundler_args => {
@@ -105,6 +107,10 @@ sub execute {
             ), qw< bundle_dir > )
         },
     );
+
+    my $verbose = $self->{'builder'}{'verbose'};
+    my $logger  = Pakket::Log->cli_logger($verbose);
+    set_logger $logger;
 
     $builder->build( $self->{'category'}, $self->{'package'} );
 }
