@@ -11,13 +11,9 @@ use Types::Path::Tiny         qw< Path >;
 use TOML::Parser;
 use System::Command;
 
+use Pakket::Log;
 use Pakket::Bundler;
 use Pakket::ConfigReader;
-
-use Log::Contextual qw< :log set_logger >,
-    -levels => [qw< debug info notice warning error critical alert emergency >];
-
-with qw< Pakket::Role::Log >;
 
 use constant {
     ALL_PACKAGES_KEY => '',
@@ -80,10 +76,6 @@ sub _build_bundler {
 
 sub build {
     my ( $self, $category, $package ) = @_;
-
-    local $| = 1;
-
-    $self->_reset_build_log;
     $self->_setup_build_dir;
     $self->run_build( $category, $package );
 }
@@ -100,17 +92,6 @@ sub DEMOLISH {
         # which means it won't be able to remove the directory
         path($build_dir)->remove_tree( { safe => 0 } );
     }
-}
-
-sub _reset_build_log {
-    my $self     = $_[0];
-    my $log_file = $self->log_file;
-
-    open my $build_log, '>', $log_file
-        or die "Could not create $log_file: $!\n";
-
-    close $build_log
-        or die "Could not close $log_file: $!\n";
 }
 
 sub _setup_build_dir {
