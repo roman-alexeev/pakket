@@ -98,7 +98,7 @@ sub bundle {
     #
     # this happened because it was installed in /tmp which was a different FS
     #   -- SX (see: d81d413e6df49c1c7284e4474457e1cd9b6655b4)
-    $bundle_filename->copy( path( $new_location, $bundle_filename ) );
+    $bundle_filename->copy($new_location);
     $bundle_filename->remove();
 
     chdir $original_dir;
