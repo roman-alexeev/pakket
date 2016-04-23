@@ -5,7 +5,9 @@ use strict;
 use warnings;
 use Pakket::CLI -command;
 use Pakket::Installer;
-use Path::Tiny qw< path >;
+use Pakket::Log;
+use Log::Contextual qw< set_logger >;
+use Path::Tiny      qw< path >;
 
 sub abstract    { 'Install a package' }
 sub description { 'Install a package' }
@@ -45,6 +47,9 @@ sub execute {
                 : ()
         ), qw< base_dir > ),
     );
+
+    my $logger = Pakket::Log->cli_logger(1); # verbosity
+    set_logger $logger;
 
     $installer->install_file( $self->{'bundle_file'} );
 }
