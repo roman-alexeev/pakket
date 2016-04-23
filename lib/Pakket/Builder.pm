@@ -123,7 +123,8 @@ sub run_build {
     );
 
     -r $config_file
-        or log_fatal { "Could not find package information ($config_file)" };
+        or die log_fatal { $_[0] }
+                         "Could not find package information ($config_file)";
 
     my $config_reader = Pakket::ConfigReader->new(
         'type' => 'TOML',
@@ -134,17 +135,20 @@ sub run_build {
 
     # double check we have the right package configuration
     my $config_name = $config->{'Package'}{'name'}
-        or log_fatal { q{Package config must provide 'name'} };
+        or die log_fatal { $_[0] }
+                         q{Package config must provide 'name'};
 
     my $config_category = $config->{'Package'}{'category'}
-        or log_fatal { q{Package config must provide 'category'} };
+        or die log_fatal { $_[0] } q{Package config must provide 'category'};
 
     $config_name eq $package_name
-        or log_fatal { "Mismatch package names ($package_name / $config_name" };
+        or die log_fatal { $_[0] }
+                         "Mismatch package names ($package_name / $config_name";
 
     $config_category eq $category
-        or log_fatal { "Mismatch package categories "
-                     . "($category / $config_category)" };
+        or die log_fatal { $_[0] }
+                         "Mismatch package categories "
+                       . "($category / $config_category)";
 
     # recursively build prereqs
     # starting with system libraries
@@ -214,9 +218,8 @@ sub run_build {
             $main_build_dir,  # /tmp/BUILD-1/main
         );
     } else {
-        log_fatal {
-            "Unrecognized category ($config_category), cannot build this."
-        };
+        die log_fatal { $_[0] }
+            "Unrecognized category ($config_category), cannot build this.";
     }
 
     $self->is_built->{$full_package_name} = 1;
@@ -234,8 +237,9 @@ sub run_build {
     );
 
     keys %{$package_files}
-        or log_fatal { 'This is odd. Build did not generate new files. '
-                     . 'Cannot package. Stopping.' };
+        or log_fatal { $_[0] }
+                     'This is odd. Build did not generate new files. '
+                   . 'Cannot package. Stopping.';
 
     log_info { "Bundling $full_package_name" };
     $self->bundler->bundle(
@@ -281,7 +285,9 @@ sub scan_directory {
         # save the symlink path in order to symlink them
         if ( -l $filename ) {
             path( $nodes->{$filename} = readlink $filename )->is_absolute
-                and log_fatal { 'Error. Absolute path symlinks aren\'t supported.' };
+                and die log_fatal { $_[0] }
+                                  'Error. '
+                                . 'Absolute path symlinks aren\'t supported.';
         } else {
             $nodes->{$filename} = '';
         }
@@ -302,7 +308,8 @@ sub _diff_nodes_list {
         $new_nodes,
         added   => sub { $nodes_diff{ $_[0] } = $_[1] },
         deleted => sub {
-            log_fatal { "Last build deleted previously existing file: $_[0]" };
+            die log_fatal { $_[0] }
+                          "Last build deleted previously existing file: $_[0]";
         },
     );
 
