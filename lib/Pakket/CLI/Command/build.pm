@@ -109,7 +109,7 @@ sub execute {
     );
 
     my $verbose = $self->{'builder'}{'verbose'};
-    my $logger  = Pakket::Log->cli_logger($verbose);
+    my $logger  = Pakket::Log->build_logger($verbose);
     set_logger $logger;
 
     $builder->build( $self->{'category'}, $self->{'package'} );

@@ -1,10 +1,14 @@
 package Pakket::Installer;
+
 # ABSTRACT: Install pakket packages into an installation directory
 
 use Moose;
-use Path::Tiny        qw< path  >;
+use Path::Tiny qw< path  >;
 use Types::Path::Tiny qw< Path  >;
 use File::HomeDir;
+use Pakket::Utils qw< is_writeable >;
+use Pakket::Repository;
+use namespace::autoclean;
 
 # TODO:
 # * Recursively install
@@ -21,40 +25,25 @@ use File::HomeDir;
 #                  active ->
 #
 
-has base_dir => (
+has repo_dir => (
     is      => 'ro',
     isa     => Path,
-    default => sub {
-        my $self = shift;
-        # 1. $ENV{'PAKKET_DIR'}: pre-enabled pakket installation
-        $ENV{'PAKKET_DIR'} && -d $ENV{'PAKKET_DIR'}
-            and return path( $ENV{'PAKKET_DIR'} );
-
-        # 2. /usr/local/pakket
-        my $base_dir = path( Path::Tiny->rootdir, qw< usr local pakket > );
-        if ( $base_dir->is_dir && -w $base_dir->stringify ) {
-            return $base_dir;
-        }
-
-        # 3. local .pakket in home directory
-        $base_dir = path( File::HomeDir->my_home, '.pakket' );
-
-        -d $base_dir
-            or $base_dir->mkpath;
-
-        # assert directory structure
-        my @dirs = (
-            $base_dir,
-            path( $base_dir, 'library' ),
-        );
-
-        foreach my $dir (@dirs) {
-            -d $dir or $dir->mkpath;
-        }
-
-        return $base_dir;
-    },
     coerce  => 1,
+    default => sub {
+        # if it's installed:
+        #   * PAKKET_REPO will be configured
+        #   * if we have permission, we will install to it successfully
+        # if it isn't installed:
+        #   * this is a local installation
+        $ENV{'PAKKET_REPO'} || path( File::HomeDir->my_home, '.pakket' );
+    },
+);
+
+has repo => (
+    is      => 'ro',
+    isa     => 'Pakket::Repository',
+    lazy    => 1,
+    builder => '_build_repo',
 );
 
 has install_dir => (
@@ -64,9 +53,14 @@ has install_dir => (
     coerce  => 1,
     default => sub {
         my $self = shift;
-        path( $self->base_dir, 'library' );
+        return path( $self->repo_dir, 'library' );
     },
 );
+
+sub _build_repo {
+    my $self = shift;
+    return Pakket::Repository->new( repo_dir => $self->repo_dir );
+}
 
 # TODO:
 # this should be implemented using a fetcher class
@@ -75,12 +69,25 @@ sub fetch_package;
 
 sub install_file {
     my ( $self, $filename ) = @_;
-    my $install_dir = $self->install_dir;
-    -d $install_dir
-        or $install_dir->mkpath();
 
-    -r( my $bundle_file = path($filename) )
-        or die "Bundle file '$filename' does not exist or can't be read\n";
+    my $bundle_file = path($filename);
+
+    if ( !-r $bundle_file ) {
+        exit log_critical { $_[0] }
+        "Bundle file '$filename' does not exist or can't be read\n";
+    }
+
+    my $install_dir = $self->install_dir;
+
+    if ( !$install_dir->is_dir ) {
+        exit log_critical { $_[0] }
+        'Cannot find library directory, please run \'init\' first';
+    }
+
+    if ( !is_writeable($install_dir) ) {
+        exit log_critical { $_[0] }
+        "Can't write to your installation directory ($install_dir)";
+    }
 
     my $bundle_basename = $bundle_file->basename;
     $bundle_file->copy($install_dir);
@@ -88,16 +95,14 @@ sub install_file {
     # TODO: Archive::Any might fit here, but it doesn't support XZ
     # introduce a plugin for it? It could be based on Archive::Tar
     # but I'm not sure Archive::Tar support XZ either -- SX.
-    System::Command->spawn(
-        qw< tar -xJf >, $bundle_basename,
+    System::Command->spawn( qw< tar -xJf >, $bundle_basename,
         { cwd => $install_dir },
     );
 
-    $install_dir->child( $bundle_basename )->remove;
+    $install_dir->child($bundle_basename)->remove;
 
     print "Installed $bundle_basename in $install_dir\n";
 }
-
 
 __PACKAGE__->meta->make_immutable;
 
