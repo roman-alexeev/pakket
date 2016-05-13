@@ -23,7 +23,7 @@ sub validate_args {
     my ( $self, $opt, $args ) = @_;
 
     defined $opt->{'to'}
-        and $self->{'installer'}{'base_dir'} = $opt->{'to'};
+        and $self->{'installer'}{'repo_dir'} = $opt->{'to'};
 
     @{$args} == 0
         and $self->usage_error('Must provide package to install');
@@ -45,7 +45,7 @@ sub execute {
             defined $self->{'installer'}{$_}
                 ? ( $_ => $self->{'installer'}{$_} )
                 : ()
-        ), qw< base_dir > ),
+        ), qw< repo_dir > ),
     );
 
     my $logger = Pakket::Log->cli_logger(1); # verbosity
