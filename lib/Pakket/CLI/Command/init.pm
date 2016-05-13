@@ -5,7 +5,6 @@ package Pakket::CLI::Command::init;
 use strict;
 use warnings;
 use Pakket::CLI -command;
-use Pakket::Installer;
 use Pakket::Log;
 use Pakket::Utils qw< is_writeable >;
 use Log::Contextual qw< set_logger >;
@@ -19,6 +18,7 @@ sub opt_spec {
     return (
         [ 'repo-dir=s', 'repo directory (default: /var/lib/pakket)' ],
         [ 'local',      'short-hand for --repo-dir=~/.pakket' ],
+        [ 'force|f',    'force init (for reinitialization)' ],
         [ 'verbose|v+', 'verbose output (can be provided multiple times)' ],
     );
 }
@@ -32,7 +32,8 @@ sub validate_args {
     # global installation and pakket is already available
     if (  !$opt->{'repo_dir'}
         && $ENV{'PAKKET_REPO'}
-        && -d $ENV{'PAKKET_REPO'} )
+        && -d $ENV{'PAKKET_REPO'}
+        && !$opt->{'force'} )
     {
         exit log_critical { $_[0] }
         "Pakket is already globally initialized at $ENV{'PAKKET_REPO'}";
