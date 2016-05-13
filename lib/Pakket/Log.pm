@@ -19,6 +19,27 @@ sub arg_default_logger {
     );
 }
 
+sub build_logger {
+    my ( $class, $verbose ) = @_;
+    my $logger = Log::Dispatch->new(
+        outputs => [
+            $class->_build_logger(),
+            $class->_cli_logger( $verbose // 1 ),
+        ],
+    );
+
+    return $logger;
+}
+
+sub _build_logger {
+    [
+        'File',
+        min_level => 'debug',
+        filename  => path( Path::Tiny->cwd, 'build.log' )->stringify,
+        newline   => 1,
+    ];
+}
+
 sub cli_logger {
     my ( $class, $verbose ) = @_;
     $verbose ||= 0;
@@ -30,23 +51,20 @@ sub cli_logger {
                         'warning';
 
     my $logger = Log::Dispatch->new(
-        outputs => [
-            [
-                'File',
-                min_level => 'debug',
-                filename  => path( Path::Tiny->cwd, 'build.log' )->stringify,
-                newline   => 1,
-            ],
-
-            [
-                'Screen',
-                min_level => $screen_level,
-                newline   => 1,
-            ],
-        ],
+        outputs => [ $class->_cli_logger($screen_level) ],
     );
 
     return $logger;
+}
+
+sub _cli_logger {
+    my ( $class, $screen_level ) = @_;
+
+    return [
+        'Screen',
+        min_level => $screen_level,
+        newline   => 1,
+    ];
 }
 
 sub arg_levels {
