@@ -93,7 +93,7 @@ foreach my $prereq_type (qw< configure runtime test >) {
 }
 
 my $output_file
-    = path( ( $opts{'output_dir'} ? $opts{'output_dir'} : Path::Tiny->cwd ),
+    = path( ( $opts{'output-dir'} ? $opts{'output-dir'} : Path::Tiny->cwd ),
     $dist_name, "$dist_version.toml" );
 
 $output_file->parent->mkpath;
