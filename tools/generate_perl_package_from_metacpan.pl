@@ -14,25 +14,17 @@ sub help {
     $msg and print "$msg\n";
 
     print << "_END_HELP";
-$0 INPUT OPTIONS
+$0 INPUT
 
 INPUT:
 $0 --dist DIST
 $0 --module MODULE
 $0 --cpanfile FILE
 
-OPTIONS:
-$0 --version VERSION
-$0 --min-version VERSION
-
-    dist            distribution
-    module          module (the distribution will be found by this)
-    cpanfile        provide a cpanfile to read modules from
-    version         specific release version
-    min-version     minimal version, find this version or greater
-    output-dir      directory to write the configuration to (TOML file)
-
-Default is to get the latest version available on CPAN.
+    dist        distribution
+    module      module (the distribution will be found by this)
+    cpanfile    provide a cpanfile to read modules from
+    output-dir  directory to write the configuration to (TOML file)
 
 _END_HELP
 
@@ -40,7 +32,7 @@ _END_HELP
 }
 
 GetOptions( \my %opts, 'help|h', 'dist=s', 'module=s', 'cpanfile=s',
-    'min-version=s', 'version=s', 'output-dir=s' )
+    'output-dir=s' )
     or exit;
 
 $opts{'dist'} || $opts{'module'} || $opts{'cpanfile'}
@@ -48,28 +40,29 @@ $opts{'dist'} || $opts{'module'} || $opts{'cpanfile'}
 
 my $mcpan = MetaCPAN::Client->new();
 
-my ( $dist_version, $min_version )
-    = defined $opts{'min-version'}
-    ? ( $opts{'min-version'}, 1 )
-    : ( $opts{'version'}, 0 );
-
 if ( my $module_name = $opts{'module'} ) {
-    create_config_for( module => $module_name, $dist_version, $min_version );
+    create_config_for( module => $module_name );
 } elsif ( my $dist_name = $opts{'dist'} ) {
-    create_config_for( dist => $dist_name, $dist_version, $min_version );
+    create_config_for( dist => $dist_name );
 } elsif ( my $file = $opts{'cpanfile'} ) {
     my $modules = read_cpanfile($file);
-    foreach my $module_name ( %{$modules} ) {
-        print "$module_name\n";
-
-        #create_config_for( module => $module_name, $modules->{$module_name} );
+    foreach my $phase ( keys %{$modules} ) {
+        print "phase: $phase\n";
+        foreach my $type ( keys %{ $modules->{$phase} } ) {
+            foreach my $module_name ( keys %{ $modules->{$phase}{$type} } ) {
+                create_config_for(
+                    module => $module_name,
+                    $modules->{$phase}{$type}{$module_name},
+                );
+            }
+        }
     }
 } else {
     help('Must provide either "dist", "module", or "cpanfile"');
 }
 
 sub create_config_for {
-    my ( $type, $dist_name, $dist_version, $min_version ) = @_;
+    my ( $type, $dist_name ) = @_;
 
     if ( $type eq 'module' ) {
         my $module_name = $dist_name;
@@ -84,39 +77,12 @@ sub create_config_for {
         . "Is this a module?\n";
 
     my $release;
-    if ($dist_version) {
-        $release
-            = $min_version
-            ? $mcpan->all(
-            'releases',
-            {
-                es_filter => {
-                    and => [
-                        { range => { version => { gte => $dist_version } } },
-                        { term => { distribution => $dist_name } },
-                    ],
-                }
-            }
-            )->next
-            : $mcpan->release(
-            {
-                all => [
-                    { distribution => $dist_name },
-                    { version      => $dist_version }
-                ]
-            }
-            )->next;
-    } else {
+    eval {
         $release = $mcpan->release($dist_name);
-    }
+        1;
+    } or die "Cannot fetch latest release for $dist_name\n";
 
-    if ( !$release ) {
-        warn "Cannot find $dist_name $dist_version"
-            . ( $min_version ? ' or greater' : '' );
-        return;
-    }
-
-    $dist_version = $release->version;
+    my $dist_version = $release->version;
     print "Working on $dist_name ($dist_version)\n";
 
     my $release_prereqs = $release->metadata->{'prereqs'};
