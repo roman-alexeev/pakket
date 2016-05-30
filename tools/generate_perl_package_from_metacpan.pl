@@ -113,8 +113,8 @@ sub create_config_for {
     }
 
     my $output_file
-        = path( 'perl', ( $opts{'output-dir'} ? $opts{'output-dir'} : '.' ),
-        $dist_name, "$dist_version.toml" );
+        = path( ( $opts{'output-dir'} ? $opts{'output-dir'} : '.' ),
+        'perl', $dist_name, "$dist_version.toml" );
 
     $output_file->parent->mkpath;
     $output_file->spew( to_toml($package) );
