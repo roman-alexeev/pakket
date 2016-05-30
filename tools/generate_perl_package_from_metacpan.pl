@@ -124,11 +124,5 @@ sub create_config_for {
 sub read_cpanfile {
     my $filename = shift;
     my $file     = Module::CPANfile->load($filename);
-    return {
-        map {
-            ;
-            my $phase = $_;
-            map %{ $file->{$phase}{$_} }, keys %{ $file->{$phase} };
-        } keys %{$file}
-    };
+    return $file->prereq_specs;
 }
