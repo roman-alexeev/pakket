@@ -8,6 +8,8 @@ use Getopt::Long qw< :config no_ignore_case >;
 use Path::Tiny qw< path >;
 use Module::CPANfile;
 
+$|++;
+
 sub help {
     my $msg = shift;
 
@@ -38,6 +40,7 @@ GetOptions( \my %opts, 'help|h', 'dist=s', 'module=s', 'cpanfile=s',
 $opts{'dist'} || $opts{'module'} || $opts{'cpanfile'}
     or help('Must provide "dist", "module", or "cpanfile"');
 
+my $step  = 0;
 my $mcpan = MetaCPAN::Client->new();
 
 if ( my $module_name = $opts{'module'} ) {
@@ -64,12 +67,15 @@ if ( my $module_name = $opts{'module'} ) {
 sub create_config_for {
     my ( $type, $dist_name ) = @_;
 
+    print ' ' x ( $step * 2 );
+    $step++;
+
     if ( $type eq 'module' ) {
         my $module_name = $dist_name;
         eval {
             $dist_name = $mcpan->module($module_name)->distribution;
             1;
-        } or die "Cannot find module by name: '$module_name'\n";
+        } or die "-> Cannot find module by name: '$module_name'\n";
     }
 
     my $dist = eval { $mcpan->distribution($dist_name); }
@@ -83,7 +89,7 @@ sub create_config_for {
     } or die "Cannot fetch latest release for $dist_name\n";
 
     my $dist_version = $release->version;
-    print "Working on $dist_name ($dist_version)\n";
+    print "-> Working on $dist_name ($dist_version)\n";
 
     my $release_prereqs = $release->metadata->{'prereqs'};
 
@@ -115,6 +121,8 @@ sub create_config_for {
     my $output_file
         = path( ( $opts{'output-dir'} ? $opts{'output-dir'} : '.' ),
         'perl', $dist_name, "$dist_version.toml" );
+
+    $step--;
 
     $output_file->parent->mkpath;
     $output_file->spew( to_toml($package) );
