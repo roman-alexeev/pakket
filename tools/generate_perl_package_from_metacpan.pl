@@ -40,6 +40,7 @@ GetOptions( \my %opts, 'help|h', 'dist=s', 'module=s', 'cpanfile=s',
 $opts{'dist'} || $opts{'module'} || $opts{'cpanfile'}
     or help('Must provide "dist", "module", or "cpanfile"');
 
+my %processed_dists;
 my $step  = 0;
 my $mcpan = MetaCPAN::Client->new();
 
@@ -66,6 +67,8 @@ if ( my $module_name = $opts{'module'} ) {
 
 sub create_config_for {
     my ( $type, $dist_name ) = @_;
+
+    $processed_dists{$dist_name}++ and return;
 
     print ' ' x ( $step * 2 );
     $step++;
@@ -123,6 +126,8 @@ sub create_config_for {
         'perl', $dist_name, "$dist_version.toml" );
 
     $step--;
+
+    $output_file->exists and return;
 
     $output_file->parent->mkpath;
     $output_file->spew( to_toml($package) );
