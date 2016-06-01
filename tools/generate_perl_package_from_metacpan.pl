@@ -122,7 +122,7 @@ sub create_config_for {
     }
 
     my $output_file
-        = path( ( $opts{'output-dir'} ? $opts{'output-dir'} : '.' ),
+        = path( ( $opts{'output-dir'} // '.' ),
         'perl', $dist_name, "$dist_version.toml" );
 
     $step--;
