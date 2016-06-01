@@ -105,20 +105,37 @@ sub create_config_for {
     };
 
     # options: configure, develop, runtime, test
+    # we don't use "develop" - those are tools like dzil
     foreach my $prereq_type (qw< configure runtime test >) {
-        $package->{'Prereqs'}{'perl'}{$prereq_type} = +{
-            map {
-                ;
-                my $prereq_level = $_;
-                my $level_prereqs
-                    = $release_prereqs->{$prereq_type}{$prereq_level};
+        my $prereq_data = $package->{'Prereqs'}{'perl'}{$prereq_type} = {};
+        foreach my $prereq_level (qw<requires recommends suggests>) {
+            my $level_prereqs
+                = $release_prereqs->{$prereq_type}{$prereq_level};
 
-                $level_prereqs
-                    ? map +( $_ => { version => $level_prereqs->{$_} } ),
-                    keys %{$level_prereqs}
-                    : ()
-            } qw< requires recommends suggests >
-        };
+            foreach my $module ( keys %{$level_prereqs} ) {
+                my $dist_name;
+                eval { $dist_name = $mcpan->module($module)->distribution; 1; }
+                    or do {
+                    warn "[Error] Cannot fetch module $module: $@\n";
+                    next;
+                    };
+
+                my $release;
+                eval {
+                    $release = $mcpan->release($dist_name);
+                    1;
+                } or do {
+                    warn "[Error] Cannot fetch release $dist_name: $@\n";
+                    next;
+                };
+
+                $prereq_data->{$dist_name} = { version => $release->version };
+            }
+        }
+
+        # recurse through those as well
+        create_config_for( dist => $_ )
+            for keys %{ $package->{'Prereqs'}{'perl'}{$prereq_type} };
     }
 
     my $output_file
