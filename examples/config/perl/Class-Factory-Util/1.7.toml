@@ -1,0 +1,9 @@
+[Package]
+category = "perl"
+name = "Class-Factory-Util"
+version = "1.7"
+[Prereqs]
+[Prereqs.perl]
+[Prereqs.perl.configure]
+[Prereqs.perl.runtime]
+[Prereqs.perl.test]

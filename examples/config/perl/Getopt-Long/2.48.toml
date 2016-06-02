@@ -1,0 +1,9 @@
+[Package]
+category = "perl"
+name = "Getopt-Long"
+version = "2.48"
+[Prereqs]
+[Prereqs.perl]
+[Prereqs.perl.configure]
+[Prereqs.perl.runtime]
+[Prereqs.perl.test]

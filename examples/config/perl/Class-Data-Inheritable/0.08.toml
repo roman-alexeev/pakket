@@ -1,0 +1,9 @@
+[Package]
+category = "perl"
+name = "Class-Data-Inheritable"
+version = "0.08"
+[Prereqs]
+[Prereqs.perl]
+[Prereqs.perl.configure]
+[Prereqs.perl.runtime]
+[Prereqs.perl.test]

@@ -1,0 +1,9 @@
+[Package]
+category = "perl"
+name = "Sub-Identify"
+version = "0.12"
+[Prereqs]
+[Prereqs.perl]
+[Prereqs.perl.configure]
+[Prereqs.perl.runtime]
+[Prereqs.perl.test]

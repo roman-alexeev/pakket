@@ -1,0 +1,9 @@
+[Package]
+category = "perl"
+name = "Font-AFM"
+version = "1.20"
+[Prereqs]
+[Prereqs.perl]
+[Prereqs.perl.configure]
+[Prereqs.perl.runtime]
+[Prereqs.perl.test]
