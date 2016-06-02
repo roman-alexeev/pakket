@@ -383,7 +383,8 @@ sub build_perl_package {
 
     my $opts = {
         env => {
-            PERL5LIB => path( $prefix, qw<lib perl5> ),
+            PERL5LIB => path( $prefix, qw<lib perl5> )->stringify
+                . ':$PERL5LIB',
         },
     };
 
