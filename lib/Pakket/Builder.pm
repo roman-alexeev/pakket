@@ -110,6 +110,9 @@ sub run_build {
 
     my $full_package_name = "$category/$package_name";
 
+    # FIXME: this should be cleaned up as a proper excludes list
+    $full_package_name eq 'perl/perl' and return;
+
     if ( $self->is_built->{$full_package_name} ) {
         log_info { "We already built $full_package_name, skipping..." };
         return;
