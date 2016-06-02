@@ -4,13 +4,14 @@ package Pakket::Role::RunCommand;
 use Moose::Role;
 use Pakket::Log;
 use System::Command;
+use Path::Tiny;
 
 sub run_command {
     my ( $self, $dir, $sys_cmds, $extra_opts ) = @_;
     log_info { join ' ', @{$sys_cmds} };
 
     my %opt = (
-        cwd => $dir,
+        cwd => path($dir)->stringify,
 
         %{ $extra_opts || {} },
 
