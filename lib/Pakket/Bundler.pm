@@ -37,7 +37,10 @@ sub bundle {
         CLEANUP  => 1,
     );
 
-    chdir $bundle_path->stringify;
+    my $pkg_name_ver = "$package_name-$package_version";
+    $bundle_path->child($pkg_name_ver)->mkpath;
+
+    chdir $bundle_path->child($pkg_name_ver)->stringify;
 
     foreach my $orig_file ( keys %{$files} ) {
         log_debug { "Bundling $orig_file" };
@@ -79,9 +82,10 @@ sub bundle {
     # -- SX.
 
     my $bundle_filename = path(
-        join '.', "$package_name-$package_version", PAKKET_EXTENSION
+        join '.', $pkg_name_ver, PAKKET_EXTENSION
     );
 
+    chdir '..';
     log_info { "Creating bundle file $bundle_filename" };
     system "tar -cJf $bundle_filename *";
     my $new_location = path(
