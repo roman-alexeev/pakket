@@ -65,12 +65,21 @@ if ( my $module_name = $opts{'module'} ) {
     help('Must provide either "dist", "module", or "cpanfile"');
 }
 
+sub spaces {
+    print ' ' x ( $step * 2 );
+}
+
 sub create_config_for {
     my ( $type, $dist_name ) = @_;
 
-    $processed_dists{$dist_name}++ and return;
 
-    print ' ' x ( $step * 2 );
+    if ( $processed_dists{$dist_name}++ ) {
+        spaces();
+        print "<= Already processed $dist_name\n";
+        return;
+    }
+
+    spaces();
     $step++;
 
     if ( $type eq 'module' ) {
@@ -119,6 +128,10 @@ sub create_config_for {
                     warn "[Error] Cannot fetch module $module: $@\n";
                     next;
                     };
+
+                spaces();
+                printf "=> Translating module '%s' to distribution '%s'\n",
+                    $module, $dist_name;
 
                 my $release;
                 eval {
