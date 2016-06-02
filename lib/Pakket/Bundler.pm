@@ -75,17 +75,12 @@ sub bundle {
         }
     }
 
-    # FIXME: I want to add versioning here for the file
-    # but that means pulling the version variable in this sub
-    # and this sub is already called from a weird chain that needs
-    # to be cleaned up, so we'll do it after
-    # -- SX.
+    chdir '..';
 
     my $bundle_filename = path(
         join '.', $pkg_name_ver, PAKKET_EXTENSION
     );
 
-    chdir '..';
     log_info { "Creating bundle file $bundle_filename" };
     system "tar -cJf $bundle_filename *";
     my $new_location = path(
