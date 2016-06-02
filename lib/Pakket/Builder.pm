@@ -2,6 +2,7 @@ package Pakket::Builder;
 # ABSTRACT: Build pakket packages
 
 use Moose;
+use JSON;
 use Path::Tiny                qw< path        >;
 use File::Find                qw< find        >;
 use File::Copy::Recursive     qw< dircopy     >;
@@ -57,6 +58,20 @@ has build_files_manifest => (
     default => sub { +{} },
 );
 
+has index_file => (
+    is      => 'ro',
+    isa     => Path,
+    coerce  => 1,
+    default => sub {'pkg_index.json'},
+);
+
+has index => (
+    is      => 'ro',
+    isa     => 'HashRef',
+    lazy    => 1,
+    default => sub { decode_json( path( $_[0]->index_file )->slurp_utf8 ) },
+);
+
 has bundler => (
     is      => 'ro',
     isa     => 'Pakket::Bundler',
@@ -104,26 +119,40 @@ sub _setup_build_dir {
     -d $prefix_dir or $prefix_dir->mkpath;
 }
 
+sub get_latest_version {
+    my ( $self, $category, $package ) = @_;
+    return $self->index->{$category}{$package}{'latest'};
+}
+
 sub run_build {
     # FIXME: we're currently not using the third parameter
-    my ( $self, $category, $package_name, $prereqs ) = @_;
+    my ( $self, $category, $package_name, $package_args ) = @_;
 
     my $full_package_name = "$category/$package_name";
 
     # FIXME: this should be cleaned up as a proper excludes list
     $full_package_name eq 'perl/perl' and return;
 
-    if ( $self->is_built->{$full_package_name} ) {
+    if ( $self->is_built->{$full_package_name}++ ) {
         log_info { "We already built $full_package_name, skipping..." };
         return;
     }
 
+    log_notice { "Working on $full_package_name" };
+
+    $package_args ||= {};
+    my $package_version = $package_args->{'version'}
+        // $self->get_latest_version( $category, $package_name );
+
+    $package_version
+        or log_fatal { $_[0] }
+        "Could not find a version number for a package ($package_version)";
+
     # FIXME: the config class should have "mandatory" fields, add checks
 
     # read the configuration
-    my $config_file = path(
-        $self->config_dir, $category, "$package_name.toml"
-    );
+    my $config_file = path( $self->config_dir, $category, $package_name,
+        "$package_version.toml" );
 
     -r $config_file
         or exit log_critical { $_[0] }
@@ -157,21 +186,30 @@ sub run_build {
     # recursively build prereqs
     # starting with system libraries
     # FIXME: we're currently not using the third parameter
+
     if ( my $system_prereqs = $config->{'Prereqs'}{'system'} ) {
-        foreach my $prereq ( keys %{$system_prereqs} ) {
-            $self->run_build( 'system', $prereq, $system_prereqs->{$prereq} );
+        foreach my $prereq_category (qw<configure runtime>) {
+            foreach
+                my $prereq ( keys %{ $system_prereqs->{$prereq_category} } )
+            {
+                $self->run_build( 'system', $prereq,
+                    $system_prereqs->{$prereq} );
+            }
         }
     }
 
     if ( my $perl_prereqs = $config->{'Prereqs'}{'perl'} ) {
-        foreach my $prereq ( keys %{$perl_prereqs} ) {
-            $self->run_build( 'perl', $prereq, $perl_prereqs->{$prereq} );
+        foreach my $prereq_category (qw<configure runtime>) {
+            foreach my $prereq ( keys %{ $perl_prereqs->{$prereq_category} } )
+            {
+                $self->run_build( 'perl', $prereq, $perl_prereqs->{$prereq} );
+            }
         }
     }
 
     my $package_src_dir = path(
         $self->source_dir,
-        $config->{'Package'}{'directory'},
+        $self->index->{$category}{$package_name}{'versions'}{$package_version},
     );
 
     log_info { 'Copying package files' };
