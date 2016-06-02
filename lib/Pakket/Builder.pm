@@ -144,7 +144,7 @@ sub run_build {
 
     $config_name eq $package_name
         or exit log_critical { $_[0] }
-                "Mismatch package names ($package_name / $config_name";
+                "Mismatch package names ($package_name / $config_name)";
 
     $config_category eq $category
         or exit log_critical { $_[0] }
