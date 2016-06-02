@@ -72,6 +72,9 @@ sub spaces {
 sub create_config_for {
     my ( $type, $dist_name ) = @_;
 
+    if ( $dist_name eq 'perl_mlb' ) {
+        return;
+    }
 
     if ( $processed_dists{$dist_name}++ ) {
         spaces();
