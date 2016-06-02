@@ -2,6 +2,7 @@ package Pakket::Bundler;
 # ABSTRACT: Bundle pakket packages into a package file
 
 use Moose;
+use JSON;
 use Path::Tiny qw< path >;
 use File::Spec;
 use Types::Path::Tiny qw< AbsPath >;
@@ -26,8 +27,10 @@ has files_manifest => (
 sub bundle {
     my ( $self, $build_dir, $pkg_data, $files ) = @_;
 
-    my ( $package_category, $package_name, $package_version ) =
-        @{$pkg_data}{qw< category name version >};
+    my (
+        $package_category, $package_name,
+        $package_version,  $package_config,
+    ) = @{$pkg_data}{qw< category name version config >};
 
     my $original_dir = Path::Tiny->cwd;
 
@@ -74,6 +77,9 @@ sub bundle {
             chdir $previous_dir;
         }
     }
+
+    path('meta.json')
+        ->spew_utf8( JSON->new->pretty->encode($package_config) );
 
     chdir '..';
 

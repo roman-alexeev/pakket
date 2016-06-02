@@ -291,6 +291,7 @@ sub run_build {
             category => $category,
             name     => $package_name,
             version  => $config->{'Package'}{'version'},
+            config   => $config,
         },
         $package_files,
     );
