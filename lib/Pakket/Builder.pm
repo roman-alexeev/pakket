@@ -387,6 +387,10 @@ sub build_perl_package {
         env => {
             PERL5LIB => path( $prefix, qw<lib perl5> )->stringify
                 . ':$PERL5LIB',
+            PERL5_CPAN_IS_RUNNING     => 1,
+            PERL5_CPANM_IS_RUNNING    => 1,
+            PERL5_CPANPLUS_IS_RUNNING => 1,
+            PERL_MM_USE_DEFAULT       => 1,
         },
     };
 
