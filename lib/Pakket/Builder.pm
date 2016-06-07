@@ -36,6 +36,7 @@ has source_dir => (
 has build_dir => (
     is      => 'ro',
     isa     => Path,
+    coerce  => 1,
     lazy    => 1,
     default => sub { Path::Tiny->tempdir('BUILD-XXXXXX', CLEANUP => 0 ) },
 );
