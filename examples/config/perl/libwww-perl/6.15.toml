@@ -28,8 +28,6 @@ version = "6.01"
 version = "6.01"
 [Prereqs.perl.runtime.HTTP-Date]
 version = "6.02"
-[Prereqs.perl.runtime.HTTP-GHTTP]
-version = "1.07"
 [Prereqs.perl.runtime.HTTP-Message]
 version = "6.11"
 [Prereqs.perl.runtime.HTTP-Negotiate]

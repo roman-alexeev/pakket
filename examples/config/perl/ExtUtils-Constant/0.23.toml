@@ -1,0 +1,9 @@
+[Package]
+category = "perl"
+name = "ExtUtils-Constant"
+version = "0.23"
+[Prereqs]
+[Prereqs.perl]
+[Prereqs.perl.configure]
+[Prereqs.perl.runtime]
+[Prereqs.perl.test]
