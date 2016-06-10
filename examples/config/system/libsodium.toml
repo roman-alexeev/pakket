@@ -1,5 +1,0 @@
-[Package]
-name      = "libsodium"
-category  = "system"
-version   = "1.0.8"
-directory = "libsodium-1.0.8"

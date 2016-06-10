@@ -1,9 +1,0 @@
-[Package]
-name      = "zeromq"
-category  = "system"
-version   = "1.4.1"
-directory = "zeromq-4.1.4"
-[Prereqs]
-    # Prereqs for "system" category
-    [Prereqs.system]
-    libsodium = { version = "1.0.8" }
