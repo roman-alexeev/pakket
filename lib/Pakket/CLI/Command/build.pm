@@ -24,7 +24,7 @@ sub description { 'Build a package' }
 
 sub opt_spec {
     return (
-        [ 'category=s',     'pakket category ("perl", "system", etc.)'        ],
+        [ 'input-file=s',   'build stuff from this file'                      ],
         [ 'build-dir=s',    'use an existing build directory'                 ],
         [ 'keep-build-dir', 'do not delete the build directory'               ],
         [ 'config-dir=s',   'directory holding the configurations'            ],
@@ -37,55 +37,46 @@ sub opt_spec {
 sub validate_args {
     my ( $self, $opt, $args ) = @_;
 
-    $self->{'category'} = $opt->{'category'};
-
     if ( defined ( my $output_dir = $opt->{'output_dir'} ) ) {
         $self->{'bundler'}{'bundle_dir'} = path($output_dir)->absolute;
     }
 
-    $args->[0]
-        or $self->usage_error('Must specify package');
+    my @packages;
+    if ( my $file = $opt->{'input_file'} ) {
+        my $path = path($file);
+        $path->exists && $path->is_file
+            or $self->usage_error("Bad file: $path");
 
-    my ( $cat, $package ) = split '/', $args->[0];
-
-    # did we get a full path spec (category/package)
-    if ($package) {
-        # if there is a category, it *has* to match
-        # the category provided by the full spec
-        $self->{'category'} && $self->{'category'} ne $cat
-            and $self->usage_error(
-                sprintf "You specified two categories: '%s' and '%s'\n",
-                        $self->{'category'},
-                        $cat
-            );
-
-        # use the category we got from the full spec if we don't
-        # have one defined already
-        # (and if we do, they will match anyway - see check above)
-        $self->{'category'} //= $cat;
+        push @packages, $path->lines_utf8( { chomp => 1 } );
+    } elsif ( @{$args} ) {
+        @packages = @{$args};
+    } else {
+        $self->usage_error('Must specify at least one package or a file');
     }
 
-    # if there is no package, the first item (now in $cat)
-    # is the package name
-    $self->{'package'} = $package || $cat;
+    foreach my $package_name (@packages) {
+        my ( $cat, $package ) = split '/', $package_name;
 
-    $self->{'category'}
-        or $self->usage_error('You must provide a category');
+        $cat && $package
+            or $self->usage_error('Wrong category/package provided.');
 
-    $self->{'category'}
-        or $self->usage_error('I don\'t have a category for this package.');
+        push @{ $self->{'to_build'} }, [ $cat, $package ];
+    }
 
     if ( $opt->{'build_dir'} ) {
         -d $opt->{'build_dir'}
             or die "You asked to use a build dir that does not exist.\n";
 
-        $self->{'build_dir'} = $opt->{'build_dir'};
+        $self->{'builder'}{'build_dir'} = $opt->{'build_dir'};
     }
 
     $self->{'builder'}{'keep_build_dir'} = $opt->{'keep_build_dir'};
-    $self->{'builder'}{'config_dir'}     = path( $opt->{'config_dir'} );
-    $self->{'builder'}{'source_dir'}     = path( $opt->{'source_dir'} );
     $self->{'builder'}{'verbose'}        = $opt->{'verbose'};
+
+    foreach my $opt_name ( qw<config_dir source_dir> ) {
+        $opt->{$opt_name}
+            and $self->{'builder'}{$opt_name} = path( $opt->{$opt_name} );
+    }
 }
 
 sub execute {
@@ -112,7 +103,9 @@ sub execute {
     my $logger  = Pakket::Log->build_logger($verbose);
     set_logger $logger;
 
-    $builder->build( $self->{'category'}, $self->{'package'} );
+    foreach my $pkg_cat_pair ( @{ $self->{'to_build'} } ) {
+        $builder->build( @{$pkg_cat_pair} );
+    }
 }
 
 1;
