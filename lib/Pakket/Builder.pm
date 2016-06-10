@@ -395,10 +395,12 @@ sub build_perl_package {
 
     log_info { "Building Perl module: $package" };
 
+    my %libs = map +( $_ => 1 ), split ':', $ENV{'PERL5LIB'};
+    $libs{ path( $prefix, qw<lib perl5> )->absolute->stringify } = 1;
+
     my $opts = {
         env => {
-            PERL5LIB => path( $prefix, qw<lib perl5> )->stringify
-                . ':$PERL5LIB',
+            PERL5LIB                  => join( ':', keys %libs ),
             PERL5_CPAN_IS_RUNNING     => 1,
             PERL5_CPANM_IS_RUNNING    => 1,
             PERL5_CPANPLUS_IS_RUNNING => 1,
