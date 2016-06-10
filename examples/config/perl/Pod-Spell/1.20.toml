@@ -26,7 +26,7 @@ version = "0.094"
 version = "1.07"
 [Prereqs.perl.runtime.Pod-Parser]
 version = "1.63"
-[Prereqs.perl.runtime.Text-Tabs+Wrap]
+["Prereqs.perl.runtime.Text-Tabs+Wrap"]
 version = "2013.0523"
 [Prereqs.perl.runtime.constant]
 version = "1.33"
