@@ -133,6 +133,9 @@ sub run_build {
     # FIXME: this should be cleaned up as a proper excludes list
     $full_package_name eq 'perl/perl' and return;
 
+    # FIXME: MetaCPAN bug
+    $full_package_name eq 'perl/perl_mlb' and return;
+
     if ( $self->is_built->{$full_package_name}++ ) {
         log_debug {
             "We already built or building $full_package_name, skipping..."
