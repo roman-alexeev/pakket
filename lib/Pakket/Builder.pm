@@ -114,7 +114,7 @@ sub DEMOLISH {
 sub _setup_build_dir {
     my $self = shift;
 
-    log_info { 'Creating build dir ' . $self->build_dir };
+    log_debug { 'Creating build dir ' . $self->build_dir };
     my $prefix_dir = path( $self->build_dir, 'main' );
 
     -d $prefix_dir or $prefix_dir->mkpath;
@@ -135,7 +135,9 @@ sub run_build {
     $full_package_name eq 'perl/perl' and return;
 
     if ( $self->is_built->{$full_package_name}++ ) {
-        log_info { "We already built $full_package_name, skipping..." };
+        log_debug {
+            "We already built or building $full_package_name, skipping..."
+        };
         return;
     }
 
