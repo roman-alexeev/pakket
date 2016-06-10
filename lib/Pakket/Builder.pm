@@ -405,6 +405,8 @@ sub build_perl_package {
             PERL5_CPANM_IS_RUNNING    => 1,
             PERL5_CPANPLUS_IS_RUNNING => 1,
             PERL_MM_USE_DEFAULT       => 1,
+            PERL_MB_OPT               => '',
+            PERL_MM_OPT               => '',
         },
     };
 
