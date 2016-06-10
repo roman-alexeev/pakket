@@ -464,24 +464,24 @@ sub build_perl_package {
     my $original_dir = Path::Tiny->cwd;
     my $install_base = $prefix->absolute;
 
-    if ( $build_dir->child('Makefile.PL')->exists ) {
-        $self->run_command(
-            $build_dir,
-            [ "$^X", 'Makefile.PL', "INSTALL_BASE=$install_base" ],
-            $opts,
-        );
+    # taken from cpanminus
+    my %should_use_mm = map +( "perl/$_" => 1 ),
+        qw( version ExtUtils-ParseXS ExtUtils-Install ExtUtils-Manifest );
 
-        $self->run_command( $build_dir, ['make'], $opts );
-        $self->run_command( $build_dir, ['make', 'install'], $opts );
-    } elsif ( $build_dir->child('Build.PL')->exists ) {
-        $self->run_command(
-            $build_dir,
-            [ "$^X", 'Build.PL', '--install_base', $install_base ],
-            $opts,
-        );
+    if ( $build_dir->child('Build.PL')->exists
+        && !exists $should_use_mm{$package} )
+    {
+        $self->run_command( $build_dir,
+            [ "$^X", 'Build.PL', '--install_base', $install_base ], $opts, );
 
         $self->run_command( $build_dir, ['./Build'], $opts );
-        $self->run_command( $build_dir, ['./Build', 'install'], $opts );
+        $self->run_command( $build_dir, [ './Build', 'install' ], $opts );
+    } elsif ( $build_dir->child('Makefile.PL')->exists ) {
+        $self->run_command( $build_dir,
+            [ "$^X", 'Makefile.PL', "INSTALL_BASE=$install_base" ], $opts, );
+
+        $self->run_command( $build_dir, ['make'], $opts );
+        $self->run_command( $build_dir, [ 'make', 'install' ], $opts );
     } else {
         die "Could not find an installer (Makefile.PL/Build.PL)\n";
     }
