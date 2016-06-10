@@ -13,6 +13,8 @@ version = "1.000027"
 version = "1.009"
 [Prereqs.perl.configure.version]
 version = "0.9917"
+[Prereqs.perl.configure.inc-latest]
+version = "0.500"
 [Prereqs.perl.runtime]
 [Prereqs.perl.runtime.CPAN-Meta]
 version = "2.150005"
