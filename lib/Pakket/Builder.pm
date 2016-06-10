@@ -430,6 +430,7 @@ sub build_perl_package {
     my $opts = {
         env => {
             PERL5LIB                  => join( ':', keys %libs ),
+            PERL_LOCAL_LIB_ROOT       => '',
             PERL5_CPAN_IS_RUNNING     => 1,
             PERL5_CPANM_IS_RUNNING    => 1,
             PERL5_CPANPLUS_IS_RUNNING => 1,
