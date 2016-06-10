@@ -270,7 +270,26 @@ sub run_build {
 
     $self->is_built->{$full_package_name} = 1;
 
-    log_info { 'Scanning directory.' };
+    my $package_files
+        = $self->scan_dir( $category, $package_name, $main_build_dir );
+
+    log_info { "Bundling $full_package_name" };
+    $self->bundler->bundle(
+        $main_build_dir,
+        {
+            category => $category,
+            name     => $package_name,
+            version  => $config->{'Package'}{'version'},
+            config   => $config,
+        },
+        $package_files,
+    );
+}
+
+sub scan_dir {
+    my ( $self, $category, $package_name, $main_build_dir ) = @_;
+
+    log_debug { 'Scanning directory.' };
     # XXX: this is just a bit of a smarter && dumber rsync(1):
     # rsync -qaz BUILD/main/ output_dir/
     # the reason is that we need the diff.
@@ -287,25 +306,16 @@ sub run_build {
                 'This is odd. Build did not generate new files. '
               . 'Cannot package. Stopping.';
 
-    log_info { "Bundling $full_package_name" };
-    $self->bundler->bundle(
-        $main_build_dir,
-        {
-            category => $category,
-            name     => $package_name,
-            version  => $config->{'Package'}{'version'},
-            config   => $config,
-        },
-        $package_files,
-    );
-
     # store per all packages to get the diff
     @{ $self->build_files_manifest }{ keys %{$package_files} } =
         values %{$package_files};
+
+    return $package_files;
 }
 
 sub retrieve_new_files {
     my ( $self, $category, $package_name, $build_dir ) = @_;
+
 
     my $nodes     = $self->scan_directory($build_dir);
     my $new_files = $self->_diff_nodes_list(
