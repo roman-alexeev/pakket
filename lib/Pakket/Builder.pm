@@ -413,14 +413,22 @@ sub build_package {
 
     log_info { "Building $package" };
 
+    my $opts = {
+        env => {
+            PATH => $prefix->child('bin')->absolute->stringify . ':'
+                . $ENV{'PATH'},
+        },
+    };
+
     $self->run_command(
         $build_dir,
         [ './configure', '--prefix=' . $prefix->absolute ],
+        $opts,
     );
 
-    $self->run_command( $build_dir, ['make'] );
+    $self->run_command( $build_dir, ['make'], $opts );
 
-    $self->run_command( $build_dir, ['make', 'install'] );
+    $self->run_command( $build_dir, ['make', 'install'], $opts );
 
     log_info { "Done preparing $package" };
 }
@@ -443,6 +451,9 @@ sub build_perl_package {
             PERL_MM_USE_DEFAULT       => 1,
             PERL_MB_OPT               => '',
             PERL_MM_OPT               => '',
+
+            PATH => $prefix->child('bin')->absolute->stringify . ':'
+                . ( $ENV{'PATH'} // '' ),
         },
     };
 
