@@ -8,7 +8,7 @@ version = "0.400002"
 [Prereqs.perl.configure.ExtUtils-MakeMaker]
 version = "7.18"
 [Prereqs.perl.runtime]
-[Prereqs.perl.runtime.Text-Tabs+Wrap]
+["Prereqs.perl.runtime.Text-Tabs+Wrap"]
 version = "2013.0523"
 [Prereqs.perl.runtime.version]
 version = "0.9917"
