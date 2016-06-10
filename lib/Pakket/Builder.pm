@@ -262,8 +262,6 @@ sub run_build {
     local $ENV{'PKG_CONFIG_PATH'} = $pkgconfig_path;
 
     my $main_build_dir = path( $top_build_dir, 'main' );
-    log_info { "Setting LD_LIBRARY_PATH=$main_build_dir" };
-    local $ENV{'LD_LIBRARY_PATH'} = $main_build_dir;
 
     # FIXME: Remove in favor of a ::Build::System, ::Build::Perl, etc.
     # FIXME: $package_dst_dir is dictated from the category
@@ -415,6 +413,9 @@ sub build_package {
 
     my $opts = {
         env => {
+            LD_LIBRARY_PATH => $prefix->absolute->stringify . ':'
+                . $ENV{'LD_LIBRARY_PATH'},
+
             PATH => $prefix->child('bin')->absolute->stringify . ':'
                 . $ENV{'PATH'},
         },
@@ -451,6 +452,9 @@ sub build_perl_package {
             PERL_MM_USE_DEFAULT       => 1,
             PERL_MB_OPT               => '',
             PERL_MM_OPT               => '',
+
+            LD_LIBRARY_PATH => $prefix->absolute->stringify . ':'
+                . ( $ENV{'LD_LIBRARY_PATH'} // '' ),
 
             PATH => $prefix->child('bin')->absolute->stringify . ':'
                 . ( $ENV{'PATH'} // '' ),
