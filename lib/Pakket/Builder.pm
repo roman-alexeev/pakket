@@ -409,7 +409,7 @@ sub build_package {
 
     $self->run_command(
         $build_dir,
-        [ './configure', "--prefix=$prefix" ],
+        [ './configure', '--prefix=' . $prefix->absolute ],
     );
 
     $self->run_command( $build_dir, ['make'] );
