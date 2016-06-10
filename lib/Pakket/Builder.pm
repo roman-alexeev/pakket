@@ -254,6 +254,9 @@ sub run_build {
     my $top_build_dir = $self->build_dir;
 
     # FIXME: we shouldn't be generating PKG_CONFIG_PATH every time
+    #        Instead, set this as default opt and send it to the build
+    #        subroutines as "default opts" to add their own stuff to
+    #        and add LD_LIBRARY_PATH and PATH to this as well
     my $pkgconfig_path = path( $top_build_dir, qw<main lib pkgconfig> );
     log_info { "Setting PKG_CONFIG_PATH=$pkgconfig_path" };
     local $ENV{'PKG_CONFIG_PATH'} = $pkgconfig_path;
