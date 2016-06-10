@@ -150,7 +150,7 @@ sub run_build {
         // $self->get_latest_version( $category, $package_name );
 
     $package_version
-        or log_fatal { $_[0] }
+        or exit log_critical { $_[0] }
         "Could not find a version number for a package ($package_version)";
 
     # FIXME: this is a hack
