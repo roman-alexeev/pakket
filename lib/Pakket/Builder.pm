@@ -150,6 +150,34 @@ sub run_build {
         or log_fatal { $_[0] }
         "Could not find a version number for a package ($package_version)";
 
+    # FIXME: this is a hack
+    # Once we have a proper repository, we could query it and find out
+    # instead of asking the bundler this
+    my $existing_pkg_file =
+        $self->bundler->bundle_dir->child( $category, $package_name,
+            "$package_name-$package_version.pkt" );
+
+    if ( $existing_pkg_file->exists ) {
+        log_debug {"$full_package_name already packaged, unpacking..."};
+
+        my $main_build_dir = path( $self->build_dir, 'main' );
+        my $cur            = Path::Tiny->cwd;
+        my $ex_dir         = $existing_pkg_file->basename =~ s/\.pkt//r;
+
+        system "tar --wildcards -C $main_build_dir"
+            . " -xJf $existing_pkg_file $ex_dir/*";
+        system "cp -r $main_build_dir/$ex_dir/* $main_build_dir";
+
+        path( $main_build_dir, $ex_dir )->remove_tree( { safe => 0 } );
+
+        $self->scan_dir( $category, $package_name,
+            $main_build_dir->absolute );
+
+        $self->is_built->{$full_package_name} = 1;
+
+        return;
+    }
+
     # FIXME: the config class should have "mandatory" fields, add checks
 
     # read the configuration
@@ -275,7 +303,7 @@ sub run_build {
 
     log_info { "Bundling $full_package_name" };
     $self->bundler->bundle(
-        $main_build_dir,
+        $main_build_dir->absolute,
         {
             category => $category,
             name     => $package_name,
@@ -334,19 +362,20 @@ sub scan_directory {
         # $File::Find::dir  = '/some/path'
         # $_                = 'foo.ext'
         # $File::Find::name = '/some/path/foo.ext'
-        my $filename = $File::Find::name;
+
+        my $filename = $_;
 
         # skip directories, we only want files
         -f $filename or return;
 
         # save the symlink path in order to symlink them
         if ( -l $filename ) {
-            path( $nodes->{$filename} = readlink $filename )->is_absolute
+            path( $nodes->{$_} = readlink $filename )->is_absolute
                 and exit log_critical { $_[0] }
                          'Error. '
                        . 'Absolute path symlinks aren\'t supported.';
         } else {
-            $nodes->{$filename} = '';
+            $nodes->{ path($_)->absolute } = '';
         }
     }, $dir );
 
