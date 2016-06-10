@@ -1,0 +1,4 @@
+[Package]
+category = "system"
+name = "curl"
+version = "7.49.1"
