@@ -55,12 +55,12 @@ sub validate_args {
     }
 
     foreach my $package_name (@packages) {
-        my ( $cat, $package ) = split '/', $package_name;
+        my ( $cat, $package, $version ) = split '/', $package_name;
 
         $cat && $package
             or $self->usage_error('Wrong category/package provided.');
 
-        push @{ $self->{'to_build'} }, [ $cat, $package ];
+        push @{ $self->{'to_build'} }, [ $cat, $package, $version ];
     }
 
     if ( $opt->{'build_dir'} ) {
@@ -103,8 +103,15 @@ sub execute {
     my $logger  = Pakket::Log->build_logger($verbose);
     set_logger $logger;
 
-    foreach my $pkg_cat_pair ( @{ $self->{'to_build'} } ) {
-        $builder->build( @{$pkg_cat_pair} );
+    foreach my $tuple ( @{ $self->{'to_build'} } ) {
+        $builder->build(
+            $tuple->[0],
+            $tuple->[1],
+
+            defined $tuple->[3]
+                ? { version => $tuple->[3] }
+                : ()
+        );
     }
 }
 
