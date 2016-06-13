@@ -360,30 +360,24 @@ sub retrieve_new_files {
 
 sub scan_directory {
     my ( $self, $dir ) = @_;
-    my $nodes = {};
 
-    File::Find::find( sub {
-        # $File::Find::dir  = '/some/path'
-        # $_                = 'foo.ext'
-        # $File::Find::name = '/some/path/foo.ext'
+    my $visitor = sub {
+        my ( $node, $state ) = @_;
 
-        my $filename = $_;
-
-        # skip directories, we only want files
-        -f $filename or return;
+        return if $node->is_dir;
 
         # save the symlink path in order to symlink them
-        if ( -l $filename ) {
-            path( $nodes->{ path($_)->absolute } = readlink $filename )->is_absolute
+        if ( -l $node ) {
+            path( $state->{ $node->absolute } = readlink $node )->is_absolute
                 and exit log_critical { $_[0] }
                          'Error. '
-                       . 'Absolute path symlinks aren\'t supported.';
+                       . "Absolute path symlinks aren't supported.";
         } else {
-            $nodes->{ path($_)->absolute } = '';
+            $state->{ $node->absolute } = '';
         }
-    }, $dir );
+    };
 
-    return $nodes;
+    return $dir->visit( $visitor, { recurse => 1, follow_symlinks => 0 } );
 }
 
 # There is a possible micro optimization gain here
