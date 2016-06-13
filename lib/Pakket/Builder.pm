@@ -374,7 +374,7 @@ sub scan_directory {
 
         # save the symlink path in order to symlink them
         if ( -l $filename ) {
-            path( $nodes->{$_} = readlink $filename )->is_absolute
+            path( $nodes->{ path($_)->absolute } = readlink $filename )->is_absolute
                 and exit log_critical { $_[0] }
                          'Error. '
                        . 'Absolute path symlinks aren\'t supported.';
