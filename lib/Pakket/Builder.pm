@@ -151,7 +151,7 @@ sub run_build {
 
     $package_version
         or exit log_critical { $_[0] }
-        "Could not find a version number for a package ($package_version)";
+        "Could not find a version number for $full_package_name";
 
     # FIXME: this is a hack
     # Once we have a proper repository, we could query it and find out
