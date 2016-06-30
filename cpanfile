@@ -4,7 +4,7 @@ requires 'File::Basename';
 requires 'File::Copy::Recursive';
 requires 'File::Find';
 requires 'File::HomeDir';
-requires 'Getopt::Long';
+requires 'Getopt::Long', '>= 2.39';
 requires 'Getopt::Long::Descriptive';
 requires 'JSON';
 requires 'Log::Contextual';
