@@ -474,13 +474,13 @@ sub build_perl_package {
         && !exists $should_use_mm{$package} )
     {
         $self->run_command( $build_dir,
-            [ "$^X", 'Build.PL', '--install_base', $install_base ], $opts, );
+            [ "perl", 'Build.PL', '--install_base', $install_base ], $opts, );
 
         $self->run_command( $build_dir, ['./Build'], $opts );
         $self->run_command( $build_dir, [ './Build', 'install' ], $opts );
     } elsif ( $build_dir->child('Makefile.PL')->exists ) {
         $self->run_command( $build_dir,
-            [ "$^X", 'Makefile.PL', "INSTALL_BASE=$install_base" ], $opts, );
+            [ "perl", 'Makefile.PL', "INSTALL_BASE=$install_base" ], $opts, );
 
         $self->run_command( $build_dir, ['make'], $opts );
         $self->run_command( $build_dir, [ 'make', 'install' ], $opts );
