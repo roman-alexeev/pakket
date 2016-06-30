@@ -437,12 +437,16 @@ sub build_perl_package {
 
     log_info { "Building Perl module: $package" };
 
-    my %libs = map +( $_ => 1 ), split ':', $ENV{'PERL5LIB'};
-    $libs{ path( $prefix, qw<lib perl5> )->absolute->stringify } = 1;
+    my @perl5lib = do {
+        my @dirs = split ':', $ENV{'PERL5LIB'} // '';
+        unshift( @dirs, path( $prefix, qw<lib perl5> )->absolute->stringify );
+        my %seen;
+        grep !$seen{$_}++, @dirs;
+    };
 
     my $opts = {
         env => {
-            PERL5LIB                  => join( ':', keys %libs ),
+            PERL5LIB                  => join( ':', @perl5lib ),
             PERL_LOCAL_LIB_ROOT       => '',
             PERL5_CPAN_IS_RUNNING     => 1,
             PERL5_CPANM_IS_RUNNING    => 1,
