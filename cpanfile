@@ -12,6 +12,7 @@ requires 'Log::Dispatch';
 requires 'MetaCPAN::Client';
 requires 'Module::Runtime';
 requires 'Moose';
+requires 'MooseX::StrictConstructor';
 requires 'namespace::autoclean';
 requires 'Path::Tiny';
 requires 'System::Command';
