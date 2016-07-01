@@ -3065,6 +3065,48 @@
          "versions" : {
             "0.14.1" : "send-0.14.1"
          }
+      },
+      "babel-core" : {
+         "latest" : "6.10.4",
+         "versions" : {
+            "6.10.4" : "babel-core-6.10.4"
+         }
+      },
+      "babel-loader" : {
+         "latest" : "6.2.4",
+         "versions" : {
+            "6.2.4" : "babel-loader-6.2.4"
+         }
+      },
+      "babel-preset-es2015" : {
+         "latest" : "6.9.0",
+         "versions" : {
+            "6.9.0" : "babel-preset-es2015-6.9.0"
+         }
+      },
+      "babel-preset-react" : {
+         "latest" : "6.11.1",
+         "versions" : {
+            "6.11.1" : "babel-preset-react-6.11.1"
+         }
+      },
+      "clean-webpack-plugin" : {
+         "latest" : "0.1.9",
+         "versions" : {
+            "0.1.9" : "clean-webpack-plugin-0.1.9"
+         }
+      },
+      "imports-loader" : {
+         "latest" : "0.6.5",
+         "versions" : {
+            "0.6.5" : "imports-loader-0.6.5"
+         }
+      },
+      "webpack" : {
+         "latest" : "1.13.1",
+         "versions" : {
+            "1.13.1" : "webpack-1.13.1"
+         }
       }
    }
 }
