@@ -4,7 +4,7 @@ package Pakket::Role::RunCommand;
 use Moose::Role;
 use Pakket::Log;
 use System::Command;
-use Path::Tiny;
+use Path::Tiny qw< path >;
 
 sub run_command {
     my ( $self, $dir, $sys_cmds, $extra_opts ) = @_;
