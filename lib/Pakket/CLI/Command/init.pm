@@ -4,6 +4,7 @@ package Pakket::CLI::Command::init;
 
 use strict;
 use warnings;
+use English '-no_match_vars';
 use Pakket::CLI -'command'; ## no critic (ValuesAndExpressions::ProhibitMismatchedOperators)
 use Pakket::Log;
 use Pakket::Utils qw< is_writeable >;
@@ -62,7 +63,9 @@ sub execute {
 
     # 2. print the configuration
     my $pakket_homedir
-        = path( File::HomeDir->my_home, $^O =~ /win/ ? 'pakket' : '.pakket' );
+        = path( File::HomeDir->my_home,
+        $OSNAME =~ m{win}ms ? 'pakket' : '.pakket' );
+
     $pakket_homedir->is_dir
         or $pakket_homedir->mkpath;
 
