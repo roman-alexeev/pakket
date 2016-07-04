@@ -24,6 +24,7 @@ sub description { 'Build a package' }
 
 sub opt_spec {
     return (
+        [ 'index-file=s',   'path to pkg_index.json'                          ],
         [ 'input-file=s',   'build stuff from this file'                      ],
         [ 'build-dir=s',    'use an existing build directory'                 ],
         [ 'keep-build-dir', 'do not delete the build directory'               ],
@@ -52,6 +53,14 @@ sub validate_args {
         @packages = @{$args};
     } else {
         $self->usage_error('Must specify at least one package or a file');
+    }
+
+    if ( my $file = $opt->{'index_file'} ) {
+        my $path = path($file);
+        -r $path
+            or $self->usage_error('Incorrect index file specified');
+
+        $self->{'builder'}{'index_file'} = $path;
     }
 
     foreach my $package_name (@packages) {
@@ -87,7 +96,7 @@ sub execute {
             defined $self->{'builder'}{$_}
                 ? ( $_ => $self->{'builder'}{$_} )
                 : ()
-        ), qw< config_dir source_dir build_dir keep_build_dir > ),
+        ), qw< config_dir source_dir build_dir keep_build_dir index_file > ),
 
         # bundler args
         bundler_args => {
