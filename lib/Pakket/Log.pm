@@ -7,6 +7,12 @@ use parent 'Log::Contextual';
 use Log::Dispatch;
 use Path::Tiny qw< path >;
 
+use constant {
+    DEBUG_LOG_LEVEL    => 3,
+    DEBUG_INFO_LEVEL   => 2,
+    DEBUG_NOTICE_LEVEL => 1,
+};
+
 sub arg_default_logger {
     $_[1] || Log::Dispatch->new(
         outputs => [
@@ -45,9 +51,9 @@ sub cli_logger {
     $verbose ||= 0;
 
     my $screen_level =
-        $verbose >= 3 ? 'debug'  : # log 2
-        $verbose == 2 ? 'info'   : # log 1
-        $verbose == 1 ? 'notice' : # log 0
+        $verbose >= +DEBUG_LOG_LEVEL    ? 'debug'  : # log 2
+        $verbose == +DEBUG_INFO_LEVEL   ? 'info'   : # log 1
+        $verbose == +DEBUG_NOTICE_LEVEL ? 'notice' : # log 0
                         'warning';
 
     my $logger = Log::Dispatch->new(

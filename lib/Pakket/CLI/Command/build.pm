@@ -3,11 +3,17 @@ package Pakket::CLI::Command::build;
 
 use strict;
 use warnings;
-use Pakket::CLI -command;
+use Pakket::CLI -'command'; ## no critic (ValuesAndExpressions::ProhibitMismatchedOperators)
 use Pakket::Builder;
 use Pakket::Log;
 use Path::Tiny      qw< path >;
 use Log::Contextual qw< set_logger >;
+
+use constant {
+    INDEX_CATEGORY     => 0,
+    INDEX_PACKAGE_NAME => 1,
+    INDEX_PARAMETERS   => 2,
+};
 
 # TODO:
 # - move all hardcoded values (confs) to constants
@@ -64,7 +70,7 @@ sub validate_args {
     }
 
     foreach my $package_name (@packages) {
-        my ( $cat, $package, $version ) = split '/', $package_name;
+        my ( $cat, $package, $version ) = split m{/}ms, $package_name;
 
         $cat && $package
             or $self->usage_error('Wrong category/package provided.');
@@ -104,7 +110,7 @@ sub execute {
                 defined $self->{'bundler'}{$_}
                     ? ( $_ => $self->{'bundler'}{$_} )
                     : ()
-            ), qw< bundle_dir > )
+            ), qw< bundle_dir > ),
         },
     );
 
@@ -114,12 +120,12 @@ sub execute {
 
     foreach my $tuple ( @{ $self->{'to_build'} } ) {
         $builder->build(
-            $tuple->[0],
-            $tuple->[1],
+            $tuple->[ +INDEX_CATEGORY ],
+            $tuple->[ +INDEX_PACKAGE_NAME ],
 
-            defined $tuple->[3]
-                ? { version => $tuple->[3] }
-                : ()
+            defined $tuple->[ +INDEX_PARAMETERS ]
+                ? { version => $tuple->[ +INDEX_PARAMETERS ] }
+                : (),
         );
     }
 }

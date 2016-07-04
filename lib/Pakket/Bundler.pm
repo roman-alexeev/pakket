@@ -2,7 +2,7 @@ package Pakket::Bundler;
 # ABSTRACT: Bundle pakket packages into a package file
 
 use Moose;
-use JSON;
+use JSON::MaybeXS;
 use Path::Tiny qw< path >;
 use File::Spec;
 use Types::Path::Tiny qw< AbsPath >;
@@ -48,7 +48,7 @@ sub bundle {
     foreach my $orig_file ( keys %{$files} ) {
         log_debug { "Bundling $orig_file" };
         my $new_fullname = $self->_rebase_build_to_output_dir(
-            $build_dir, $orig_file
+            $build_dir, $orig_file,
         );
 
         -e $new_fullname
@@ -68,7 +68,7 @@ sub bundle {
             chmod oct($mode_str), $new_fullname;
         } else {
             my $new_symlink = $self->_rebase_build_to_output_dir(
-                $build_dir, $files->{$orig_file}
+                $build_dir, $files->{$orig_file},
             );
 
             my $previous_dir = Path::Tiny->cwd;
@@ -79,12 +79,12 @@ sub bundle {
     }
 
     path('meta.json')
-        ->spew_utf8( JSON->new->pretty->encode($package_config) );
+        ->spew_utf8( JSON::MaybeXS->new->pretty->encode($package_config) );
 
     chdir '..';
 
     my $bundle_filename = path(
-        join '.', $pkg_name_ver, PAKKET_EXTENSION
+        join '.', $pkg_name_ver, PAKKET_EXTENSION,
     );
 
     log_info { "Creating bundle file $bundle_filename" };
@@ -111,7 +111,7 @@ sub bundle {
 
 sub _rebase_build_to_output_dir {
     my ( $self, $build_dir, $orig_filename ) = @_;
-    ( my $new_filename = $orig_filename ) =~ s/^$build_dir//;
+    ( my $new_filename = $orig_filename ) =~ s/^$build_dir//ms;
     my @parts = File::Spec->splitdir($new_filename);
 
     # in case the path is absolute (leading slash)
@@ -123,6 +123,8 @@ sub _rebase_build_to_output_dir {
 }
 
 __PACKAGE__->meta->make_immutable;
+
+no Moose;
 
 1;
 
