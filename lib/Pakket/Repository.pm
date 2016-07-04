@@ -47,6 +47,10 @@ sub _build_repo_dir {
     exit log_critical sub { $_[0] } 'Cannot find pakket repository';
 }
 
+__PACKAGE__->meta->make_immutable;
+
+no Moose;
+
 1;
 
 __END__

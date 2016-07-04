@@ -37,6 +37,8 @@ sub run_command {
     );
 }
 
+no Moose::Role;
+
 1;
 
 __END__
