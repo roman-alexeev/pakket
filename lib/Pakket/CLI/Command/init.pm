@@ -42,7 +42,7 @@ sub validate_args {
     $self->{'repo'} = path(
         $opt->{'repo_dir'} // $opt->{'local'}
         ? ( File::HomeDir->my_home, '.pakket' )
-        : ( Path::Tiny->rootdir, qw< usr local pakket > )
+        : ( Path::Tiny->rootdir, qw< usr local pakket > ),
     );
 }
 

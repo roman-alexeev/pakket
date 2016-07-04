@@ -104,7 +104,7 @@ sub execute {
                 defined $self->{'bundler'}{$_}
                     ? ( $_ => $self->{'bundler'}{$_} )
                     : ()
-            ), qw< bundle_dir > )
+            ), qw< bundle_dir > ),
         },
     );
 

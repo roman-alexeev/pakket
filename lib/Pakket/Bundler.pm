@@ -48,7 +48,7 @@ sub bundle {
     foreach my $orig_file ( keys %{$files} ) {
         log_debug { "Bundling $orig_file" };
         my $new_fullname = $self->_rebase_build_to_output_dir(
-            $build_dir, $orig_file
+            $build_dir, $orig_file,
         );
 
         -e $new_fullname
@@ -68,7 +68,7 @@ sub bundle {
             chmod oct($mode_str), $new_fullname;
         } else {
             my $new_symlink = $self->_rebase_build_to_output_dir(
-                $build_dir, $files->{$orig_file}
+                $build_dir, $files->{$orig_file},
             );
 
             my $previous_dir = Path::Tiny->cwd;
@@ -84,7 +84,7 @@ sub bundle {
     chdir '..';
 
     my $bundle_filename = path(
-        join '.', $pkg_name_ver, PAKKET_EXTENSION
+        join '.', $pkg_name_ver, PAKKET_EXTENSION,
     );
 
     log_info { "Creating bundle file $bundle_filename" };
