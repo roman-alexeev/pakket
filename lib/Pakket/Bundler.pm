@@ -124,6 +124,8 @@ sub _rebase_build_to_output_dir {
 
 __PACKAGE__->meta->make_immutable;
 
+no Moose;
+
 1;
 
 __END__
