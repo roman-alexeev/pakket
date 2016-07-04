@@ -9,6 +9,12 @@ use Pakket::Log;
 use Path::Tiny      qw< path >;
 use Log::Contextual qw< set_logger >;
 
+use constant {
+    INDEX_CATEGORY     => 0,
+    INDEX_PACKAGE_NAME => 1,
+    INDEX_PARAMETERS   => 2,
+};
+
 # TODO:
 # - move all hardcoded values (confs) to constants
 # - add make process log (and add it with -v -v)
@@ -114,12 +120,12 @@ sub execute {
 
     foreach my $tuple ( @{ $self->{'to_build'} } ) {
         $builder->build(
-            $tuple->[0],
-            $tuple->[1],
+            $tuple->[ +INDEX_CATEGORY ],
+            $tuple->[ +INDEX_PACKAGE_NAME ],
 
-            defined $tuple->[3]
-                ? { version => $tuple->[3] }
-                : ()
+            defined $tuple->[ +INDEX_PARAMETERS ]
+                ? { version => $tuple->[ +INDEX_PARAMETERS ] }
+                : (),
         );
     }
 }
