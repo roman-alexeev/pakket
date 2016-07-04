@@ -63,7 +63,7 @@ sub validate_args {
 
     if ( my $file = $opt->{'index_file'} ) {
         my $path = path($file);
-        -r $path
+        $path->exists && $path->is_file
             or $self->usage_error('Incorrect index file specified');
 
         $self->{'builder'}{'index_file'} = $path;
