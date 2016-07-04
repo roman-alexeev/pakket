@@ -2,7 +2,7 @@ package Pakket::Bundler;
 # ABSTRACT: Bundle pakket packages into a package file
 
 use Moose;
-use JSON;
+use JSON::MaybeXS;
 use Path::Tiny qw< path >;
 use File::Spec;
 use Types::Path::Tiny qw< AbsPath >;
@@ -79,7 +79,7 @@ sub bundle {
     }
 
     path('meta.json')
-        ->spew_utf8( JSON->new->pretty->encode($package_config) );
+        ->spew_utf8( JSON::MaybeXS->new->pretty->encode($package_config) );
 
     chdir '..';
 
