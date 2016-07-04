@@ -6,6 +6,7 @@ use Moose;
 use Path::Tiny qw< path  >;
 use Types::Path::Tiny qw< Path  >;
 use File::HomeDir;
+use System::Command;
 use Pakket::Utils qw< is_writeable >;
 use Pakket::Repository;
 use namespace::autoclean;
