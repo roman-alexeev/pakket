@@ -1,0 +1,73 @@
+#!/usr/bin/env perl
+
+use v5.14;
+use warnings;
+
+use Cwd;
+use File::Spec;
+use File::Temp;
+use Getopt::Long;
+
+Getopt::Long::GetOptions(
+    "perl=s"     => \(my $perl_version = "5.18.2"),
+    "app-dir=s"  => \my $app_dir,
+);
+
+unless(-d $app_dir) {
+    die "--app-dir must point to a directory";
+}
+
+chomp(my $cores = `nproc` || 1);
+if($cores > 1) {
+    $cores -= 1;
+}
+
+my @directories = (
+    "bin",
+    "lib",
+);
+my @files = (
+    "pkg_index.json",
+    "cpanfile",
+);
+
+my $dest_dir = File::Temp::tempdir(CLEANUP => 1);
+
+my $source_dir = File::Temp::tempdir(CLEANUP => 1);
+for my $dir (@directories) {
+    system("cp", "-R", File::Spec->catdir($app_dir, $dir), $source_dir);
+}
+for my $file (@files) {
+    system("cp", File::Spec->catfile($app_dir, $file), $source_dir);
+}
+
+my $seacan = App::Seacan->new(
+    config => {
+        seacan => {
+            app_name => "pakket",
+            output   => $dest_dir,
+            app      => $source_dir,
+        },
+        perl => {
+            version             => $perl_version,
+                installed_as    => "seacan",
+                notest          => 1,
+                noman           => 1,
+                relocatable_INC => 1,
+                parallel        => $cores,
+        },
+    },
+);
+$seacan->run;
+
+unlink(File::Spec->catfile($dest_dir, qw(app pakket cpanfile)));
+
+system(
+    "tar",
+    "--create",
+    "--gzip",
+    "--exclude-vcs",
+    "--directory=$dest_dir",
+    "--file=".Cwd::abs_path("./pakket.tar.gz"),
+    ".",
+);
