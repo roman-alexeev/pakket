@@ -165,7 +165,7 @@ sub run_build {
 
         my $main_build_dir = path( $self->build_dir, 'main' );
         my $cur            = Path::Tiny->cwd;
-        my $ex_dir         = $existing_pkg_file->basename =~ s/\.pkt//r;
+        my $ex_dir         = $existing_pkg_file->basename =~ s/\.pkt//rms;
 
         system "tar --wildcards -C $main_build_dir"
             . " -xJf $existing_pkg_file $ex_dir/*";
@@ -438,7 +438,7 @@ sub build_perl_package {
     log_info { "Building Perl module: $package" };
 
     my @perl5lib = do {
-        my @dirs = split ':', $ENV{'PERL5LIB'} // '';
+        my @dirs = split /:/ms, $ENV{'PERL5LIB'} // '';
         unshift( @dirs, path( $prefix, qw<lib perl5> )->absolute->stringify );
         my %seen;
         grep !$seen{$_}++, @dirs;

@@ -64,7 +64,7 @@ sub validate_args {
     }
 
     foreach my $package_name (@packages) {
-        my ( $cat, $package, $version ) = split '/', $package_name;
+        my ( $cat, $package, $version ) = split m{/}ms, $package_name;
 
         $cat && $package
             or $self->usage_error('Wrong category/package provided.');
