@@ -4,6 +4,7 @@ package Pakket::ConfigReader::TOML;
 use Moose;
 use TOML::Parser;
 use Types::Path::Tiny qw< Path >;
+use Carp qw< croak >;
 
 with qw< Pakket::Role::ConfigReader >;
 
@@ -18,7 +19,7 @@ sub read_config {
 	my $self        = shift;
 	my $config_file = $self->filename;
     -r $config_file
-		or die "Config file '$config_file' does not exist or unreadable";
+		or croak("Config file '$config_file' does not exist or unreadable");
 
 	my $config;
     eval {
@@ -27,12 +28,14 @@ sub read_config {
         1;
     } or do {
         my $err = $@ || 'Unknown error';
-        die "Cannot read $config_file: $err";
+        croak("Cannot read $config_file: $err");
     };
 
     return $config;
 }
 
 __PACKAGE__->meta->make_immutable;
+
+no Moose;
 
 1;

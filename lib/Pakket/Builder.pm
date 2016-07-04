@@ -2,7 +2,7 @@ package Pakket::Builder;
 # ABSTRACT: Build pakket packages
 
 use Moose;
-use JSON;
+use JSON::MaybeXS             qw< decode_json >;
 use Path::Tiny                qw< path        >;
 use File::Find                qw< find        >;
 use File::Copy::Recursive     qw< dircopy     >;
@@ -150,7 +150,7 @@ sub run_build {
         // $self->get_latest_version( $category, $package_name );
 
     $package_version
-        or exit log_critical { $_[0] }
+        or exit log_critical sub { $_[0] }
         "Could not find a version number for $full_package_name";
 
     # FIXME: this is a hack
@@ -165,7 +165,7 @@ sub run_build {
 
         my $main_build_dir = path( $self->build_dir, 'main' );
         my $cur            = Path::Tiny->cwd;
-        my $ex_dir         = $existing_pkg_file->basename =~ s/\.pkt//r;
+        my $ex_dir         = $existing_pkg_file->basename =~ s/\.pkt//rms;
 
         system "tar --wildcards -C $main_build_dir"
             . " -xJf $existing_pkg_file $ex_dir/*";
@@ -188,7 +188,7 @@ sub run_build {
         "$package_version.toml" );
 
     -r $config_file
-        or exit log_critical { $_[0] }
+        or exit log_critical sub { $_[0] }
                 "Could not find package information ($config_file)";
 
     my $config_reader = Pakket::ConfigReader->new(
@@ -200,19 +200,19 @@ sub run_build {
 
     # double check we have the right package configuration
     my $config_name = $config->{'Package'}{'name'}
-        or exit log_critical { $_[0] }
+        or exit log_critical sub { $_[0] }
                 q{Package config must provide 'name'};
 
     my $config_category = $config->{'Package'}{'category'}
-        or exit log_critical { $_[0] }
+        or exit log_critical sub { $_[0] }
                 q{Package config must provide 'category'};
 
     $config_name eq $package_name
-        or exit log_critical { $_[0] }
+        or exit log_critical sub { $_[0] }
                 "Mismatch package names ($package_name / $config_name)";
 
     $config_category eq $category
-        or exit log_critical { $_[0] }
+        or exit log_critical sub { $_[0] }
                 "Mismatch package categories "
               . "($category / $config_category)";
 
@@ -237,7 +237,7 @@ sub run_build {
 
     log_info { 'Copying package files' };
     -d $package_src_dir
-        or exit log_critical { $_[0] }
+        or exit log_critical sub { $_[0] }
                 "Cannot find source dir: $package_src_dir";
 
     my $top_build_dir = $self->build_dir;
@@ -300,7 +300,7 @@ sub run_build {
             $main_build_dir,  #
         );
     } else {
-        exit log_critical { $_[0] }
+        exit log_critical sub { $_[0] }
              "Unrecognized category ($config_category), cannot build this.";
     }
 
@@ -334,11 +334,11 @@ sub scan_dir {
     # (because then we want *all* content)
     # (only if unpacking it directly into the directory fails)
     my $package_files = $self->retrieve_new_files(
-        $category, $package_name, $main_build_dir
+        $category, $package_name, $main_build_dir,
     );
 
     keys %{$package_files}
-        or exit log_critical { $_[0] }
+        or exit log_critical sub { $_[0] }
                 'This is odd. Build did not generate new files. '
               . 'Cannot package. Stopping.';
 
@@ -373,7 +373,7 @@ sub scan_directory {
         # save the symlink path in order to symlink them
         if ( -l $node ) {
             path( $state->{ $node->absolute } = readlink $node )->is_absolute
-                and exit log_critical { $_[0] }
+                and exit log_critical sub { $_[0] }
                          'Error. '
                        . "Absolute path symlinks aren't supported.";
         } else {
@@ -438,7 +438,7 @@ sub build_perl_package {
     log_info { "Building Perl module: $package" };
 
     my @perl5lib = do {
-        my @dirs = split ':', $ENV{'PERL5LIB'} // '';
+        my @dirs = split /:/ms, $ENV{'PERL5LIB'} // '';
         unshift( @dirs, path( $prefix, qw<lib perl5> )->absolute->stringify );
         my %seen;
         grep !$seen{$_}++, @dirs;
@@ -524,6 +524,8 @@ sub build_nodejs_package {
 }
 
 __PACKAGE__->meta->make_immutable;
+
+no Moose;
 
 1;
 

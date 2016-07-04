@@ -6,6 +6,7 @@ use Moose;
 use Path::Tiny qw< path  >;
 use Types::Path::Tiny qw< Path  >;
 use File::HomeDir;
+use System::Command;
 use Pakket::Utils qw< is_writeable >;
 use Pakket::Repository;
 use namespace::autoclean;
@@ -73,19 +74,19 @@ sub install_file {
     my $bundle_file = path($filename);
 
     if ( !-r $bundle_file ) {
-        exit log_critical { $_[0] }
+        exit log_critical sub { $_[0] }
         "Bundle file '$filename' does not exist or can't be read\n";
     }
 
     my $install_dir = $self->install_dir;
 
     if ( !$install_dir->is_dir ) {
-        exit log_critical { $_[0] }
+        exit log_critical sub { $_[0] }
         'Cannot find library directory, please run \'init\' first';
     }
 
     if ( !is_writeable($install_dir) ) {
-        exit log_critical { $_[0] }
+        exit log_critical sub { $_[0] }
         "Can't write to your installation directory ($install_dir)";
     }
 
@@ -105,6 +106,8 @@ sub install_file {
 }
 
 __PACKAGE__->meta->make_immutable;
+
+no Moose;
 
 1;
 

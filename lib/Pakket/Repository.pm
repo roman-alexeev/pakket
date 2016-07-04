@@ -44,8 +44,12 @@ sub _build_repo_dir {
         $path->is_dir and return $path;
     }
 
-    exit log_critical { $_[0] } 'Cannot find pakket repository';
+    exit log_critical sub { $_[0] } 'Cannot find pakket repository';
 }
+
+__PACKAGE__->meta->make_immutable;
+
+no Moose;
 
 1;
 

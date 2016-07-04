@@ -6,7 +6,7 @@ requires 'File::Find';
 requires 'File::HomeDir';
 requires 'Getopt::Long', '>= 2.39';
 requires 'Getopt::Long::Descriptive';
-requires 'JSON';
+requires 'JSON::MaybeXS';
 requires 'Log::Contextual';
 requires 'Log::Dispatch';
 requires 'MetaCPAN::Client';
