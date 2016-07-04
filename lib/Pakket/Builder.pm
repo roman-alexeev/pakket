@@ -2,7 +2,7 @@ package Pakket::Builder;
 # ABSTRACT: Build pakket packages
 
 use Moose;
-use JSON;
+use JSON::MaybeXS             qw< decode_json >;
 use Path::Tiny                qw< path        >;
 use File::Find                qw< find        >;
 use File::Copy::Recursive     qw< dircopy     >;
