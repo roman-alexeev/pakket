@@ -334,7 +334,7 @@ sub scan_dir {
     # (because then we want *all* content)
     # (only if unpacking it directly into the directory fails)
     my $package_files = $self->retrieve_new_files(
-        $category, $package_name, $main_build_dir
+        $category, $package_name, $main_build_dir,
     );
 
     keys %{$package_files}
