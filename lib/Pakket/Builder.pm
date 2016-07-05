@@ -150,7 +150,7 @@ sub run_build {
         // $self->get_latest_version( $category, $package_name );
 
     $package_version
-        or exit log_critical sub { $_[0] }
+        or exit log_critical { $_[0] }
         "Could not find a version number for $full_package_name";
 
     # FIXME: this is a hack
@@ -188,7 +188,7 @@ sub run_build {
         "$package_version.toml" );
 
     -r $config_file
-        or exit log_critical sub { $_[0] }
+        or exit log_critical { $_[0] }
                 "Could not find package information ($config_file)";
 
     my $config_reader = Pakket::ConfigReader->new(
@@ -200,19 +200,19 @@ sub run_build {
 
     # double check we have the right package configuration
     my $config_name = $config->{'Package'}{'name'}
-        or exit log_critical sub { $_[0] }
+        or exit log_critical { $_[0] }
                 q{Package config must provide 'name'};
 
     my $config_category = $config->{'Package'}{'category'}
-        or exit log_critical sub { $_[0] }
+        or exit log_critical { $_[0] }
                 q{Package config must provide 'category'};
 
     $config_name eq $package_name
-        or exit log_critical sub { $_[0] }
+        or exit log_critical { $_[0] }
                 "Mismatch package names ($package_name / $config_name)";
 
     $config_category eq $category
-        or exit log_critical sub { $_[0] }
+        or exit log_critical { $_[0] }
                 "Mismatch package categories "
               . "($category / $config_category)";
 
@@ -237,7 +237,7 @@ sub run_build {
 
     log_info { 'Copying package files' };
     -d $package_src_dir
-        or exit log_critical sub { $_[0] }
+        or exit log_critical { $_[0] }
                 "Cannot find source dir: $package_src_dir";
 
     my $top_build_dir = $self->build_dir;
@@ -300,7 +300,7 @@ sub run_build {
             $main_build_dir,  #
         );
     } else {
-        exit log_critical sub { $_[0] }
+        exit log_critical { $_[0] }
              "Unrecognized category ($config_category), cannot build this.";
     }
 
@@ -338,7 +338,7 @@ sub scan_dir {
     );
 
     keys %{$package_files}
-        or exit log_critical sub { $_[0] }
+        or exit log_critical { $_[0] }
                 'This is odd. Build did not generate new files. '
               . 'Cannot package. Stopping.';
 
@@ -373,7 +373,7 @@ sub scan_directory {
         # save the symlink path in order to symlink them
         if ( -l $node ) {
             path( $state->{ $node->absolute } = readlink $node )->is_absolute
-                and exit log_critical sub { $_[0] }
+                and exit log_critical { $_[0] }
                          'Error. '
                        . "Absolute path symlinks aren't supported.";
         } else {
