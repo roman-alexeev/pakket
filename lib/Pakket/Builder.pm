@@ -10,6 +10,7 @@ use File::Basename            qw< basename dirname >;
 use Algorithm::Diff::Callback qw< diff_hashes >;
 use Types::Path::Tiny         qw< Path >;
 use TOML::Parser;
+use Data::Dumper;
 
 use Pakket::Log;
 use Pakket::Bundler;
@@ -252,6 +253,11 @@ sub run_build {
 
     my $main_build_dir = path( $top_build_dir, 'main' );
 
+    my $configure_flags = $self->get_configure_flags(
+        $config->{'Package'}{'configure_flags'},
+        { main_build_dir => $main_build_dir },
+    );
+
     # FIXME: Remove in favor of a ::Build::System, ::Build::Perl, etc.
     # FIXME: $package_dst_dir is dictated from the category
     if ( $config_category eq 'system' ) {
@@ -268,6 +274,7 @@ sub run_build {
             $package_name,    # zeromq
             $package_dst_dir, # /tmp/BUILD-1/src/system/zeromq-1.4.1
             $main_build_dir,  # /tmp/BUILD-1/main
+            $configure_flags,
         );
     } elsif ( $config_category eq 'perl' ) {
         my $package_dst_dir = path(
@@ -405,7 +412,7 @@ sub _diff_nodes_list {
 }
 
 sub build_package {
-    my ( $self, $package, $build_dir, $prefix ) = @_;
+    my ( $self, $package, $build_dir, $prefix, $configure_flags ) = @_;
 
     log_info { "Building $package" };
 
@@ -437,7 +444,7 @@ sub build_package {
 
     $self->run_command(
         $build_dir,
-        [ $configurator, '--prefix=' . $prefix->absolute ],
+        [ $configurator, '--prefix=' . $prefix->absolute, @$configure_flags, ],
         $opts,
     );
 
@@ -537,6 +544,37 @@ sub build_nodejs_package {
     chdir $original_dir;
 
     log_info { "Done preparing $package" };
+}
+
+sub get_configure_flags {
+    my ( $self, $config, $expand_env ) = @_;
+
+    return [] unless $config;
+
+    my @flags;
+    for my $tuple (@$config) {
+        if ( @$tuple > 2 ) {
+            local $Data::Dumper::Terse = 1;
+            exit log_critical { "Odd configuration flag: " . Dumper($tuple) };
+        }
+
+        push( @flags, join( '=', @$tuple ) );
+    }
+
+    $self->_expand_flags_inplace( \@flags, $expand_env );
+
+    \@flags;
+}
+
+sub _expand_flags_inplace {
+    my ( $self, $flags, $env ) = @_;
+
+    for my $flag (@$flags) {
+        for my $key ( keys(%$env) ) {
+            my $placeholder = "%" . uc($key) . "%";
+            $flag =~ s/$placeholder/$env->{$key}/g;
+        }
+    }
 }
 
 __PACKAGE__->meta->make_immutable;
