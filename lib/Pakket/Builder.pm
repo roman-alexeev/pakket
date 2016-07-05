@@ -426,9 +426,18 @@ sub build_package {
         },
     };
 
+    my $configurator;
+    if ( -x path( $build_dir, "configure" ) ) {
+        $configurator = "./configure";
+    } elsif ( -x path( $build_dir, "config" ) ) {
+        $configurator = "./config";
+    } else {
+        exit log_critical {"Don't know how to configure $package"};
+    }
+
     $self->run_command(
         $build_dir,
-        [ './configure', '--prefix=' . $prefix->absolute ],
+        [ $configurator, '--prefix=' . $prefix->absolute ],
         $opts,
     );
 
