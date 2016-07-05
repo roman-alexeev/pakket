@@ -409,13 +409,20 @@ sub build_package {
 
     log_info { "Building $package" };
 
+    my $my_library_path = $prefix->absolute->stringify;
+    if ( defined( my $env_library_path = $ENV{'LD_LIBRARY_PATH'} ) ) {
+        $my_library_path .= ":$env_library_path";
+    }
+
+    my $my_bin_path = $prefix->child('bin')->absolute->stringify;
+    if ( defined( my $env_bin_path = $ENV{'PATH'} ) ) {
+        $my_bin_path .= ":$env_bin_path";
+    }
+
     my $opts = {
         env => {
-            LD_LIBRARY_PATH => $prefix->absolute->stringify . ':'
-                . $ENV{'LD_LIBRARY_PATH'},
-
-            PATH => $prefix->child('bin')->absolute->stringify . ':'
-                . $ENV{'PATH'},
+            LD_LIBRARY_PATH => $my_library_path,
+            PATH            => $my_bin_path,
         },
     };
 
