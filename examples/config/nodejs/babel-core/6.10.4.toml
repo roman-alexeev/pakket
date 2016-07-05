@@ -1,0 +1,12 @@
+[Package]
+category = "nodejs"
+name = "babel-core"
+version = "6.10.4"
+[Prereqs]
+[Prereqs.system]
+[Prereqs.system.configure]
+[Prereqs.system.configure.nodejs]
+version = "6.2.1"
+[Prereqs.system.runtime]
+[Prereqs.system.runtime.nodejs]
+version = "6.2.1"
