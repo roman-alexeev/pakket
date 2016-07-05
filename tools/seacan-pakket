@@ -28,7 +28,7 @@ my @directories = (
     "lib",
 );
 my @files = (
-    "pkg_index.json",
+    "examples/pkg_index.json",
     "cpanfile",
 );
 
