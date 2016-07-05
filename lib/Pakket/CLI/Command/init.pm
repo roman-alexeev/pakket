@@ -36,7 +36,7 @@ sub validate_args {
         && -d $ENV{'PAKKET_REPO'}
         && !$opt->{'force'} )
     {
-        exit log_critical sub { $_[0] }
+        exit log_critical { $_[0] }
         "Pakket is already globally initialized at $ENV{'PAKKET_REPO'}";
     }
 
@@ -55,7 +55,7 @@ sub execute {
     my $repo_dir = $self->{'repo'};
 
     if ( !is_writeable($repo_dir) ) {
-        exit log_critical sub { $_[0] } "No permissions to write to $repo_dir.";
+        exit log_critical { $_[0] } "No permissions to write to $repo_dir.";
     }
 
     $repo_dir->is_dir
@@ -77,7 +77,7 @@ sub execute {
         "export LD_LIBRARY_PATH=$repo_dir/lib:\$LD_LIBRARY_PATH\n",
     );
 
-    log_info sub {"Done. Please add $shellfile to your bashrc."};
+    log_info {"Done. Please add $shellfile to your bashrc."};
 }
 
 1;
