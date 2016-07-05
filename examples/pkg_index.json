@@ -3051,7 +3051,14 @@
          "versions" : {
             "6.2.1" : "node-v6.2.1"
          }
-      }
+      },
+      "openssl" : {
+         "latest" : "1.0.2h",
+         "versions" : {
+            "1.0.2h" : "openssl-1.0.2h",
+            "1.0.1e" : "openssl-1.0.1e"
+         }
+      },
    },
    "nodejs" : {
       "less" : {
