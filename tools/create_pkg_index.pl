@@ -39,7 +39,7 @@ while ( my $category = $category_iter->() ) {
             $dist->children(qr/\.toml$/);
 
         my ($latest_version)
-            = sort { version->parse($a) <=> version->parse($b) } @versions;
+            = sort { version->parse($b) <=> version->parse($a) } @versions;
 
         $index->{$category_name}{ $dist->basename } = {
             latest => $latest_version,
