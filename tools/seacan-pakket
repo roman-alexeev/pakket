@@ -3,20 +3,39 @@
 use v5.14;
 use warnings;
 
+use English '-no_match_vars';
 use Cwd;
 use File::Spec;
 use File::Temp;
 use Getopt::Long;
 use App::Seacan;
 
+sub print_help {
+    my $error = shift;
+
+    $error and print "[ERROR] $error\n\n";
+
+    print << "_END_HELP";
+$PROGRAM_NAME [--perl PERL_VER] --app-dir DIR
+
+Options:
+
+--perl        Perl version (default: "5.18.2")
+--app-dir     Application directory
+_END_HELP
+}
+
 Getopt::Long::GetOptions(
     "perl=s"     => \(my $perl_version = "5.18.2"),
     "app-dir=s"  => \my $app_dir,
+    'help=s'     => \my $help,
 );
 
-unless(-d $app_dir) {
-    die "--app-dir must point to a directory";
-}
+$help and print_help();
+
+$app_dir or print_help('Must provide --app-dir');
+
+-d $app_dir or die "--app-dir must point to a directory";
 
 chomp(my $cores = `nproc` || 1);
 if($cores > 1) {
