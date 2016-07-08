@@ -38,8 +38,14 @@ while ( my $category = $category_iter->() ) {
         my @versions = map s{.+/([^/]+)\.toml$}{$1}r,
             $dist->children(qr/\.toml$/);
 
-        my ($latest_version)
-            = sort { version->parse($b) <=> version->parse($a) } @versions;
+        my $latest_version;
+        if ( $category_name eq 'perl' ) {
+            ($latest_version)
+                = sort { version->parse($b) <=> version->parse($a) }
+                @versions;
+        } else {
+            ($latest_version) = sort { $b cmp $a } @versions;
+        }
 
         $index->{$category_name}{ $dist->basename } = {
             latest => $latest_version,
