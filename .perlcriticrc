@@ -202,7 +202,7 @@ exempt_scripts = 1
 [-Modules::RequireVersionVar]
 
 # Very interesting... Each project should pick this on its own
-[NamingConventions::Capitalization]
+[-NamingConventions::Capitalization]
 
 [-NamingConventions::ProhibitAmbiguousNames]
 # forbid = abstract bases close contract last left no record right second set
