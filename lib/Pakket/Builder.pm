@@ -103,7 +103,7 @@ sub DEMOLISH {
     my $build_dir = $self->build_dir;
 
     if ( ! $self->keep_build_dir ) {
-        log_info { "Removing build dir $build_dir" }
+        log_info sub { "Removing build dir $build_dir" };
 
         # "safe" is false because it might hit files which it does not have
         # proper permissions to delete (example: ZMQ::Constants.3pm)
@@ -115,7 +115,7 @@ sub DEMOLISH {
 sub _setup_build_dir {
     my $self = shift;
 
-    log_debug { 'Creating build dir ' . $self->build_dir };
+    log_debug sub { 'Creating build dir ' . $self->build_dir };
     my $prefix_dir = path( $self->build_dir, 'main' );
 
     -d $prefix_dir or $prefix_dir->mkpath;
@@ -138,20 +138,20 @@ sub run_build {
     $full_package_name eq 'perl/perl_mlb' and return;
 
     if ( $self->is_built->{$full_package_name}++ ) {
-        log_debug {
-            "We already built or building $full_package_name, skipping..."
+        log_debug sub {
+            "We already built or building $full_package_name, skipping...";
         };
         return;
     }
 
-    log_notice { "Working on $full_package_name" };
+    log_notice sub { "Working on $full_package_name" };
 
     $package_args ||= {};
     my $package_version = $package_args->{'version'}
         // $self->get_latest_version( $category, $package_name );
 
     $package_version
-        or exit log_critical { $_[0] }
+        or exit log_critical sub { $_[0] },
         "Could not find a version number for $full_package_name";
 
     # FIXME: this is a hack
@@ -162,7 +162,7 @@ sub run_build {
             "$package_name-$package_version.pkt" );
 
     if ( $existing_pkg_file->exists ) {
-        log_debug {"$full_package_name already packaged, unpacking..."};
+        log_debug(sub {"$full_package_name already packaged, unpacking..."} );
 
         my $main_build_dir = path( $self->build_dir, 'main' );
         my $cur            = Path::Tiny->cwd;
@@ -189,7 +189,7 @@ sub run_build {
         "$package_version.toml" );
 
     -r $config_file
-        or exit log_critical { $_[0] }
+        or exit log_critical sub { $_[0] },
                 "Could not find package information ($config_file)";
 
     my $config_reader = Pakket::ConfigReader->new(
@@ -201,19 +201,19 @@ sub run_build {
 
     # double check we have the right package configuration
     my $config_name = $config->{'Package'}{'name'}
-        or exit log_critical { $_[0] }
+        or exit log_critical sub { $_[0] },
                 q{Package config must provide 'name'};
 
     my $config_category = $config->{'Package'}{'category'}
-        or exit log_critical { $_[0] }
+        or exit log_critical sub { $_[0] },
                 q{Package config must provide 'category'};
 
     $config_name eq $package_name
-        or exit log_critical { $_[0] }
+        or exit log_critical sub { $_[0] },
                 "Mismatch package names ($package_name / $config_name)";
 
     $config_category eq $category
-        or exit log_critical { $_[0] }
+        or exit log_critical sub { $_[0] },
                 "Mismatch package categories "
               . "($category / $config_category)";
 
@@ -236,9 +236,9 @@ sub run_build {
         $self->index->{$category}{$package_name}{'versions'}{$package_version},
     );
 
-    log_info { 'Copying package files' };
+    log_info sub { 'Copying package files' };
     -d $package_src_dir
-        or exit log_critical { $_[0] }
+        or exit log_critical sub { $_[0] },
                 "Cannot find source dir: $package_src_dir";
 
     my $top_build_dir = $self->build_dir;
@@ -248,7 +248,7 @@ sub run_build {
     #        subroutines as "default opts" to add their own stuff to
     #        and add LD_LIBRARY_PATH and PATH to this as well
     my $pkgconfig_path = path( $top_build_dir, qw<main lib pkgconfig> );
-    log_info { "Setting PKG_CONFIG_PATH=$pkgconfig_path" };
+    log_info sub { "Setting PKG_CONFIG_PATH=$pkgconfig_path" };
     local $ENV{'PKG_CONFIG_PATH'} = $pkgconfig_path;
 
     my $main_build_dir = path( $top_build_dir, 'main' );
@@ -307,7 +307,7 @@ sub run_build {
             $main_build_dir,  #
         );
     } else {
-        exit log_critical { $_[0] }
+        exit log_critical sub { $_[0] },
              "Unrecognized category ($config_category), cannot build this.";
     }
 
@@ -316,7 +316,7 @@ sub run_build {
     my $package_files
         = $self->scan_dir( $category, $package_name, $main_build_dir );
 
-    log_info { "Bundling $full_package_name" };
+    log_info sub { "Bundling $full_package_name" };
     $self->bundler->bundle(
         $main_build_dir->absolute,
         {
@@ -332,7 +332,7 @@ sub run_build {
 sub scan_dir {
     my ( $self, $category, $package_name, $main_build_dir ) = @_;
 
-    log_debug { 'Scanning directory.' };
+    log_debug sub { 'Scanning directory.' };
     # XXX: this is just a bit of a smarter && dumber rsync(1):
     # rsync -qaz BUILD/main/ output_dir/
     # the reason is that we need the diff.
@@ -345,7 +345,7 @@ sub scan_dir {
     );
 
     keys %{$package_files}
-        or exit log_critical { $_[0] }
+        or exit log_critical sub { $_[0] },
                 'This is odd. Build did not generate new files. '
               . 'Cannot package. Stopping.';
 
@@ -380,7 +380,7 @@ sub scan_directory {
         # save the symlink path in order to symlink them
         if ( -l $node ) {
             path( $state->{ $node->absolute } = readlink $node )->is_absolute
-                and exit log_critical { $_[0] }
+                and exit log_critical sub { $_[0] },
                          'Error. '
                        . "Absolute path symlinks aren't supported.";
         } else {
@@ -403,7 +403,7 @@ sub _diff_nodes_list {
         $new_nodes,
         added   => sub { $nodes_diff{ $_[0] } = $_[1] },
         deleted => sub {
-            exit log_critical { $_[0] }
+            exit log_critical sub { $_[0] },
                  "Last build deleted previously existing file: $_[0]";
         },
     );
@@ -414,7 +414,7 @@ sub _diff_nodes_list {
 sub build_package {
     my ( $self, $package, $build_dir, $prefix, $configure_flags ) = @_;
 
-    log_info { "Building $package" };
+    log_info sub { "Building $package" };
 
     my $my_library_path = $prefix->absolute->stringify;
     if ( defined( my $env_library_path = $ENV{'LD_LIBRARY_PATH'} ) ) {
@@ -452,13 +452,13 @@ sub build_package {
 
     $self->run_command( $build_dir, ['make', 'install'], $opts );
 
-    log_info { "Done preparing $package" };
+    log_info sub { "Done preparing $package" };
 }
 
 sub build_perl_package {
     my ( $self, $package, $build_dir, $prefix ) = @_;
 
-    log_info { "Building Perl module: $package" };
+    log_info sub { "Building Perl module: $package" };
 
     my @perl5lib = do {
         my @dirs = split /:/ms, $ENV{'PERL5LIB'} // '';
@@ -520,13 +520,13 @@ sub build_perl_package {
 
     chdir $original_dir;
 
-    log_info { "Done preparing $package" };
+    log_info sub { "Done preparing $package" };
 }
 
 sub build_nodejs_package {
     my ( $self, $package, $build_dir, $prefix ) = @_;
 
-    log_info { "Building NodeJS module: $package" };
+    log_info sub { "Building NodeJS module: $package" };
 
     my $opts = {
         env => {
@@ -550,7 +550,7 @@ sub build_nodejs_package {
 
     chdir $original_dir;
 
-    log_info { "Done preparing $package" };
+    log_info sub { "Done preparing $package" };
 }
 
 sub get_configure_flags {
@@ -562,7 +562,8 @@ sub get_configure_flags {
     for my $tuple (@$config) {
         if ( @$tuple > 2 ) {
             local $Data::Dumper::Terse = 1;
-            exit log_critical { "Odd configuration flag: " . Dumper($tuple) };
+            exit log_critical
+                sub { "Odd configuration flag: " . Dumper($tuple) };
         }
 
         push( @flags, join( '=', @$tuple ) );
