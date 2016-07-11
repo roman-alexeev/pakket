@@ -439,12 +439,15 @@ sub build_package {
     } elsif ( -x path( $build_dir, "config" ) ) {
         $configurator = "./config";
     } else {
-        exit log_critical {"Don't know how to configure $package"};
+        exit log_critical sub {"Don't know how to configure $package"};
     }
 
     $self->run_command(
         $build_dir,
-        [ $configurator, '--prefix=' . $prefix->absolute, @$configure_flags, ],
+        [
+            $configurator, '--prefix=' . $prefix->absolute,
+            @{$configure_flags},
+        ],
         $opts,
     );
 
@@ -556,17 +559,17 @@ sub build_nodejs_package {
 sub get_configure_flags {
     my ( $self, $config, $expand_env ) = @_;
 
-    return [] unless $config;
+    $config or return [];
 
     my @flags;
-    for my $tuple (@$config) {
-        if ( @$tuple > 2 ) {
+    for my $tuple (@{$config}) {
+        if ( @{$tuple} > 2 ) {
             local $Data::Dumper::Terse = 1;
             exit log_critical
                 sub { "Odd configuration flag: " . Dumper($tuple) };
         }
 
-        push( @flags, join( '=', @$tuple ) );
+        push @flags, join '=', @{$tuple};
     }
 
     $self->_expand_flags_inplace( \@flags, $expand_env );
@@ -577,10 +580,10 @@ sub get_configure_flags {
 sub _expand_flags_inplace {
     my ( $self, $flags, $env ) = @_;
 
-    for my $flag (@$flags) {
-        for my $key ( keys(%$env) ) {
+    for my $flag (@{$flags}) {
+        for my $key ( keys(%{$env}) ) {
             my $placeholder = "%" . uc($key) . "%";
-            $flag =~ s/$placeholder/$env->{$key}/g;
+            $flag =~ s/$placeholder/$env->{$key}/gsm;
         }
     }
 }
