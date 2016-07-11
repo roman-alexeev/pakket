@@ -3,7 +3,7 @@ package Pakket::CLI::Command::build;
 
 use strict;
 use warnings;
-use Pakket::CLI -'command'; ## no critic (ValuesAndExpressions::ProhibitMismatchedOperators)
+use Pakket::CLI '-command';
 use Pakket::Builder;
 use Pakket::Log;
 use Path::Tiny      qw< path >;

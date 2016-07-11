@@ -5,7 +5,7 @@ package Pakket::CLI::Command::init;
 use strict;
 use warnings;
 use English '-no_match_vars';
-use Pakket::CLI -'command'; ## no critic (ValuesAndExpressions::ProhibitMismatchedOperators)
+use Pakket::CLI '-command';
 use Pakket::Log;
 use Pakket::Utils qw< is_writeable >;
 use Log::Contextual qw< set_logger >;
