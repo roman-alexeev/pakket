@@ -3,7 +3,7 @@ package Pakket::CLI::Command::install;
 
 use strict;
 use warnings;
-use Pakket::CLI -'command'; ## no critic (ValuesAndExpressions::ProhibitMismatchedOperators)
+use Pakket::CLI '-command';
 use Pakket::Installer;
 use Pakket::Log;
 use Log::Contextual qw< set_logger >;
