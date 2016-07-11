@@ -214,7 +214,7 @@ sub run_build {
 
     $config_category eq $category
         or exit log_critical sub { $_[0] },
-                "Mismatch package categories "
+                'Mismatch package categories '
               . "($category / $config_category)";
 
     # recursively build prereqs
@@ -434,10 +434,10 @@ sub build_package {
     };
 
     my $configurator;
-    if ( -x path( $build_dir, "configure" ) ) {
-        $configurator = "./configure";
-    } elsif ( -x path( $build_dir, "config" ) ) {
-        $configurator = "./config";
+    if ( -x path( $build_dir, 'configure' ) ) {
+        $configurator = './configure';
+    } elsif ( -x path( $build_dir, 'config' ) ) {
+        $configurator = './config';
     } else {
         exit log_critical sub {"Don't know how to configure $package"};
     }
@@ -507,13 +507,13 @@ sub build_perl_package {
         && !exists $should_use_mm{$package} )
     {
         $self->run_command( $build_dir,
-            [ "perl", 'Build.PL', '--install_base', $install_base ], $opts, );
+            [ 'perl', 'Build.PL', '--install_base', $install_base ], $opts, );
 
         $self->run_command( $build_dir, ['./Build'], $opts );
         $self->run_command( $build_dir, [ './Build', 'install' ], $opts );
     } elsif ( $build_dir->child('Makefile.PL')->exists ) {
         $self->run_command( $build_dir,
-            [ "perl", 'Makefile.PL', "INSTALL_BASE=$install_base" ], $opts, );
+            [ 'perl', 'Makefile.PL', "INSTALL_BASE=$install_base" ], $opts, );
 
         $self->run_command( $build_dir, ['make'], $opts );
         $self->run_command( $build_dir, [ 'make', 'install' ], $opts );
@@ -546,7 +546,8 @@ sub build_nodejs_package {
 
     my $source = $build_dir;
     if ( $ENV{'NODE_NPM_REGISTRY'} ) {
-        $self->run_command( $build_dir, [ q<npm set registry $ENV{'NODE_NPM_REGISTRY'}>], $opts );
+        $self->run_command( $build_dir,
+            [q<npm set registry $ENV{'NODE_NPM_REGISTRY'}>], $opts );
         $source = $package;
     }
     $self->run_command( $build_dir, [ qw< npm install -g >, $source  ], $opts );
@@ -566,7 +567,7 @@ sub get_configure_flags {
         if ( @{$tuple} > 2 ) {
             local $Data::Dumper::Terse = 1;
             exit log_critical
-                sub { "Odd configuration flag: " . Dumper($tuple) };
+                sub { 'Odd configuration flag: ' . Dumper($tuple) };
         }
 
         push @flags, join '=', @{$tuple};
@@ -581,8 +582,8 @@ sub _expand_flags_inplace {
     my ( $self, $flags, $env ) = @_;
 
     for my $flag (@{$flags}) {
-        for my $key ( keys(%{$env}) ) {
-            my $placeholder = "%" . uc($key) . "%";
+        for my $key ( keys %{$env} ) {
+            my $placeholder = '%' . uc($key) . '%';
             $flag =~ s/$placeholder/$env->{$key}/gsm;
         }
     }
