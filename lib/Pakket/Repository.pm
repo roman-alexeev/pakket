@@ -29,6 +29,7 @@ has _possible_paths => (
 has repo_dir => (
     is      => 'ro',
     isa     => Path,
+    coerce  => 1,
     builder => '_build_repo_dir',
     coerce  => 1,
 );

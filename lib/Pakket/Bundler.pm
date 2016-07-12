@@ -15,6 +15,7 @@ use constant {
 has bundle_dir => (
     is      => 'ro',
     isa     => AbsPath,
+    coerce  => 1,
     default => sub { path('output')->absolute },
 );
 
