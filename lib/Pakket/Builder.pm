@@ -25,12 +25,14 @@ with 'Pakket::Role::RunCommand';
 has config_dir => (
     is      => 'ro',
     isa     => Path,
+    coerce  => 1,
     default => sub { Path::Tiny->cwd },
 );
 
 has source_dir => (
     is      => 'ro',
     isa     => Path,
+    coerce  => 1,
     default => sub { Path::Tiny->cwd },
 );
 
