@@ -20,3 +20,6 @@ requires 'System::Command';
 requires 'TOML';
 requires 'TOML::Parser';
 requires 'Types::Path::Tiny';
+
+requires 'Hijk';
+requires 'Module::CPANfile';
