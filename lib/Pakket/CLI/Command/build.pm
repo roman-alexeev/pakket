@@ -8,6 +8,7 @@ use Pakket::Builder;
 use Pakket::Log;
 use Path::Tiny      qw< path >;
 use Log::Any::Adapter;
+use JSON::MaybeXS qw< decode_json >;
 
 use constant {
     INDEX_CATEGORY     => 0,
@@ -32,6 +33,7 @@ sub opt_spec {
     return (
         [ 'index-file=s',   'path to pkg_index.json'                          ],
         [ 'input-file=s',   'build stuff from this file'                      ],
+        [ 'input-json=s',   'build stuff from this json file'                 ],
         [ 'build-dir=s',    'use an existing build directory'                 ],
         [ 'keep-build-dir', 'do not delete the build directory'               ],
         [ 'config-dir=s',   'directory holding the configurations'            ],
@@ -55,6 +57,21 @@ sub validate_args {
             or $self->usage_error("Bad file: $path");
 
         push @packages, $path->lines_utf8( { chomp => 1 } );
+    } elsif ( my $json_file = $opt->{'input_json'} ) {
+        my $path = path($json_file);
+        $path->exists && $path->is_file
+            or $self->usage_error("Bad file: $path");
+
+        my $json = decode_json( $path->slurp_utf8 );
+
+        for my $cat ( keys %{ $json } ) {
+            for my $package ( keys %{ $json->{$cat} } ) {
+                for my $ver ( keys %{ $json->{$cat}{$package}{versions} } ) {
+                    push @packages => $cat . '/' . $package . '/' . $ver;
+                }
+            }
+        }
+
     } elsif ( @{$args} ) {
         @packages = @{$args};
     } else {
