@@ -172,6 +172,22 @@ sub get_dist_name {
     return $dist_name;
 }
 
+sub _get_latest_release_info {
+    my $dist_name = shift;
+
+    my $res = $http->get("https://fastapi.metacpan.org/v1/release/$dist_name");
+    return unless $res->{status} == 200; # falling back to check all
+
+    my $res_body= decode_json $res->{content};
+
+    return +{
+        distribution => $dist_name,
+        version      => $res_body->{version},
+        download_url => $res_body->{download_url},
+        prereqs      => $res_body->{metadata}{prereqs},
+    };
+}
+
 sub get_release_info {
     my ( $type, $name, $requirements ) = @_;
 
@@ -182,7 +198,15 @@ sub get_release_info {
     return +{ skip => 1 } if $dist_name eq 'perl';
     return +{ skip => 1 } if $dist_name eq 'perl_mlb';
 
-    # fetch all release versions for this distribution
+    # first try the latest (temp. v1 only)
+
+    my $latest = _get_latest_release_info( $dist_name );
+    return $latest
+        if defined $latest->{version}
+           and defined $latest->{download_url}
+           and $requirements->accepts_module($name => $latest->{version});
+
+    # else: fetch all release versions for this distribution
 
     my $release_prereqs;
     my $version;
