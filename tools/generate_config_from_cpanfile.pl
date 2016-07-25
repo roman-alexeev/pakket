@@ -25,8 +25,9 @@ my %known_incorrect_version_fixes = (
     'ExtUtils-Constant'           => '0.23',
     'IO-Capture'                  => '0.05',
 );
-my %known_module_names_to_skip =  (
+my %known_names_to_skip =  (
     'perl'                        => 1,
+    'perl_mlb'                    => 1,
     'Text::MultiMarkdown::XS'     => 1, # ADPOTME
 );
 
@@ -105,7 +106,7 @@ sub spaces {
 
 sub create_config_for {
     my ( $type, $name, $requirements ) = @_;
-    return if exists $known_module_names_to_skip{$name};
+    return if exists $known_names_to_skip{$name};
 
     if ( $processed_dists{$name}++ ) {
         #spaces();
@@ -171,7 +172,7 @@ sub create_config_for {
             my $level_prereqs = $release_prereqs->{$prereq_type}{$prereq_level};
 
             for my $module ( keys %{ $level_prereqs } ) {
-                next if exists $known_module_names_to_skip{$module};
+                next if exists $known_names_to_skip{$module};
                 my $rel = get_release_info( module => $module, $requirements );
                 next if exists $rel->{skip};
                 $prereq_data->{ $rel->{distribution} } = +{ version => $rel->{version} };
@@ -234,8 +235,7 @@ sub get_release_info {
         ? get_dist_name($name)
         : $name;
 
-    return +{ skip => 1 } if $dist_name eq 'perl';
-    return +{ skip => 1 } if $dist_name eq 'perl_mlb';
+    return +{ skip => 1 } if exists $known_names_to_skip{$dist_name};
 
     # first try the latest (temp. v1 only)
 
