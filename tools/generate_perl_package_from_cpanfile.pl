@@ -2,19 +2,23 @@
 use strict;
 use warnings;
 use version;
+
 use TOML qw< to_toml >;
-use Getopt::Long qw< :config no_ignore_case >;
+use Getopt::Long::Descriptive;
 use Path::Tiny qw< path >;
 use Module::CPANfile;
 use JSON::MaybeXS qw< decode_json encode_json >;
 use HTTP::Tiny;
+use Archive::Any;
+
+use Pakket::Utils qw< generate_json_conf >;
 
 $|++;
 
-# TODO: fix some annoying issues ####################################################
+# TODO: fix some annoying issues ###############################################
 my %known_incorrect_name_fixes = (
     'App::Fatpacker'              => 'App::FatPacker',
-    'Test::YAML::Meta::Version'   => 'Test::YAML::Meta', # not sure about this one
+    'Test::YAML::Meta::Version'   => 'Test::YAML::Meta', # not sure about this
     'Net::Server::SS::Prefork'    => 'Net::Server::SS::PreFork',
 );
 my %known_incorrect_version_fixes = (
@@ -26,7 +30,8 @@ my %known_module_names_to_skip =  (
     'Text::MultiMarkdown::XS'     => 1, # ADPOTME
 );
 
-#####################################################################################
+################################################################################
+################################################################################
 
 sub help {
     my $msg = shift;
@@ -42,16 +47,28 @@ $0 --cpanfile FILE
     cpanfile    provide a cpanfile to read modules from
     config-dir  directory to write the configuration to (TOML file)
     source-dir  directory to write the sources to (downloads if provided)
+    json-file   file to generate json configuration to
+    extract     extract downloaded source tarball (default=0)
 
 _END_HELP
 
     exit;
 }
 
-GetOptions( \my %opts, 'help|h', 'cpanfile=s', 'config-dir=s', 'source-dir=s' )
-    or exit;
+my ( $opt, $usage ) = describe_options(
+    "$0 %o",
+    [ 'cpanfile=s',   'cpanfile to parse', { required => 1 } ],
+    [ 'config-dir=s', 'directory to write the configuration to (TOML files)', { required => 1 } ],
+    [ 'source-dir=s', 'directory to write the sources to (downloads if provided)', {} ],
+    [ 'json-file=s',  'file to generate json configuration to', {} ],
+    [ 'extract',      'extract downloaded source tarball', { default => 0 } ],
+    [],
+    [ 'help', 'Usage' ],
+);
 
-$opts{'cpanfile'} or help('Must provide "cpanfile"');
+$opt->help
+    and print $usage->text
+    and exit;
 
 my %processed_dists;
 my $step = 0;
@@ -59,9 +76,9 @@ my $http = HTTP::Tiny->new();
 my $metacpan_api_v1 = "https://fastapi.metacpan.org";
 my $metacpan_api_v0 = "https://api.metacpan.org"; # temp. workaround
 
-my $source_dir = $opts{'source-dir'} ? path( $opts{'source-dir'} ) : undef;
+my $source_dir = $opt->source_dir ? path( $opt->source_dir ) : undef;
 
-my $modules = read_cpanfile( $opts{'cpanfile'} );
+my $modules = read_cpanfile( $opt->cpanfile );
 my $prereqs = CPAN::Meta::Prereqs->new( $modules );
 
 for my $phase ( sort keys %{ $modules } ) {
@@ -72,6 +89,15 @@ for my $phase ( sort keys %{ $modules } ) {
             for sort keys %{ $modules->{$phase}{$type} };
     }
 }
+
+if ( $opt->json_file ) {
+    generate_json_conf( $opt->json_file, $opt->config_dir );
+}
+
+1;
+
+################################################################################
+
 
 sub spaces {
     print ' ' x ( $step * 2 );
@@ -98,7 +124,7 @@ sub create_config_for {
     my $download_url = $release->{'download_url'};
     print "-> Working on $dist_name ($rel_version)\n";
 
-    my $conf_file = path( ( $opts{'config-dir'} // '.' ),
+    my $conf_file = path( ( $opt->config_dir // '.' ),
                           'perl', $dist_name, "$rel_version.toml" );
 
     # download source if dir provided and file doesn't already exist
@@ -107,7 +133,12 @@ sub create_config_for {
             my $source_file = path( $source_dir, ( $download_url =~ s{^.+/}{}r ) );
             if ( !$source_file->exists ) {
                 $source_file->parent->mkpath;
-                $http->mirror( $download_url, $source_dir->parent . '/' . $source_file );
+                $http->mirror( $download_url, $source_file );
+            }
+            if ( $opt->extract ) {
+                my $archive = Archive::Any->new( $source_file );
+                $archive->extract( $source_dir );
+                $source_file->remove;
             }
         }
         else {
