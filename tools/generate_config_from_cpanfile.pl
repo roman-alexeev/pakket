@@ -86,7 +86,7 @@ for my $phase ( sort keys %{ $modules } ) {
     print "phase: $phase\n";
     for my $type ( sort keys %{ $modules->{$phase} } ) {
         my $requirements = $prereqs->requirements_for( $phase, $type );
-        create_config_for( module => $_, $requirements )
+        create_config_for( module => $_, $phase, $requirements )
             for sort keys %{ $modules->{$phase}{$type} };
     }
 }
@@ -105,7 +105,7 @@ sub spaces {
 }
 
 sub create_config_for {
-    my ( $type, $name, $requirements ) = @_;
+    my ( $type, $name, $phase, $requirements ) = @_;
     return if exists $known_names_to_skip{$name};
 
     if ( $processed_dists{$name}++ ) {
@@ -161,27 +161,29 @@ sub create_config_for {
         },
     };
 
-    my $release_prereqs = $release->{'prereqs'};
+    my $dep_modules = $release->{'prereqs'};
+    my $dep_prereqs = CPAN::Meta::Prereqs->new( $dep_modules );
 
     # options: configure, develop, runtime, test
-    # we don't use "develop" - those are tools like dzil
-    for my $prereq_type (qw< configure runtime test >) {
-        my $prereq_data = $package->{'Prereqs'}{'perl'}{$prereq_type} = +{};
+    for my $dep_type ( sort keys %{ $dep_modules->{$phase} } ) {
+        next if $dep_type eq 'develop'; # we don't use "develop" - those are tools like dzil
 
-        for my $prereq_level (qw<requires recommends suggests>) {
-            my $level_prereqs = $release_prereqs->{$prereq_type}{$prereq_level};
+        my $prereq_data = $package->{'Prereqs'}{'perl'}{$dep_type} = +{};
 
-            for my $module ( keys %{ $level_prereqs } ) {
-                next if exists $known_names_to_skip{$module};
-                my $rel = get_release_info( module => $module, $requirements );
-                next if exists $rel->{skip};
-                $prereq_data->{ $rel->{distribution} } = +{ version => $rel->{version} };
-            }
+        my $dep_requirements = $dep_prereqs->requirements_for( $phase, $dep_type );
+
+        for my $module ( keys %{ $dep_modules->{$phase}{$dep_type} } ) {
+            next if exists $known_names_to_skip{$module};
+
+            my $rel = get_release_info( module => $module, $dep_requirements );
+            next if exists $rel->{skip};
+
+            $prereq_data->{ $rel->{distribution} } = +{ version => $rel->{version} };
         }
 
         # recurse through those as well
-        for ( keys %{ $package->{'Prereqs'}{'perl'}{$prereq_type} } ) {
-            create_config_for( dist => $_, $requirements );
+        for ( keys %{ $package->{'Prereqs'}{'perl'}{$dep_type} } ) {
+            create_config_for( dist => $_, $phase, $dep_requirements );
         }
     }
 
