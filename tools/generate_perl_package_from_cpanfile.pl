@@ -11,6 +11,23 @@ use HTTP::Tiny;
 
 $|++;
 
+# TODO: fix some annoying issues ####################################################
+my %known_incorrect_name_fixes = (
+    'App::Fatpacker'              => 'App::FatPacker',
+    'Test::YAML::Meta::Version'   => 'Test::YAML::Meta', # not sure about this one
+    'Net::Server::SS::Prefork'    => 'Net::Server::SS::PreFork',
+);
+my %known_incorrect_version_fixes = (
+    'ExtUtils-Constant'           => '0.23',
+    'IO-Capture'                  => '0.05',
+);
+my %known_module_names_to_skip =  (
+    'perl'                        => 1,
+    'Text::MultiMarkdown::XS'     => 1, # ADPOTME
+);
+
+#####################################################################################
+
 sub help {
     my $msg = shift;
 
@@ -62,7 +79,7 @@ sub spaces {
 
 sub create_config_for {
     my ( $type, $name, $requirements ) = @_;
-    return if $name eq 'Text::MultiMarkdown::XS'; # temp. unauthorized (ADOPTME)
+    return if exists $known_module_names_to_skip{$name};
 
     if ( $processed_dists{$name}++ ) {
         #spaces();
@@ -123,8 +140,7 @@ sub create_config_for {
             my $level_prereqs = $release_prereqs->{$prereq_type}{$prereq_level};
 
             for my $module ( keys %{ $level_prereqs } ) {
-                next if $module eq 'perl'; # temp.
-                next if $module eq 'Text::MultiMarkdown::XS'; # temp.
+                next if exists $known_module_names_to_skip{$module};
                 my $rel = get_release_info( module => $module, $requirements );
                 next if exists $rel->{skip};
                 $prereq_data->{ $rel->{distribution} } = +{ version => $rel->{version} };
@@ -145,16 +161,8 @@ sub create_config_for {
 
 sub get_dist_name {
     my $module_name = shift;
-
-    # fix some annoying bugs
-    my %known_incorrect_names = (
-        'App::Fatpacker'            => 'App::FatPacker',
-        'Test::YAML::Meta::Version' => 'Test::YAML::Meta', # not sure about this one
-        'Net::Server::SS::Prefork'  => 'Net::Server::SS::PreFork',
-    );
-    if ( exists $known_incorrect_names{$module_name} ) {
-        $module_name = $known_incorrect_names{$module_name};
-    }
+    $module_name = $known_incorrect_name_fixes{$module_name}
+        if exists $known_incorrect_name_fixes{$module_name};
 
     my $dist_name;
     eval {
@@ -250,9 +258,8 @@ sub get_release_info {
     }
     $version or die "Cannot match release for $dist_name\n";
 
-    # Temp. fix: wrong version in META.yml
-    $version = '0.23' if $dist_name eq 'ExtUtils-Constant';
-    $version = '0.05' if $dist_name eq 'IO-Capture';
+    $version = $known_incorrect_version_fixes{$dist_name}
+        if exists $known_incorrect_version_fixes{$dist_name};
 
     return +{
         distribution => $dist_name,
