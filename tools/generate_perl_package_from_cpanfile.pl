@@ -250,6 +250,10 @@ sub get_release_info {
     }
     $version or die "Cannot match release for $dist_name\n";
 
+    # Temp. fix: wrong version in META.yml
+    $version = '0.23' if $dist_name eq 'ExtUtils-Constant';
+    $version = '0.05' if $dist_name eq 'IO-Capture';
+
     return +{
         distribution => $dist_name,
         version      => $version,
