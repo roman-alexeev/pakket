@@ -1,5 +1,6 @@
 requires 'Algorithm::Diff::Callback';
 requires 'App::Cmd';
+requires 'Archive::Any';
 requires 'File::Basename';
 requires 'File::Copy::Recursive';
 requires 'File::Find';
@@ -11,6 +12,7 @@ requires 'Log::Any', '>= 0.05';
 requires 'Log::Any::Adapter::Dispatch', '>= 0.06';
 requires 'Log::Dispatch';
 requires 'MetaCPAN::Client';
+requires 'Module::CPANfile';
 requires 'Module::Runtime';
 requires 'Moose';
 requires 'MooseX::StrictConstructor';
@@ -20,6 +22,3 @@ requires 'System::Command';
 requires 'TOML';
 requires 'TOML::Parser';
 requires 'Types::Path::Tiny';
-
-requires 'Hijk';
-requires 'Module::CPANfile';
