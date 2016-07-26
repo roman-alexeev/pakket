@@ -95,9 +95,9 @@ sub _build_bundler {
 }
 
 sub build {
-    my ( $self, $category, $package ) = @_;
+    my ( $self, $category, $package, $package_args ) = @_;
     $self->_setup_build_dir;
-    $self->run_build( $category, $package );
+    $self->run_build( $category, $package, $package_args );
 }
 
 sub DEMOLISH {
