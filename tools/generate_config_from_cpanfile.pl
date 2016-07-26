@@ -178,7 +178,9 @@ sub create_config_for {
             my $rel = get_release_info( module => $module, $dep_requirements );
             next if exists $rel->{skip};
 
-            $prereq_data->{ $rel->{distribution} } = +{ version => $rel->{version} };
+            $prereq_data->{ $rel->{distribution} } = +{
+                version => ( $rel->{write_version_as_zero} ? 0 : $rel->{version} )
+            };
         }
 
         # recurse through those as well
@@ -239,9 +241,15 @@ sub get_release_info {
 
     return +{ skip => 1 } if exists $known_names_to_skip{$dist_name};
 
+    my $req_as_hash = $requirements->as_string_hash;
+    my $write_version_as_zero = !!(
+        exists $req_as_hash->{$name} and version->parse($req_as_hash->{$name}) == 0
+    );
+
     # first try the latest (temp. v1 only)
 
     my $latest = _get_latest_release_info( $dist_name );
+    $latest->{write_version_as_zero} = $write_version_as_zero;
     return $latest
         if defined $latest->{version}
            and defined $latest->{download_url}
@@ -295,10 +303,11 @@ sub get_release_info {
         if exists $known_incorrect_version_fixes{$dist_name};
 
     return +{
-        distribution => $dist_name,
-        version      => $version,
-        prereqs      => $release_prereqs,
-        download_url => $download_url,
+        distribution          => $dist_name,
+        version               => $version,
+        prereqs               => $release_prereqs,
+        download_url          => $download_url,
+        write_version_as_zero => $write_version_as_zero,
     };
 }
 
