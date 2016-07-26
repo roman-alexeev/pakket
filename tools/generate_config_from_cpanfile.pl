@@ -243,7 +243,8 @@ sub get_release_info {
 
     my $req_as_hash = $requirements->as_string_hash;
     my $write_version_as_zero = !!(
-        exists $req_as_hash->{$name} and version->parse($req_as_hash->{$name}) == 0
+        defined $req_as_hash->{$name}
+        and version->parse( $req_as_hash->{$name} =~ s/[^0-9.]//gr ) == 0
     );
 
     # first try the latest (temp. v1 only)
