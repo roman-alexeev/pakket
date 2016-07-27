@@ -1,6 +1,7 @@
 requires 'Algorithm::Diff::Callback';
 requires 'App::Cmd';
 requires 'Archive::Any';
+requires 'CPAN::Meta::Requirements', '>= 2.140';
 requires 'File::Basename';
 requires 'File::Copy::Recursive';
 requires 'File::Find';
@@ -22,3 +23,4 @@ requires 'System::Command';
 requires 'TOML';
 requires 'TOML::Parser';
 requires 'Types::Path::Tiny';
+requires 'version', '>= 0.77';
