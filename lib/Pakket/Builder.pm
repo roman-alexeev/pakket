@@ -130,10 +130,19 @@ sub get_latest_satisfying_version {
     my ( $self, $category, $package, $extra ) = @_;
 
     my $provided_req = $extra->{'version'} // 0;
-    $log->debug("Provided: $package $provided_req");
+    my $exact = $extra->{'exact_version'};
+    $log->debugf(
+        "Provided: %s %s%s",
+        $package, $exact ? "==" : "",
+        $provided_req,
+    );
 
     my $solver = CPAN::Meta::Requirements->new;
-    $solver->add_string_requirement( $package, $provided_req );
+    if ($exact) {
+        $solver->exact_version( $package, $provided_req );
+    } else {
+        $solver->add_string_requirement( $package, $provided_req );
+    }
 
     for my $version (
         sort { version->parse($b) <=> version->parse($a) }
