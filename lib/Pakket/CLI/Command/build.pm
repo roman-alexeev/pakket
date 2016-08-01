@@ -141,7 +141,10 @@ sub execute {
             $tuple->[ +INDEX_PACKAGE_NAME ],
 
             defined $tuple->[ +INDEX_PARAMETERS ]
-                ? { version => $tuple->[ +INDEX_PARAMETERS ] }
+                ? {
+                version       => $tuple->[ +INDEX_PARAMETERS ],
+                exact_version => 1,
+                }
                 : (),
         );
     }
