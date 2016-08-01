@@ -580,7 +580,7 @@ sub build_nodejs_package {
     my $source = $build_dir;
     if ( $ENV{'NODE_NPM_REGISTRY'} ) {
         $self->run_command( $build_dir,
-            [q<npm set registry $ENV{'NODE_NPM_REGISTRY'}>], $opts );
+            [ qw< npm set registry >, $ENV{'NODE_NPM_REGISTRY'} ], $opts );
         $source = $package;
     }
     $self->run_command( $build_dir, [ qw< npm install -g >, $source  ], $opts );
