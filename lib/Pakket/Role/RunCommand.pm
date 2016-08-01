@@ -20,7 +20,7 @@ sub run_command {
 
     my $cmd = System::Command->new( @{$sys_cmds}, \%opt );
 
-    $cmd->loop_on(
+    my $success = $cmd->loop_on(
         stdout => sub {
             my $msg = shift;
             chomp $msg;
@@ -35,6 +35,33 @@ sub run_command {
             1;
         },
     );
+
+    $log->debugf(
+        "Command '%s' exited with '%d'",
+        join( ' ', $cmd->cmdline ),
+        $cmd->exit,
+    );
+
+    return $success;
+}
+
+# does more or less the same as `command1 && command2 ... && commandN`
+sub run_command_sequence {
+    my ( $self, @commands ) = @_;
+
+    $log->debugf( 'Starting a sequence of %d commands', 0+@commands );
+
+    for my $idx ( 0 .. $#commands ) {
+        my $success = $self->run_command( @{ $commands[$idx] } );
+        unless ($success) {
+            $log->debug("Sequence terminated on item $idx");
+            return;
+        }
+    }
+
+    $log->debug('Sequence finished');
+
+    return 1;
 }
 
 no Moose::Role;

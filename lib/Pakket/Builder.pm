@@ -444,18 +444,26 @@ sub build_package {
         exit 1;
     }
 
-    $self->run_command(
-        $build_dir,
+    my @seq = (
+
+        # configure
         [
-            $configurator, '--prefix=' . $prefix->absolute,
-            @{$configure_flags},
+            $build_dir,
+            [
+                $configurator, '--prefix=' . $prefix->absolute,
+                @{$configure_flags},
+            ],
+            $opts,
         ],
-        $opts,
+
+        # build
+        [ $build_dir, ['make'], $opts, ],
+
+        # install
+        [ $build_dir, [ 'make', 'install' ], $opts, ],
     );
 
-    $self->run_command( $build_dir, ['make'], $opts );
-
-    $self->run_command( $build_dir, ['make', 'install'], $opts );
+    $self->run_command_sequence(@seq);
 
     $log->info("Done preparing $package");
 }
@@ -505,23 +513,46 @@ sub build_perl_package {
     my %should_use_mm = map +( "perl/$_" => 1 ),
         qw( version ExtUtils-ParseXS ExtUtils-Install ExtUtils-Manifest );
 
+    my @seq;
     if ( $build_dir->child('Build.PL')->exists
         && !exists $should_use_mm{$package} )
     {
-        $self->run_command( $build_dir,
-            [ 'perl', 'Build.PL', '--install_base', $install_base ], $opts, );
+        @seq = (
 
-        $self->run_command( $build_dir, ['./Build'], $opts );
-        $self->run_command( $build_dir, [ './Build', 'install' ], $opts );
+            # configure
+            [
+                $build_dir,
+                [ 'perl', 'Build.PL', '--install_base', $install_base ],
+                $opts,
+            ],
+
+            # build
+            [ $build_dir, ['./Build'], $opts ],
+
+            # install
+            [ $build_dir, [ './Build', 'install' ], $opts ],
+        );
     } elsif ( $build_dir->child('Makefile.PL')->exists ) {
-        $self->run_command( $build_dir,
-            [ 'perl', 'Makefile.PL', "INSTALL_BASE=$install_base" ], $opts, );
+        @seq = (
 
-        $self->run_command( $build_dir, ['make'], $opts );
-        $self->run_command( $build_dir, [ 'make', 'install' ], $opts );
+            # configure
+            [
+                $build_dir,
+                [ 'perl', 'Makefile.PL', "INSTALL_BASE=$install_base" ],
+                $opts,
+            ],
+
+            # build
+            [ $build_dir, ['make'], $opts ],
+
+            # install
+            [ $build_dir, [ 'make', 'install' ], $opts ],
+        );
     } else {
         die "Could not find an installer (Makefile.PL/Build.PL)\n";
     }
+
+    $self->run_command_sequence(@seq);
 
     chdir $original_dir;
 
