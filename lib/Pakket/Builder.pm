@@ -463,7 +463,11 @@ sub build_package {
         [ $build_dir, [ 'make', 'install' ], $opts, ],
     );
 
-    $self->run_command_sequence(@seq);
+    my $success = $self->run_command_sequence(@seq);
+    unless ($success) {
+        $log->critical("Failed to build $package");
+        exit 1;
+    }
 
     $log->info("Done preparing $package");
 }
@@ -552,9 +556,14 @@ sub build_perl_package {
         die "Could not find an installer (Makefile.PL/Build.PL)\n";
     }
 
-    $self->run_command_sequence(@seq);
+    my $success = $self->run_command_sequence(@seq);
 
     chdir $original_dir;
+
+    unless ($success) {
+        $log->critical("Failed to build $package");
+        exit 1;
+    }
 
     $log->info("Done preparing $package");
 }
@@ -583,9 +592,16 @@ sub build_nodejs_package {
             [ qw< npm set registry >, $ENV{'NODE_NPM_REGISTRY'} ], $opts );
         $source = $package;
     }
-    $self->run_command( $build_dir, [ qw< npm install -g >, $source  ], $opts );
+    my $success
+        = $self->run_command( $build_dir, [ qw< npm install -g >, $source ],
+        $opts );
 
     chdir $original_dir;
+
+    unless ($success) {
+        $log->critical("Failed to build $package");
+        exit 1;
+    }
 
     $log->info("Done preparing $package");
 }
