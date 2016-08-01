@@ -137,12 +137,19 @@ sub get_latest_satisfying_version {
         $provided_req,
     );
 
-    my $solver = CPAN::Meta::Requirements->new;
-    if ($exact) {
-        $solver->exact_version( $package, $provided_req );
-    } else {
-        $solver->add_string_requirement( $package, $provided_req );
-    }
+    my $solver;
+    eval {
+        $solver = CPAN::Meta::Requirements->new;
+        if ($exact) {
+            $solver->exact_version( $package, $provided_req );
+        } else {
+            $solver->add_string_requirement( $package, $provided_req );
+        }
+        1;
+    } or do {
+        $log->error("Couldn't add version requirement: $@");
+        return;
+    };
 
     for my $version (
         sort { version->parse($b) <=> version->parse($a) }
