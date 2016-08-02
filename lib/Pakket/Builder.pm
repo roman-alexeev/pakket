@@ -477,12 +477,7 @@ sub build_perl_package {
 
     $log->info("Building Perl module: $package");
 
-    my @perl5lib = do {
-        my @dirs = split /:/ms, $ENV{'PERL5LIB'} // '';
-        unshift( @dirs, path( $prefix, qw<lib perl5> )->absolute->stringify );
-        my %seen;
-        grep !$seen{$_}++, @dirs;
-    };
+    my @perl5lib = ( path( $prefix, qw<lib perl5> )->absolute->stringify );
 
     my $my_library_path = $prefix->absolute->stringify;
     if ( defined( my $env_library_path = $ENV{'LD_LIBRARY_PATH'} ) ) {
