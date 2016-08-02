@@ -1,6 +1,8 @@
 package Pakket::Builder;
 # ABSTRACT: Build pakket packages
 
+use version 0.77;
+
 use Moose;
 use JSON::MaybeXS             qw< decode_json >;
 use Path::Tiny                qw< path        >;
@@ -11,6 +13,7 @@ use Algorithm::Diff::Callback qw< diff_hashes >;
 use Types::Path::Tiny         qw< Path >;
 use TOML::Parser;
 use Log::Any qw< $log >;
+use CPAN::Meta::Requirements;
 
 use Pakket::Log;
 use Pakket::Bundler;
@@ -123,9 +126,28 @@ sub _setup_build_dir {
     -d $prefix_dir or $prefix_dir->mkpath;
 }
 
-sub get_latest_version {
-    my ( $self, $category, $package ) = @_;
-    return $self->index->{$category}{$package}{'latest'};
+sub get_latest_satisfying_version {
+    my ( $self, $category, $package, $extra ) = @_;
+
+    my $provided_req = $extra->{'version'} // 0;
+    $log->debug("Provided: $package $provided_req");
+
+    my $solver = CPAN::Meta::Requirements->new;
+    $solver->add_string_requirement( $package, $provided_req );
+
+    for my $version (
+        sort { version->parse($b) <=> version->parse($a) }
+        keys %{ $self->index->{$category}{$package}{'versions'} }
+        )
+    {
+        if ( $solver->accepts_module( $package, $version ) ) {
+            $log->debug("Chosen: $package $version");
+
+            return $version;
+        }
+    }
+
+    return;
 }
 
 sub run_build {
@@ -147,9 +169,11 @@ sub run_build {
 
     $log->notice("Working on $full_package_name");
 
-    $package_args ||= {};
-    my $package_version = $package_args->{'version'}
-        // $self->get_latest_version( $category, $package_name );
+    $package_args //= {};
+
+    my $package_version
+        = $self->get_latest_satisfying_version( $category, $package_name,
+        $package_args );
 
     $package_version
         or $log->critical(
