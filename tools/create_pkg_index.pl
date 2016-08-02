@@ -7,11 +7,12 @@ use Path::Tiny;
 use Getopt::Long::Descriptive;
 use version;
 
+use Pakket::Utils qw< generate_json_conf >;
+
 my ( $opt, $usage ) = describe_options(
     "$0 %o",
-    [ 'config-dir=s', 'Configuration directory', { required => 1 } ],
-    [ 'sources-dir=s', 'Sources directory', { default => 'sources/' } ],
-    [ 'output-file=s', 'Output file',       { default => 'pkg_index.json' } ],
+    [ 'config-dir=s',  'Configuration directory', { required => 1 } ],
+    [ 'output-file=s', 'Output file',             { default => 'pkg_index.json' } ],
     [],
     [ 'help', 'Usage' ],
 );
@@ -20,40 +21,6 @@ $opt->help
     and print $usage->text
     and exit;
 
-my $output = path( $opt->output_file );
+generate_json_conf( $opt->output_file, $opt->config_dir );
 
-$output->exists
-    and die "$output already exists";
-
-my $index = {};
-
-my $category_iter = path( $opt->config_dir )->iterator;
-while ( my $category = $category_iter->() ) {
-    $category->is_dir and "$category" ne '.'
-        or return;
-
-    my $category_name = $category->basename;
-    my $dist_iter     = $category->iterator;
-    while ( my $dist = $dist_iter->() ) {
-        my @versions = map s{.+/([^/]+)\.toml$}{$1}r,
-            $dist->children(qr/\.toml$/);
-
-        my $latest_version;
-        if ( $category_name eq 'perl' ) {
-            ($latest_version)
-                = sort { version->parse($b) <=> version->parse($a) }
-                @versions;
-        } else {
-            ($latest_version) = sort { $b cmp $a } @versions;
-        }
-
-        $index->{$category_name}{ $dist->basename } = {
-            latest => $latest_version,
-            versions =>
-                { map +( $_ => $dist->basename . "-$_" ), @versions, },
-        };
-
-    }
-}
-
-$output->spew_utf8( JSON->new->pretty->encode($index) );
+1;
