@@ -7,6 +7,7 @@ use TOML qw< to_toml >;
 use Getopt::Long::Descriptive;
 use Path::Tiny qw< path >;
 use Module::CPANfile;
+use CPAN::Meta::Prereqs;
 use JSON::MaybeXS qw< decode_json encode_json >;
 use HTTP::Tiny;
 use Archive::Any;
