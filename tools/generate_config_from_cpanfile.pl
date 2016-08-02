@@ -29,7 +29,7 @@ my %known_incorrect_version_fixes = (
 my %known_names_to_skip =  (
     'perl'                        => 1,
     'perl_mlb'                    => 1,
-    'Text::MultiMarkdown::XS'     => 1, # ADPOTME
+    'Text::MultiMarkdown::XS'     => 1, # ADOPTME
 );
 
 ################################################################################
@@ -83,11 +83,11 @@ my $source_dir = $opt->source_dir ? path( $opt->source_dir ) : undef;
 my $modules = read_cpanfile( $opt->cpanfile );
 my $prereqs = CPAN::Meta::Prereqs->new( $modules );
 
-for my $phase ( sort keys %{ $modules } ) {
+for my $phase (qw< configure runtime >) {
     print "phase: $phase\n";
     for my $type ( sort keys %{ $modules->{$phase} } ) {
         my $requirements = $prereqs->requirements_for( $phase, $type );
-        create_config_for( module => $_, $phase, $requirements )
+        create_config_for( module => $_, $requirements )
             for sort keys %{ $modules->{$phase}{$type} };
     }
 }
@@ -106,7 +106,7 @@ sub spaces {
 }
 
 sub create_config_for {
-    my ( $type, $name, $phase, $requirements ) = @_;
+    my ( $type, $name, $requirements ) = @_;
     return if exists $known_names_to_skip{$name};
 
     if ( $processed_dists{$name}++ ) {
@@ -166,27 +166,29 @@ sub create_config_for {
     my $dep_prereqs = CPAN::Meta::Prereqs->new( $dep_modules );
 
     # options: configure, develop, runtime, test
-    for my $dep_type ( sort keys %{ $dep_modules->{$phase} } ) {
-        next if $dep_type eq 'develop'; # we don't use "develop" - those are tools like dzil
+    for my $phase (qw< configure runtime >) {
+        for my $dep_type ( sort keys %{ $dep_modules->{$phase} } ) {
+            next if $dep_type eq 'develop'; # we don't use "develop" - those are tools like dzil
 
-        my $prereq_data = $package->{'Prereqs'}{'perl'}{$dep_type} = +{};
+            my $prereq_data = $package->{'Prereqs'}{'perl'}{$dep_type} = +{};
 
-        my $dep_requirements = $dep_prereqs->requirements_for( $phase, $dep_type );
+            my $dep_requirements = $dep_prereqs->requirements_for( $phase, $dep_type );
 
-        for my $module ( keys %{ $dep_modules->{$phase}{$dep_type} } ) {
-            next if exists $known_names_to_skip{$module};
+            for my $module ( keys %{ $dep_modules->{$phase}{$dep_type} } ) {
+                next if exists $known_names_to_skip{$module};
 
-            my $rel = get_release_info( module => $module, $dep_requirements );
-            next if exists $rel->{skip};
+                my $rel = get_release_info( module => $module, $dep_requirements );
+                next if exists $rel->{skip};
 
-            $prereq_data->{ $rel->{distribution} } = +{
-                version => ( $rel->{write_version_as_zero} ? 0 : $rel->{version} )
-            };
-        }
+                $prereq_data->{ $rel->{distribution} } = +{
+                    version => ( $rel->{write_version_as_zero} ? 0 : $rel->{version} )
+                };
+            }
 
-        # recurse through those as well
-        for ( keys %{ $package->{'Prereqs'}{'perl'}{$dep_type} } ) {
-            create_config_for( dist => $_, $phase, $dep_requirements );
+            # recurse through those as well
+            for ( keys %{ $package->{'Prereqs'}{'perl'}{$dep_type} } ) {
+                create_config_for( dist => $_, $dep_requirements );
+            }
         }
     }
 
