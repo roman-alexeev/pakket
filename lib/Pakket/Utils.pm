@@ -7,7 +7,7 @@ use version;
 use Exporter qw< import >;
 use Path::Tiny qw< path >;
 use File::HomeDir;
-use JSON;
+use JSON::MaybeXS;
 
 our @EXPORT_OK = qw< is_writeable generate_json_conf >;
 
@@ -61,7 +61,7 @@ sub generate_json_conf {
         }
     }
 
-    $output->spew_utf8( JSON->new->pretty->encode($index) );
+    $output->spew_utf8( JSON::MaybeXS->new->pretty->encode($index) );
 }
 
 1;

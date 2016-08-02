@@ -2,7 +2,6 @@
 use strict;
 use warnings;
 
-use JSON;
 use Path::Tiny;
 use Getopt::Long::Descriptive;
 use version;
