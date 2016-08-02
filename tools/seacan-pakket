@@ -28,6 +28,7 @@ _END_HELP
 Getopt::Long::GetOptions(
     "perl=s"     => \(my $perl_version = "5.18.2"),
     "app-dir=s"  => \my $app_dir,
+    "index-file" => \my $index_file,
     'help=s'     => \my $help,
 );
 
@@ -36,6 +37,8 @@ $help and print_help();
 $app_dir or print_help('Must provide --app-dir');
 
 -d $app_dir or die "--app-dir must point to a directory";
+
+-f $index_file or die "--index-file must point to a file";
 
 chomp(my $cores = `nproc` || 1);
 if($cores > 1) {
@@ -47,7 +50,7 @@ my @directories = (
     "lib",
 );
 my @files = (
-    "examples/pkg_index.json",
+    $index_file,
     "cpanfile",
 );
 
