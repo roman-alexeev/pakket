@@ -1,0 +1,9 @@
+[Package]
+category = "perl"
+name = "JSON-PP"
+version = "2.27400"
+[Prereqs]
+[Prereqs.perl]
+[Prereqs.perl.requires]
+[Prereqs.perl.requires.Test-Simple]
+version = 0

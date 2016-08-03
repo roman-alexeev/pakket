@@ -1,0 +1,4 @@
+[Package]
+category = "perl"
+name = "Template-Plugin-Page"
+version = "0.10"

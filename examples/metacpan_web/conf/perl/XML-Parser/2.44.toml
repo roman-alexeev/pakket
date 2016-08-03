@@ -1,0 +1,9 @@
+[Package]
+category = "perl"
+name = "XML-Parser"
+version = "2.44"
+[Prereqs]
+[Prereqs.perl]
+[Prereqs.perl.requires]
+[Prereqs.perl.requires.libwww-perl]
+version = 0

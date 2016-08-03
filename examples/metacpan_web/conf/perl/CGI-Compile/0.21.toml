@@ -1,0 +1,9 @@
+[Package]
+category = "perl"
+name = "CGI-Compile"
+version = "0.21"
+[Prereqs]
+[Prereqs.perl]
+[Prereqs.perl.requires]
+[Prereqs.perl.requires.File-pushd]
+version = 0

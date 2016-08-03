@@ -1,0 +1,10 @@
+[Package]
+category = "perl"
+name = "Test-Harness"
+version = "3.36"
+[Prereqs]
+[Prereqs.perl]
+[Prereqs.perl.recommends]
+[Prereqs.perl.recommends.Pod-Usage]
+version = "1.69"
+[Prereqs.perl.requires]

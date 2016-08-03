@@ -1,0 +1,4 @@
+[Package]
+category = "perl"
+name = "Pod-Simple"
+version = "3.32"
