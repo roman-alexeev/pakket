@@ -223,43 +223,11 @@ sub run_build {
         return;
     }
 
-    # FIXME: the config class should have "mandatory" fields, add checks
-
-    # read the configuration
-    my $config_file = path( $self->config_dir, $category, $package_name,
-        "$package_version.toml" );
-
-    -r $config_file
-        or
-        $log->critical("Could not find package information ($config_file)"),
-        exit 1;
-
-    my $config_reader = Pakket::ConfigReader->new(
-        'type' => 'TOML',
-        'args' => [ filename => $config_file ],
-    );
-
-    my $config = $config_reader->read_config;
-
-    # double check we have the right package configuration
-    my $config_name = $config->{'Package'}{'name'}
-        or $log->critical(q{Package config must provide 'name'}), exit 1;
-
-    my $config_category = $config->{'Package'}{'category'}
-        or $log->critical(q{Package config must provide 'category'}), exit 1;
-
-    $config_name eq $package_name
-        or $log->critical(
-        "Mismatch package names ($package_name / $config_name)"), exit 1;
-
-    $config_category eq $category
-        or $log->critical(
-        "Mismatch package categories ($category / $config_category)"),
-        exit 1;
+    my $config = $self->read_package_config( $category, $package_name,
+        $package_version );
 
     # recursively build prereqs
     # starting with system libraries
-    # FIXME: we're currently not using the third parameter
 
     foreach my $type ( qw< system perl nodejs > ) {
         if ( my $prereqs = $config->{'Prereqs'}{$type} ) {
@@ -300,7 +268,7 @@ sub run_build {
 
     # FIXME: Remove in favor of a ::Build::System, ::Build::Perl, etc.
     # FIXME: $package_dst_dir is dictated from the category
-    if ( $config_category eq 'system' ) {
+    if ( $category eq 'system' ) {
         my $package_dst_dir = path(
             $top_build_dir,
             'src',
@@ -316,7 +284,7 @@ sub run_build {
             $main_build_dir,  # /tmp/BUILD-1/main
             $configure_flags,
         );
-    } elsif ( $config_category eq 'perl' ) {
+    } elsif ( $category eq 'perl' ) {
         my $package_dst_dir = path(
             $top_build_dir,
             'src',
@@ -331,7 +299,7 @@ sub run_build {
             $package_dst_dir, # /tmp/BUILD-1/src/perl/ZMQ-Constants-...
             $main_build_dir,  # /tmp/BUILD-1/main
         );
-    } elsif ( $config_category eq 'nodejs' ) {
+    } elsif ( $category eq 'nodejs' ) {
         my $package_dst_dir = path(
             $top_build_dir,
             'src',
@@ -348,7 +316,7 @@ sub run_build {
         );
     } else {
         $log->critical(
-            "Unrecognized category ($config_category), cannot build this.");
+            "Unrecognized category ($category), cannot build this.");
         exit 1;
     }
 
@@ -670,6 +638,54 @@ sub _expand_flags_inplace {
             $flag =~ s/$placeholder/$env->{$key}/gsm;
         }
     }
+}
+
+sub read_package_config {
+    my ( $self, $category, $package_name, $package_version ) = @_;
+
+    # FIXME: the config class should have "mandatory" fields, add checks
+
+    # read the configuration
+    my $config_file = path( $self->config_dir, $category, $package_name,
+        "$package_version.toml" );
+
+    unless ( -r $config_file ) {
+        $log->error("Could not find package information ($config_file)");
+        return;
+    }
+
+    my $config_reader = Pakket::ConfigReader->new(
+        'type' => 'TOML',
+        'args' => [ filename => $config_file ],
+    );
+
+    my $config = $config_reader->read_config;
+
+    # double check we have the right package configuration
+    my $config_name = $config->{'Package'}{'name'};
+    unless ($config_name) {
+        $log->error("Package config must provide 'name'");
+        return;
+    }
+
+    my $config_category = $config->{'Package'}{'category'};
+    unless ($config_category) {
+        $log->error("Package config must provide 'category'");
+        return;
+    }
+
+    if ( $config_name ne $package_name ) {
+        $log->error("Mismatch package names ($package_name / $config_name)");
+        return;
+    }
+
+    if ( $config_category ne $category ) {
+        $log->error(
+            "Mismatch package categories ($category / $config_category)");
+        return;
+    }
+
+    return $config;
 }
 
 __PACKAGE__->meta->make_immutable;
