@@ -11,6 +11,7 @@ use CPAN::Meta::Prereqs;
 use JSON::MaybeXS qw< decode_json encode_json >;
 use HTTP::Tiny;
 use Archive::Any;
+use Ref::Util qw< is_hashref >;
 
 use Pakket::Utils qw< generate_json_conf >;
 
@@ -85,7 +86,9 @@ my $prereqs = CPAN::Meta::Prereqs->new( $modules );
 
 for my $phase (qw< configure runtime >) {
     print "phase: $phase\n";
-    for my $type ( sort keys %{ $modules->{$phase} } ) {
+    for my $type (qw< requires recommends suggests >) {
+        next unless is_hashref( $modules->{$phase}{$type} );
+
         my $requirements = $prereqs->requirements_for( $phase, $type );
         create_config_for( module => $_, $requirements )
             for sort keys %{ $modules->{$phase}{$type} };
@@ -167,11 +170,10 @@ sub create_config_for {
 
     # options: configure, develop, runtime, test
     for my $phase (qw< configure runtime >) {
-        for my $dep_type ( sort keys %{ $dep_modules->{$phase} } ) {
-            next if $dep_type eq 'develop'; # we don't use "develop" - those are tools like dzil
+        for my $dep_type (qw< requires recommends suggests >) {
+            next unless is_hashref( $dep_modules->{$phase}{$dep_type} );
 
             my $prereq_data = $package->{'Prereqs'}{'perl'}{$dep_type} = +{};
-
             my $dep_requirements = $dep_prereqs->requirements_for( $phase, $dep_type );
 
             for my $module ( keys %{ $dep_modules->{$phase}{$dep_type} } ) {
@@ -186,9 +188,8 @@ sub create_config_for {
             }
 
             # recurse through those as well
-            for ( keys %{ $package->{'Prereqs'}{'perl'}{$dep_type} } ) {
-                create_config_for( dist => $_, $dep_requirements );
-            }
+            create_config_for( dist => $_, $dep_requirements )
+                for keys %{ $package->{'Prereqs'}{'perl'}{$dep_type} };
         }
     }
 
