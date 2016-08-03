@@ -19,6 +19,7 @@ requires 'Moose';
 requires 'MooseX::StrictConstructor';
 requires 'namespace::autoclean';
 requires 'Path::Tiny';
+requires 'Ref::Util';
 requires 'System::Command';
 requires 'TOML';
 requires 'TOML::Parser';
