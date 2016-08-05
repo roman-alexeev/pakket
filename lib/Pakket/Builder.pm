@@ -13,11 +13,11 @@ use Algorithm::Diff::Callback qw< diff_hashes >;
 use Types::Path::Tiny         qw< Path >;
 use TOML::Parser;
 use Log::Any qw< $log >;
-use CPAN::Meta::Requirements;
 
 use Pakket::Log;
 use Pakket::Bundler;
 use Pakket::ConfigReader;
+use Pakket::Version::Requirements;
 
 use constant {
     ALL_PACKAGES_KEY => '',
@@ -127,43 +127,47 @@ sub _setup_build_dir {
 }
 
 sub get_latest_satisfying_version {
-    my ( $self, $category, $package, $extra ) = @_;
+    my ( $self, $category, $package_name, $extra ) = @_;
 
-    my $provided_req = $extra->{'version'} // 0;
-    my $exact = $extra->{'exact_version'};
-    $log->debugf(
-        "Provided: %s %s%s",
-        $package, $exact ? "==" : "",
-        $provided_req,
-    );
+    my $config_file = path( $self->config_dir, $category, $package_name,
+        'versioning.toml' );
 
-    my $solver;
-    eval {
-        $solver = CPAN::Meta::Requirements->new;
-        if ($exact) {
-            $solver->exact_version( $package, $provided_req );
-        } else {
-            $solver->add_string_requirement( $package, $provided_req );
-        }
-        1;
-    } or do {
-        $log->error("Couldn't add version requirement: $@");
+    unless ( -r $config_file ) {
+        $log->error("Could not determine versioning schema");
+
+        # XXX fall back to per-category value?
         return;
-    };
-
-    for my $version (
-        sort { version->parse($b) <=> version->parse($a) }
-        keys %{ $self->index->{$category}{$package}{'versions'} }
-        )
-    {
-        if ( $solver->accepts_module( $package, $version ) ) {
-            $log->debug("Chosen: $package $version");
-
-            return $version;
-        }
     }
 
-    return;
+    my $config_reader = Pakket::ConfigReader->new(
+        'type' => 'TOML',
+        'args' => [ filename => $config_file ],
+    );
+
+    my $config = $config_reader->read_config;
+
+    my $schema_name = $config->{schema};
+    my $req         = Pakket::Version::Requirements->new(
+        { schema_name => $schema_name } );
+
+    $log->debug(
+        "Package $package_name uses the '$schema_name' versioning schema");
+
+    my $version = $extra->{'version'} // 0;
+
+    if ( $extra->{'exact_version'} ) {
+        $log->debug("Required: $package_name ==$version");
+        $req->add_exact($version);
+    } else {
+        $log->debug("Required: $package_name $version");
+        $req->add_from_string($version);
+    }
+
+    my $chosen = $req->pick_maximum_satisfying_version(
+        [ keys %{ $self->index->{$category}{$package_name}{versions} } ] );
+    $log->debug("Chosen: $package_name $chosen");
+
+    return $chosen;
 }
 
 sub run_build {

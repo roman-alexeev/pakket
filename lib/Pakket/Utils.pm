@@ -41,6 +41,7 @@ sub generate_json_conf {
         my $dist_iter     = $category->iterator;
         while ( my $dist = $dist_iter->() ) {
             my @versions = map s{.+/([^/]+)\.toml$}{$1}r,
+                grep $_->basename ne 'versioning.toml',
                 $dist->children(qr/\.toml$/);
 
             my $latest_version;
