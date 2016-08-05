@@ -129,8 +129,10 @@ sub create_config_for {
     my $download_url = $release->{'download_url'};
     print "-> Working on $dist_name ($rel_version)\n";
 
-    my $conf_file = path( ( $opt->config_dir // '.' ),
-                          'perl', $dist_name, "$rel_version.toml" );
+    my $conf_path = path( ( $opt->config_dir // '.' ), 'perl', $dist_name );
+    $conf_path->mkpath;
+
+    my $conf_file = path( $conf_path, "$rel_version.toml" );
 
     # download source if dir provided and file doesn't already exist
     if ( $source_dir ) {
@@ -196,8 +198,10 @@ sub create_config_for {
 
     $step--;
 
-    $conf_file->parent->mkpath;
     $conf_file->spew( to_toml($package) );
+
+    my $schema_file = path( $conf_path, 'versioning.toml' );
+    $schema_file->spew( to_toml( { schema => 'perl' } ) );
 }
 
 sub get_dist_name {
