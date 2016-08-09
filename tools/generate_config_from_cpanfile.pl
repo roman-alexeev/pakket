@@ -170,10 +170,11 @@ sub create_config_for {
 
     # options: configure, develop, runtime, test
     for my $phase (qw< configure runtime >) {
+        my $prereq_data = $package->{'Prereqs'}{'perl'}{$phase} = +{};
+
         for my $dep_type (qw< requires recommends suggests >) {
             next unless is_hashref( $dep_modules->{$phase}{$dep_type} );
 
-            my $prereq_data = $package->{'Prereqs'}{'perl'}{$dep_type} = +{};
             my $dep_requirements = $dep_prereqs->requirements_for( $phase, $dep_type );
 
             for my $module ( keys %{ $dep_modules->{$phase}{$dep_type} } ) {
@@ -189,7 +190,7 @@ sub create_config_for {
 
             # recurse through those as well
             create_config_for( dist => $_, $dep_requirements )
-                for keys %{ $package->{'Prereqs'}{'perl'}{$dep_type} };
+                for keys %{ $package->{'Prereqs'}{'perl'}{$phase} };
         }
     }
 
