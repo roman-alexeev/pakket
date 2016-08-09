@@ -186,7 +186,7 @@ sub create_config_for {
                 next if exists $rel->{skip};
 
                 $prereq_data->{ $rel->{distribution} } = +{
-                    version => ( $rel->{write_version_as_zero} ? 0 : $rel->{version} )
+                    version => ( $rel->{write_version_as_zero} ? "0" : $rel->{version} )
                 };
             }
 
