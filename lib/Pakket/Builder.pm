@@ -132,34 +132,27 @@ sub get_latest_satisfying_version {
     my $config_file = path( $self->config_dir, $category, $package_name,
         'versioning.toml' );
 
-    unless ( -r $config_file ) {
-        $log->error("Could not determine versioning schema");
+    my $req;
+    if ( -r $config_file ) {
+        $log->debug('Using per-package versioning settings');
 
-        # XXX fall back to per-category value?
-        return;
+        $req = $self->_new_requirements_from_config($config_file);
+    } else {
+        $log->debug('Using category-wide versioning settings');
+
+        $req = $self->_new_requirements_from_category($category);
     }
 
-    my $config_reader = Pakket::ConfigReader->new(
-        'type' => 'TOML',
-        'args' => [ filename => $config_file ],
-    );
-
-    my $config = $config_reader->read_config;
-
-    my $schema_name = $config->{schema};
-    my $req         = Pakket::Version::Requirements->new(
-        { schema_name => $schema_name } );
-
-    $log->debug(
-        "Package $package_name uses the '$schema_name' versioning schema");
+    $log->debugf( "Package %s uses the '%s' versioning schema",
+        $package_name, $req->schema_name );
 
     my $version = $extra->{'version'} // 0;
+    $log->debug("Required: $package_name $version");
 
     if ( $extra->{'exact_version'} ) {
-        $log->debug("Required: $package_name ==$version");
+        $log->debug('Exact version match requested');
         $req->add_exact($version);
     } else {
-        $log->debug("Required: $package_name $version");
         $req->add_from_string($version);
     }
 
@@ -168,6 +161,26 @@ sub get_latest_satisfying_version {
     $log->debug("Chosen: $package_name $chosen");
 
     return $chosen;
+}
+
+sub _new_requirements_from_config {
+    my ( $self, $config_file ) = @_;
+
+    my $config_reader = Pakket::ConfigReader->new(
+        'type' => 'TOML',
+        'args' => [ filename => $config_file ],
+    );
+
+    my $config = $config_reader->read_config;
+
+    return Pakket::Version::Requirements->new_from_schema(
+        $config->{schema} );
+}
+
+sub _new_requirements_from_category {
+    my ( $self, $category ) = @_;
+
+    return Pakket::Version::Requirements->new_from_category($category);
 }
 
 sub run_build {
