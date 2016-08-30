@@ -47,24 +47,24 @@ sub _build_logger {
 
 sub cli_logger {
     my ( $class, $verbose ) = @_;
-    $verbose ||= 0;
-
-    my $screen_level =
-        $verbose >= +DEBUG_LOG_LEVEL    ? 'debug'  : # log 2
-        $verbose == +DEBUG_INFO_LEVEL   ? 'info'   : # log 1
-        $verbose == +DEBUG_NOTICE_LEVEL ? 'notice' : # log 0
-                        'warning';
 
     my $logger = Log::Dispatch->new(
-        outputs => [ $class->_cli_logger($screen_level) ],
+        outputs => [ $class->_cli_logger($verbose) ],
     );
 
     return $logger;
 }
 
 sub _cli_logger {
-    my ( $class, $screen_level ) = @_;
+    my ( $class, $verbose ) = @_;
 
+    $verbose ||= 0;
+
+    my $screen_level =
+        $verbose >= +DEBUG_LOG_LEVEL    ? 'debug'  : # log 2
+        $verbose == +DEBUG_INFO_LEVEL   ? 'info'   : # log 1
+        $verbose == +DEBUG_NOTICE_LEVEL ? 'notice' : # log 0
+                                          'warning';
     return [
         'Screen',
         min_level => $screen_level,
