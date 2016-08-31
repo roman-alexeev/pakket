@@ -158,6 +158,9 @@ sub get_latest_satisfying_version {
 
     my $chosen = $req->pick_maximum_satisfying_version(
         [ keys %{ $self->index->{$category}{$package_name}{versions} } ] );
+	if ( !$chosen ) {
+		die "Could not find maximum satisfying version for $category/$package_name in index";
+	}
     $log->debug("Chosen: $package_name $chosen");
 
     return $chosen;
