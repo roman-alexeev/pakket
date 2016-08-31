@@ -236,7 +236,7 @@ sub run_build {
         path( $main_build_dir, $ex_dir )->remove_tree( { safe => 0 } );
 
         $self->scan_dir( $category, $package_name,
-            $main_build_dir->absolute );
+            $main_build_dir->absolute, 0 );
 
         $self->is_built->{$full_package_name} = 1;
 
@@ -359,7 +359,8 @@ sub run_build {
 }
 
 sub scan_dir {
-    my ( $self, $category, $package_name, $main_build_dir ) = @_;
+    my ( $self, $category, $package_name, $main_build_dir, $error_out ) = @_;
+    $error_out //= 1;
 
     $log->debug('Scanning directory.');
     # XXX: this is just a bit of a smarter && dumber rsync(1):
@@ -373,10 +374,12 @@ sub scan_dir {
         $category, $package_name, $main_build_dir,
     );
 
-    keys %{$package_files}
-        or $log->critical(
-        'This is odd. Build did not generate new files. Cannot package.'),
-        exit 1;
+    if ($error_out) {
+	    keys %{$package_files}
+		or $log->critical(
+		'This is odd. Build did not generate new files. Cannot package.'),
+		exit 1;
+    }
 
     # store per all packages to get the diff
     @{ $self->build_files_manifest }{ keys %{$package_files} } =
