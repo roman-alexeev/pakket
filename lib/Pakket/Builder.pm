@@ -510,7 +510,7 @@ sub build_perl_package {
 
     my @perl5lib = ( path( $prefix, qw<lib perl5> )->absolute->stringify );
 
-    my $my_library_path = $prefix->absolute->stringify;
+    my $my_library_path = $prefix->absolute->child('lib')->stringify;
     if ( defined( my $env_library_path = $ENV{'LD_LIBRARY_PATH'} ) ) {
         $my_library_path .= ":$env_library_path";
     }
@@ -531,7 +531,9 @@ sub build_perl_package {
             PERL_MB_OPT               => '',
             PERL_MM_OPT               => '',
 
+		CPATH => $prefix->child('include'),
             LD_LIBRARY_PATH => $my_library_path,
+            LIBRARY_PATH => $my_library_path,
             PATH            => $my_bin_path,
         },
     };
