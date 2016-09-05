@@ -18,6 +18,9 @@ use Pakket::Log;
 use Pakket::Bundler;
 use Pakket::ConfigReader;
 use Pakket::Version::Requirements;
+use Pakket::Builder::NodeJS;
+use Pakket::Builder::Perl;
+use Pakket::Builder::System;
 
 use constant { ALL_PACKAGES_KEY => '', };
 
@@ -75,6 +78,18 @@ has index => (
     isa     => 'HashRef',
     lazy    => 1,
     default => sub { decode_json( path( $_[0]->index_file )->slurp_utf8 ) },
+);
+
+has 'builders' => (
+    'is'      => 'ro',
+    'isa'     => 'HashRef',
+    'default' => sub {
+        return {
+            'nodejs' => Pakket::Builder::NodeJS->new(),
+            'perl'   => Pakket::Builder::Perl->new(),
+            'system' => Pakket::Builder::System->new(),
+        };
+    },
 );
 
 has bundler => (
@@ -280,14 +295,16 @@ sub run_build {
 
     my $main_build_dir = path( $top_build_dir, 'main' );
 
+    # FIXME: This shouldn't just be configure flags
+    # we should allow the builder to have access to a general
+    # metadata chunk which *might* include configure flags
     my $configure_flags = $self->get_configure_flags(
         $config->{'Package'}{'configure_flags'},
         { main_build_dir => $main_build_dir },
     );
 
-    # FIXME: Remove in favor of a ::Build::System, ::Build::Perl, etc.
     # FIXME: $package_dst_dir is dictated from the category
-    if ( $category eq 'system' ) {
+    if ( my $builder = $self->builders->{$category} ) {
         my $package_dst_dir = path(
             $top_build_dir,
             'src',
@@ -297,45 +314,14 @@ sub run_build {
 
         dircopy( $package_src_dir, $package_dst_dir );
 
-        $self->build_package(
-            $package_name,    # zeromq
-            $package_dst_dir, # /tmp/BUILD-1/src/system/zeromq-1.4.1
-            $main_build_dir,  # /tmp/BUILD-1/main
+        $builder->build_package(
+            $package_name,
+            $package_dst_dir,
+            $main_build_dir,
             $configure_flags,
         );
-    } elsif ( $category eq 'perl' ) {
-        my $package_dst_dir = path(
-            $top_build_dir,
-            'src',
-            $category,
-            basename($package_src_dir),
-        );
-
-        dircopy( $package_src_dir, $package_dst_dir );
-
-        $self->build_perl_package(
-            $package_name,    # ZMQ::Constants
-            $package_dst_dir, # /tmp/BUILD-1/src/perl/ZMQ-Constants-...
-            $main_build_dir,  # /tmp/BUILD-1/main
-        );
-    } elsif ( $category eq 'nodejs' ) {
-        my $package_dst_dir = path(
-            $top_build_dir,
-            'src',
-            $category,
-            basename($package_src_dir),
-        );
-
-        dircopy( $package_src_dir, $package_dst_dir );
-
-        $self->build_nodejs_package(
-            $package_name,    #
-            $package_dst_dir, #
-            $main_build_dir,  #
-        );
     } else {
-        $log->critical(
-            "Unrecognized category ($category), cannot build this.");
+        $log->critical("I do not have a builder for category $category.");
         exit 1;
     }
 
@@ -438,197 +424,6 @@ sub _diff_nodes_list {
     );
 
     return \%nodes_diff;
-}
-
-sub build_package {
-    my ( $self, $package, $build_dir, $prefix, $configure_flags ) = @_;
-
-    $log->info("Building $package");
-
-    my $my_library_path = $prefix->absolute->stringify;
-    if ( defined( my $env_library_path = $ENV{'LD_LIBRARY_PATH'} ) ) {
-        $my_library_path .= ":$env_library_path";
-    }
-
-    my $my_bin_path = $prefix->child('bin')->absolute->stringify;
-    if ( defined( my $env_bin_path = $ENV{'PATH'} ) ) {
-        $my_bin_path .= ":$env_bin_path";
-    }
-
-    my $opts = {
-        env => {
-            LD_LIBRARY_PATH => $my_library_path,
-            PATH            => $my_bin_path,
-        },
-    };
-
-    my $configurator;
-    if ( -x path( $build_dir, 'configure' ) ) {
-        $configurator = './configure';
-    } elsif ( -x path( $build_dir, 'config' ) ) {
-        $configurator = './config';
-    } else {
-        $log->critical("Don't know how to configure $package");
-        exit 1;
-    }
-
-    my @seq = (
-
-        # configure
-        [
-            $build_dir,
-            [
-                $configurator, '--prefix=' . $prefix->absolute,
-                @{$configure_flags},
-            ],
-            $opts,
-        ],
-
-        # build
-        [ $build_dir, ['make'], $opts, ],
-
-        # install
-        [ $build_dir, [ 'make', 'install' ], $opts, ],
-    );
-
-    my $success = $self->run_command_sequence(@seq);
-    unless ($success) {
-        $log->critical("Failed to build $package");
-        exit 1;
-    }
-
-    $log->info("Done preparing $package");
-}
-
-sub build_perl_package {
-    my ( $self, $package, $build_dir, $prefix ) = @_;
-
-    $log->info("Building Perl module: $package");
-
-    my @perl5lib = ( path( $prefix, qw<lib perl5> )->absolute->stringify );
-
-    my $my_library_path = $prefix->absolute->child('lib')->stringify;
-    if ( defined( my $env_library_path = $ENV{'LD_LIBRARY_PATH'} ) ) {
-        $my_library_path .= ":$env_library_path";
-    }
-
-    my $my_bin_path = $prefix->child('bin')->absolute->stringify;
-    if ( defined( my $env_bin_path = $ENV{'PATH'} ) ) {
-        $my_bin_path .= ":$env_bin_path";
-    }
-
-    my $opts = {
-        env => {
-            PERL5LIB                  => join( ':', @perl5lib ),
-            PERL_LOCAL_LIB_ROOT       => '',
-            PERL5_CPAN_IS_RUNNING     => 1,
-            PERL5_CPANM_IS_RUNNING    => 1,
-            PERL5_CPANPLUS_IS_RUNNING => 1,
-            PERL_MM_USE_DEFAULT       => 1,
-            PERL_MB_OPT               => '',
-            PERL_MM_OPT               => '',
-
-            CPATH           => $prefix->child('include'),
-            LD_LIBRARY_PATH => $my_library_path,
-            LIBRARY_PATH    => $my_library_path,
-            PATH            => $my_bin_path,
-        },
-    };
-
-    my $original_dir = Path::Tiny->cwd;
-    my $install_base = $prefix->absolute;
-
-    # taken from cpanminus
-    my %should_use_mm = map +( "perl/$_" => 1 ),
-        qw( version ExtUtils-ParseXS ExtUtils-Install ExtUtils-Manifest );
-
-    my @seq;
-    if ( $build_dir->child('Build.PL')->exists
-        && !exists $should_use_mm{$package} )
-    {
-        @seq = (
-
-            # configure
-            [
-                $build_dir,
-                [ 'perl', 'Build.PL', '--install_base', $install_base ],
-                $opts,
-            ],
-
-            # build
-            [ $build_dir, ['./Build'], $opts ],
-
-            # install
-            [ $build_dir, [ './Build', 'install' ], $opts ],
-        );
-    } elsif ( $build_dir->child('Makefile.PL')->exists ) {
-        @seq = (
-
-            # configure
-            [
-                $build_dir,
-                [ 'perl', 'Makefile.PL', "INSTALL_BASE=$install_base" ],
-                $opts,
-            ],
-
-            # build
-            [ $build_dir, ['make'], $opts ],
-
-            # install
-            [ $build_dir, [ 'make', 'install' ], $opts ],
-        );
-    } else {
-        die "Could not find an installer (Makefile.PL/Build.PL)\n";
-    }
-
-    my $success = $self->run_command_sequence(@seq);
-
-    chdir $original_dir;
-
-    unless ($success) {
-        $log->critical("Failed to build $package");
-        exit 1;
-    }
-
-    $log->info("Done preparing $package");
-}
-
-sub build_nodejs_package {
-    my ( $self, $package, $build_dir, $prefix ) = @_;
-
-    $log->info("Building NodeJS module: $package");
-
-    my $opts = {
-        env => {
-            LD_LIBRARY_PATH => $prefix->absolute->stringify . ':'
-                . ( $ENV{'LD_LIBRARY_PATH'} // '' ),
-
-            PATH => $prefix->child('bin')->absolute->stringify . ':'
-                . ( $ENV{'PATH'} // '' ),
-        },
-    };
-
-    my $original_dir = Path::Tiny->cwd;
-    my $install_base = $prefix->absolute;
-
-    my $source = $build_dir;
-    if ( $ENV{'NODE_NPM_REGISTRY'} ) {
-        $self->run_command( $build_dir,
-            [ qw< npm set registry >, $ENV{'NODE_NPM_REGISTRY'} ], $opts );
-        $source = $package;
-    }
-    my $success
-        = $self->run_command( $build_dir, [ qw< npm install -g >, $source ],
-        $opts );
-
-    chdir $original_dir;
-
-    unless ($success) {
-        $log->critical("Failed to build $package");
-        exit 1;
-    }
-
-    $log->info("Done preparing $package");
 }
 
 sub get_configure_flags {
