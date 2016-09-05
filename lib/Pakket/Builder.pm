@@ -19,9 +19,7 @@ use Pakket::Bundler;
 use Pakket::ConfigReader;
 use Pakket::Version::Requirements;
 
-use constant {
-    ALL_PACKAGES_KEY => '',
-};
+use constant { ALL_PACKAGES_KEY => '', };
 
 with 'Pakket::Role::RunCommand';
 
@@ -44,7 +42,7 @@ has build_dir => (
     isa     => Path,
     coerce  => 1,
     lazy    => 1,
-    default => sub { Path::Tiny->tempdir('BUILD-XXXXXX', CLEANUP => 0 ) },
+    default => sub { Path::Tiny->tempdir( 'BUILD-XXXXXX', CLEANUP => 0 ) },
 );
 
 has keep_build_dir => (
@@ -87,9 +85,9 @@ has bundler => (
 );
 
 has bundler_args => (
-    is        => 'ro',
-    isa       => 'HashRef',
-    default   => sub { +{} },
+    is      => 'ro',
+    isa     => 'HashRef',
+    default => sub { +{} },
 );
 
 sub _build_bundler {
@@ -107,7 +105,7 @@ sub DEMOLISH {
     my $self      = shift;
     my $build_dir = $self->build_dir;
 
-    if ( ! $self->keep_build_dir ) {
+    if ( !$self->keep_build_dir ) {
         $log->info("Removing build dir $build_dir");
 
         # "safe" is false because it might hit files which it does not have
@@ -158,9 +156,10 @@ sub get_latest_satisfying_version {
 
     my $chosen = $req->pick_maximum_satisfying_version(
         [ keys %{ $self->index->{$category}{$package_name}{versions} } ] );
-	if ( !$chosen ) {
-		die "Could not find maximum satisfying version for $category/$package_name in index";
-	}
+    if ( !$chosen ) {
+        die
+            "Could not find maximum satisfying version for $category/$package_name in index";
+    }
     $log->debug("Chosen: $package_name $chosen");
 
     return $chosen;
@@ -249,7 +248,7 @@ sub run_build {
     # recursively build prereqs
     # starting with system libraries
 
-    foreach my $type ( qw< system perl nodejs > ) {
+    foreach my $type (qw< system perl nodejs >) {
         if ( my $prereqs = $config->{'Prereqs'}{$type} ) {
             foreach my $category (qw<configure runtime>) {
                 foreach my $prereq ( keys %{ $prereqs->{$category} } ) {
@@ -363,6 +362,7 @@ sub scan_dir {
     $error_out //= 1;
 
     $log->debug('Scanning directory.');
+
     # XXX: this is just a bit of a smarter && dumber rsync(1):
     # rsync -qaz BUILD/main/ output_dir/
     # the reason is that we need the diff.
@@ -375,15 +375,15 @@ sub scan_dir {
     );
 
     if ($error_out) {
-	    keys %{$package_files}
-		or $log->critical(
-		'This is odd. Build did not generate new files. Cannot package.'),
-		exit 1;
+        keys %{$package_files}
+            or $log->critical(
+            'This is odd. Build did not generate new files. Cannot package.'),
+            exit 1;
     }
 
     # store per all packages to get the diff
-    @{ $self->build_files_manifest }{ keys %{$package_files} } =
-        values %{$package_files};
+    @{ $self->build_files_manifest }{ keys %{$package_files} }
+        = values %{$package_files};
 
     return $package_files;
 }
@@ -391,12 +391,9 @@ sub scan_dir {
 sub retrieve_new_files {
     my ( $self, $category, $package_name, $build_dir ) = @_;
 
-
-    my $nodes     = $self->scan_directory($build_dir);
-    my $new_files = $self->_diff_nodes_list(
-        $self->build_files_manifest,
-        $nodes,
-    );
+    my $nodes = $self->scan_directory($build_dir);
+    my $new_files
+        = $self->_diff_nodes_list( $self->build_files_manifest, $nodes, );
 
     return $new_files;
 }
@@ -531,9 +528,9 @@ sub build_perl_package {
             PERL_MB_OPT               => '',
             PERL_MM_OPT               => '',
 
-		CPATH => $prefix->child('include'),
+            CPATH           => $prefix->child('include'),
             LD_LIBRARY_PATH => $my_library_path,
-            LIBRARY_PATH => $my_library_path,
+            LIBRARY_PATH    => $my_library_path,
             PATH            => $my_bin_path,
         },
     };
@@ -640,7 +637,7 @@ sub get_configure_flags {
     $config or return [];
 
     my @flags;
-    for my $tuple (@{$config}) {
+    for my $tuple ( @{$config} ) {
         if ( @{$tuple} > 2 ) {
             $log->criticalf( 'Odd configuration flag: %s', $tuple );
             exit 1;
@@ -657,7 +654,7 @@ sub get_configure_flags {
 sub _expand_flags_inplace {
     my ( $self, $flags, $env ) = @_;
 
-    for my $flag (@{$flags}) {
+    for my $flag ( @{$flags} ) {
         for my $key ( keys %{$env} ) {
             my $placeholder = '%' . uc($key) . '%';
             $flag =~ s/$placeholder/$env->{$key}/gsm;
