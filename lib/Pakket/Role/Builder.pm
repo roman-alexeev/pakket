@@ -24,7 +24,7 @@ sub generate_env_vars {
 sub generate_lib_path {
     my ( $self, $prefix ) = @_;
 
-    my $lib_path = $prefix->absolute->child('lib')->stringify;
+    my $lib_path = $prefix->child('lib')->absolute->stringify;
     if ( defined( my $env_library_path = $ENV{'LD_LIBRARY_PATH'} ) ) {
         $lib_path .= ":$env_library_path";
     }
