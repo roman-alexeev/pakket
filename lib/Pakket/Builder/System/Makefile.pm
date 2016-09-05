@@ -15,7 +15,7 @@ sub build_package {
 
     my $opts = {
         'env' => {
-            $self->generate_env_vars( 'prefix' => $prefix ),
+            $self->generate_env_vars($prefix),
         },
     };
 
