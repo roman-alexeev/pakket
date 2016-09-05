@@ -14,7 +14,7 @@ sub build_package {
     if (   $build_dir->child('configure')->exists
         || $build_dir->child('config')->exists )
     {
-        my $builder = Pakket::Builder::Makefile->new();
+        my $builder = Pakket::Builder::System::Makefile->new();
         $builder->build_package( $package, $build_dir, $prefix, $flags );
     } else {
         $log->critical("I cannot build this system package. No 'configure'.");
