@@ -84,11 +84,11 @@ has 'builders' => (
     'is'      => 'ro',
     'isa'     => 'HashRef',
     'default' => sub {
-        return [
+        return {
             'nodejs' => Pakket::Builder::NodeJS->new(),
             'perl'   => Pakket::Builder::Perl->new(),
             'system' => Pakket::Builder::System->new(),
-        ];
+        };
     },
 );
 
