@@ -27,7 +27,7 @@ sub build_package {
             'PERL_MB_OPT'               => '',
             'PERL_MM_OPT'               => '',
 
-            $self->generate_env_vars( 'prefix' => $prefix ),
+            $self->generate_env_vars($prefix),
         },
     };
 
