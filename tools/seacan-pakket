@@ -23,6 +23,8 @@ Options:
 --perl        Perl version (default: "5.18.2")
 --app-dir     Application directory
 _END_HELP
+
+    exit 2;
 }
 
 Getopt::Long::GetOptions(
