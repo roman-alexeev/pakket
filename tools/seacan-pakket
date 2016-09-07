@@ -22,16 +22,18 @@ Options:
 
 --perl        Perl version (default: "5.18.2")
 --app-dir     Application directory
+--index-file  A pkg_index.json file
+
 _END_HELP
 
     exit 2;
 }
 
 Getopt::Long::GetOptions(
-    "perl=s"     => \(my $perl_version = "5.18.2"),
-    "app-dir=s"  => \my $app_dir,
-    "index-file" => \my $index_file,
-    'help=s'     => \my $help,
+    "perl=s"       => \(my $perl_version = "5.18.2"),
+    "app-dir=s"    => \my $app_dir,
+    "index-file=s" => \my $index_file,
+    'help=s'       => \my $help,
 );
 
 $help and print_help();
