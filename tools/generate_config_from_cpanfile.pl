@@ -87,7 +87,7 @@ my $prereqs = CPAN::Meta::Prereqs->new( $modules );
 
 my @additional_phases = grep { $_ eq 'develop' or $_ eq 'test' } @{ $opt->phase };
 
-for my $phase (qw< configure runtime @additional_phases >) {
+for my $phase (qw< configure runtime >, @additional_phases) {
     print "phase: $phase\n";
     for my $type (qw< requires recommends suggests >) {
         next unless is_hashref( $modules->{$phase}{$type} );
@@ -174,7 +174,7 @@ sub create_config_for {
     my $dep_prereqs = CPAN::Meta::Prereqs->new( $dep_modules );
 
     # options: configure, develop, runtime, test
-    for my $phase (qw< configure runtime @additional_phases >) {
+    for my $phase (qw< configure runtime >, @additional_phases) {
         my $prereq_data = $package->{'Prereqs'}{'perl'}{$phase} = +{};
 
         for my $dep_type (qw< requires recommends suggests >) {
