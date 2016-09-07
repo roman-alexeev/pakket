@@ -64,6 +64,7 @@ my ( $opt, $usage ) = describe_options(
     [ 'config-dir=s', 'directory to write the configuration to (TOML files)', { required => 1 } ],
     [ 'source-dir=s', 'directory to write the sources to (downloads if provided)', {} ],
     [ 'json-file=s',  'file to generate json configuration to', {} ],
+    [ 'phase=s@',      "additional phases to use ('develop' = author_requires, 'test' = test_requires). configure & runtime are done by default.", {} ],
     [ 'extract',      'extract downloaded source tarball', { default => 0 } ],
     [],
     [ 'help', 'Usage' ],
@@ -84,7 +85,9 @@ my $source_dir = $opt->source_dir ? path( $opt->source_dir ) : undef;
 my $modules = read_cpanfile( $opt->cpanfile );
 my $prereqs = CPAN::Meta::Prereqs->new( $modules );
 
-for my $phase (qw< configure runtime >) {
+my @additional_phases = grep { $_ eq 'develop' or $_ eq 'test' } @{ $opt->phase };
+
+for my $phase (qw< configure runtime @additional_phases >) {
     print "phase: $phase\n";
     for my $type (qw< requires recommends suggests >) {
         next unless is_hashref( $modules->{$phase}{$type} );
@@ -171,7 +174,7 @@ sub create_config_for {
     my $dep_prereqs = CPAN::Meta::Prereqs->new( $dep_modules );
 
     # options: configure, develop, runtime, test
-    for my $phase (qw< configure runtime >) {
+    for my $phase (qw< configure runtime @additional_phases >) {
         my $prereq_data = $package->{'Prereqs'}{'perl'}{$phase} = +{};
 
         for my $dep_type (qw< requires recommends suggests >) {
