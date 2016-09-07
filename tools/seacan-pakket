@@ -37,9 +37,9 @@ Getopt::Long::GetOptions(
 $help and print_help();
 
 $app_dir or print_help('Must provide --app-dir');
+$index_file or print_help('Must provide --index-file');
 
 -d $app_dir or die "--app-dir must point to a directory";
-
 -f $index_file or die "--index-file must point to a file";
 
 chomp(my $cores = `nproc` || 1);
