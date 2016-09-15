@@ -1,17 +1,19 @@
 #!/usr/bin/env perl
 
-use v5.14;
+use strict;
 use warnings;
+use constant {
+    'DEFAULT_PERL_VERSION' => '5.22.2',
+};
 
-use English '-no_match_vars';
-use Cwd;
-use File::Spec;
-use File::Temp;
-use Getopt::Long;
+use English    '-no_match_vars';
+use Path::Tiny qw<path tempdir>;
+use Getopt::Long qw<:config no_ignore_case>;
 use App::Seacan;
 
 sub print_help {
-    my $error = shift;
+    my $error   = shift;
+    my $min_ver = DEFAULT_PERL_VERSION();
 
     $error and print "[ERROR] $error\n\n";
 
@@ -20,64 +22,58 @@ $PROGRAM_NAME [--perl PERL_VER] --app-dir DIR
 
 Options:
 
---perl        Perl version (default: "5.18.2")
---app-dir     Application directory
---index-file  A pkg_index.json file
+--perl        Perl version (default: $min_ver)
+--app-dir     Application directory (default: .)
+--files       Additional files for inclusion
+              (Specify multiple times for each file)
 
 _END_HELP
 
     exit 2;
 }
 
+my $app_dir = path('.');
 Getopt::Long::GetOptions(
-    "perl=s"       => \(my $perl_version = "5.18.2"),
-    "app-dir=s"    => \my $app_dir,
-    "index-file=s" => \my $index_file,
-    'help=s'       => \my $help,
+    'perl=s'    => \( my $perl_version = DEFAULT_PERL_VERSION() ),
+    'app-dir=s' => \$app_dir,
+    'files=s@'  => \my @additional_files,
+    'help=s'    => \my $help,
 );
 
 $help and print_help();
 
-$app_dir or print_help('Must provide --app-dir');
-$index_file or print_help('Must provide --index-file');
+-d $app_dir or print_help('--app-dir must point to a directory');
 
--d $app_dir or die "--app-dir must point to a directory";
--f $index_file or die "--index-file must point to a file";
+chomp( my $cores = `nproc` || 1 );
 
-chomp(my $cores = `nproc` || 1);
-if($cores > 1) {
+if ( $cores > 1 ) {
     $cores -= 1;
 }
 
-my @directories = (
-    "bin",
-    "lib",
-);
-my @files = (
-    $index_file,
-    "cpanfile",
-);
+my @directories    = qw<bin lib>;
+my $dest_dir       = tempdir( 'CLEANUP' => 1 );
+my $source_dir_tmp = tempdir( 'CLEANUP' => 1 );
+my $source_dir     = $source_dir_tmp->child('pakket');
 
-my $dest_dir = File::Temp::tempdir(CLEANUP => 1);
+$source_dir->mkpath();
 
-my $source_dir = File::Temp::tempdir(CLEANUP => 1);
-for my $dir (@directories) {
-    system("cp", "-R", File::Spec->catdir($app_dir, $dir), $source_dir);
-}
-for my $file (@files) {
-    system("cp", File::Spec->catfile($app_dir, $file), $source_dir);
+# cpanfile must be there so "cpanm" would work on the app
+for my $node ( @directories, @additional_files, 'cpanfile' ) {
+    system( 'cp', '-R', path( $app_dir, $node ), $source_dir );
 }
 
 my $seacan = App::Seacan->new(
     config => {
+
         seacan => {
-            app_name => "pakket",
+            app_name => 'pakket',
             output   => $dest_dir,
             app      => $source_dir,
         },
+
         perl => {
             version             => $perl_version,
-                installed_as    => "seacan",
+                installed_as    => 'seacan',
                 notest          => 1,
                 noman           => 1,
                 relocatable_INC => 1,
@@ -85,16 +81,8 @@ my $seacan = App::Seacan->new(
         },
     },
 );
+
 $seacan->run;
 
-unlink(File::Spec->catfile($dest_dir, qw(app pakket cpanfile)));
-
-system(
-    "tar",
-    "--create",
-    "--gzip",
-    "--exclude-vcs",
-    "--directory=$dest_dir",
-    "--file=".Cwd::abs_path("./pakket.tar.gz"),
-    ".",
-);
+system( 'tar', '--create', '--gzip', '--exclude-vcs', "--directory=$dest_dir",
+    '--file=' . path('pakket.tar.gz')->absolute, '.', );
