@@ -67,10 +67,10 @@ has build_files_manifest => (
 );
 
 has index_file => (
-    is      => 'ro',
-    isa     => Path,
-    coerce  => 1,
-    default => sub {'pkg_index.json'},
+    is       => 'ro',
+    isa      => Path,
+    coerce   => 1,
+    required => 1,
 );
 
 has index => (
