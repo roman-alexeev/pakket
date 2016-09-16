@@ -14,7 +14,7 @@ sub build_package {
 
     $log->info("Building Perl module: $package");
 
-    my @perl5lib = ( path( $prefix, qw<lib perl5> )->absolute->stringify );
+    my @perl5lib = ( '.', path( $prefix, qw<lib perl5> )->absolute->stringify );
 
     my $opts = {
         'env' => {
