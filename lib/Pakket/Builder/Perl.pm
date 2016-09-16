@@ -4,7 +4,7 @@ package Pakket::Builder::Perl;
 use Moose;
 use English '-no_match_vars';
 use Log::Any   qw< $log >;
-use Path::Tiny qw< path >;
+use Path::Tiny qw< path cwd >;
 use Pakket::Log;
 
 with qw<Pakket::Role::Builder>;
@@ -14,7 +14,8 @@ sub build_package {
 
     $log->info("Building Perl module: $package");
 
-    my @perl5lib = ( '.', path( $prefix, qw<lib perl5> )->absolute->stringify );
+    my @perl5lib
+        = ( cwd(), path( $prefix, qw<lib perl5> )->absolute->stringify );
 
     my $opts = {
         'env' => {
