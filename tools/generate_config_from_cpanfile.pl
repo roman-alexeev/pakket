@@ -80,8 +80,7 @@ $opt->help
 my %processed_dists;
 my $step = 0;
 my $http = HTTP::Tiny->new();
-my $metacpan_api_v1 = "https://fastapi.metacpan.org";
-my $metacpan_api_v0 = "https://api.metacpan.org"; # temp. workaround
+my $metacpan_api = $ENV{'PAKKET_METACPAN_API'} || "https://fastapi.metacpan.org";
 
 my $source_dir = $opt->source_dir ? path( $opt->source_dir ) : undef;
 
@@ -220,12 +219,7 @@ sub get_dist_name {
 
     my $dist_name;
     eval {
-        my $response = $http->get( $metacpan_api_v1 . "/module/$module_name" );
-        # temp workaround:
-        if ( $response->{status} != 200 ) {
-            print "--- couldn't find /module/$module_name on v1, falling back to v0\n";
-            $response = $http->get( $metacpan_api_v0 . "/module/$module_name" );
-        }
+        my $response = $http->get( $metacpan_api . "/module/$module_name" );
         die if $response->{status} != 200;
         my $content = decode_json $response->{content};
         $dist_name  = $content->{distribution};
@@ -237,7 +231,7 @@ sub get_dist_name {
 sub _get_latest_release_info {
     my $dist_name = shift;
 
-    my $res = $http->get("https://fastapi.metacpan.org/v1/release/$dist_name");
+    my $res = $http->get( $metacpan_api . "/release/$dist_name" );
     return unless $res->{status} == 200; # falling back to check all
 
     my $res_body= decode_json $res->{content};
@@ -265,7 +259,7 @@ sub get_release_info {
         and version->parse( $req_as_hash->{$name} =~ s/[^0-9.]//gr ) == 0
     );
 
-    # first try the latest (temp. v1 only)
+    # first try the latest
 
     my $latest = _get_latest_release_info( $dist_name );
     $latest->{write_version_as_zero} = $write_version_as_zero;
@@ -282,25 +276,16 @@ sub get_release_info {
 
     my %all_dist_releases;
     {
-        my $res = $http->post( $metacpan_api_v1 . "/release",
-                               +{ content => _get_release_query($dist_name, 'v1') });
-        # temp. workaround
-        my $key = '_source';
-        if ( $res->{status} != 200 ) {
-            print "--- couldn't find 'release' info for $dist_name on v1, falling back to v0\n";
-            $res = $http->post( $metacpan_api_v0 . "/release",
-                                +{ content => _get_release_query($dist_name, 'v0') });
-            $key = 'fields';
-
-        }
+        my $res = $http->post( $metacpan_api . "/release",
+                               +{ content => _get_release_query($dist_name) });
         die "can't find any release for $dist_name\n" if $res->{status} != 200;
         my $res_body = decode_json $res->{content};
 
         %all_dist_releases =
             map {
                 $_->{fields}{version}[0] => {
-                    prereqs      => $_->{$key}{metadata}{prereqs},
-                    download_url => $_->{$key}{download_url},
+                    prereqs      => $_->{_source}{metadata}{prereqs},
+                    download_url => $_->{_source}{download_url},
                 }
             }
             @{ $res_body->{hits}{hits} };
@@ -332,7 +317,6 @@ sub get_release_info {
 
 sub _get_release_query {
     my $dist_name = shift;
-    my $version   = shift; # temp. workaround
 
     return encode_json({
         query  => {
@@ -343,10 +327,8 @@ sub _get_release_query {
                 ]
             }
         },
-        $version eq 'v1'
-            ? ( fields  => [qw< version >],
-                _source => [qw< metadata.prereqs download_url >] )
-            : ( fields  => [qw< version metadata >] ),
+        fields  => [qw< version >],
+        _source => [qw< metadata.prereqs download_url >],
         size    => 999,
     });
 }
