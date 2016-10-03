@@ -14,8 +14,11 @@ sub build_package {
 
     $log->info("Building Perl module: $package");
 
-    my @perl5lib
-        = ( cwd(), path( $prefix, qw<lib perl5> )->absolute->stringify );
+    my $original_dir = cwd;
+    my @perl5lib     = (
+        $original_dir,
+        path( $prefix, qw<lib perl5> )->absolute->stringify,
+    );
 
     my $opts = {
         'env' => {
@@ -32,7 +35,6 @@ sub build_package {
         },
     };
 
-    my $original_dir = Path::Tiny->cwd;
     my $install_base = $prefix->absolute;
 
     # taken from cpanminus
