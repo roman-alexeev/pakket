@@ -12,6 +12,7 @@ use JSON::MaybeXS qw< decode_json encode_json >;
 use HTTP::Tiny;
 use Archive::Any;
 use Ref::Util qw< is_hashref >;
+use Module::CoreList;
 
 use Pakket::Utils qw< generate_json_conf >;
 
@@ -118,7 +119,7 @@ sub spaces {
 
 sub create_config_for {
     my ( $type, $name, $requirements ) = @_;
-    return if exists $known_names_to_skip{$name};
+    return if exists $known_names_to_skip{$name} or Module::CoreList::is_core($name);
 
     if ( $processed_dists{$name}++ ) {
         #spaces();
@@ -188,7 +189,7 @@ sub create_config_for {
             my $dep_requirements = $dep_prereqs->requirements_for( $phase, $dep_type );
 
             for my $module ( keys %{ $dep_modules->{$phase}{$dep_type} } ) {
-                next if exists $known_names_to_skip{$module};
+                next if exists $known_names_to_skip{$module} or Module::CoreList::is_core($module);
 
                 my $rel = get_release_info( module => $module, $dep_requirements );
                 next if exists $rel->{skip};
@@ -251,7 +252,8 @@ sub get_release_info {
         ? get_dist_name($name)
         : $name;
 
-    return +{ skip => 1 } if exists $known_names_to_skip{$dist_name};
+    return +{ skip => 1 }
+        if exists $known_names_to_skip{$dist_name} or Module::CoreList::is_core($dist_name);
 
     my $req_as_hash = $requirements->as_string_hash;
     my $write_version_as_zero = !!(
