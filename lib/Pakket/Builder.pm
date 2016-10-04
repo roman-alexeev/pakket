@@ -232,19 +232,19 @@ sub run_build {
     # FIXME: this is a hack
     # Once we have a proper repository, we could query it and find out
     # instead of asking the bundler this
-    my $existing_pkg_file =
+    my $existing_parcel =
         $self->bundler->bundle_dir->child( $category, $package_name,
             "$package_name-$package_version.pkt" );
 
-    if ( $existing_pkg_file->exists ) {
+    if ( $existing_parcel->exists ) {
         $log->debug("$full_package_name already packaged, unpacking...");
 
         my $main_build_dir = path( $self->build_dir, 'main' );
         my $cur            = Path::Tiny->cwd;
-        my $ex_dir         = $existing_pkg_file->basename =~ s/\.pkt//rms;
+        my $ex_dir         = $existing_parcel->basename =~ s/\.pkt//rms;
 
         system "tar --wildcards -C $main_build_dir"
-            . " -xJf $existing_pkg_file $ex_dir/*";
+            . " -xJf $existing_parcel $ex_dir/*";
         system "cp -r $main_build_dir/$ex_dir/* $main_build_dir";
 
         path( $main_build_dir, $ex_dir )->remove_tree( { safe => 0 } );
