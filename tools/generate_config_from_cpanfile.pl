@@ -4,6 +4,7 @@ use warnings;
 use version;
 
 use TOML qw< to_toml >;
+use TOML::Parser;
 use Getopt::Long::Descriptive;
 use Path::Tiny qw< path >;
 use Module::CPANfile;
@@ -81,7 +82,11 @@ $opt->help
 my %processed_dists;
 my $step = 0;
 my $http = HTTP::Tiny->new();
-my $metacpan_api = $ENV{'PAKKET_METACPAN_API'} || "https://fastapi.metacpan.org";
+my $pakket_config = read_pakket_config();
+
+my $metacpan_api = $pakket_config->{'metacpan'}{'metacpan_api'}
+                   || $ENV{'PAKKET_METACPAN_API'}
+                   || "https://fastapi.metacpan.org";
 
 my $source_dir = $opt->source_dir ? path( $opt->source_dir ) : undef;
 
@@ -135,7 +140,7 @@ sub create_config_for {
 
     my $dist_name    = $release->{'distribution'};
     my $rel_version  = $release->{'version'};
-    my $download_url = $release->{'download_url'};
+    my $download_url = rewrite_download_url( $release->{'download_url'} );
     print "-> Working on $dist_name ($rel_version)\n";
 
     my $conf_path = path( ( $opt->config_dir // '.' ), 'perl', $dist_name );
@@ -299,7 +304,7 @@ sub get_release_info {
         if ( $requirements->accepts_module($name => $v) ) {
             $version         = $v;
             $release_prereqs = $all_dist_releases{$v}{prereqs} || {};
-            $download_url    = $all_dist_releases{$v}{download_url};
+            $download_url    = rewrite_download_url( $all_dist_releases{$v}{download_url} );
             last;
         }
     }
@@ -339,4 +344,19 @@ sub read_cpanfile {
     my $filename = shift;
     my $file     = Module::CPANfile->load($filename);
     return $file->prereq_specs;
+}
+
+sub read_pakket_config {
+    my $conf = {};
+    my $file = path( File::HomeDir->my_home,  '.pakket' );
+    -f $file and
+	$conf = TOML::Parser->new( strict_mode => 1 )->parse_file($file);
+    return $conf;
+}
+
+sub rewrite_download_url {
+    return unless exists $pakket_config->{metacpan}{rewrite_download_url};
+    my $download_url = shift;
+    my ( $from, $to ) = @{ $pakket_config->{metacpan}{rewrite_download_url} }{qw< from to >};
+    return ( $download_url =~ s/$from/$to/r );
 }
