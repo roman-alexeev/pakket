@@ -81,7 +81,7 @@ sub validate_args {
     if ( my $file = $opt->{'index_file'} ) {
         my $path = path($file);
         $path->exists && $path->is_file
-            or $self->usage_error('Incorrect index file specified');
+            or $self->usage_error("Incorrect index file specified: '$file'");
 
         $self->{'builder'}{'index_file'} = $path;
     }
@@ -90,7 +90,7 @@ sub validate_args {
         my ( $cat, $package, $version ) = split m{/}ms, $package_name;
 
         $cat && $package
-            or $self->usage_error('Wrong category/package provided.');
+            or $self->usage_error("Wrong category/package provided: '$package_name'.");
 
         push @{ $self->{'to_build'} }, [ $cat, $package, $version ];
     }
