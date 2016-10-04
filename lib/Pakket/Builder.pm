@@ -262,8 +262,9 @@ sub run_build {
         return;
     }
 
-    my $config = $self->read_package_config( $category, $package_name,
-        $package_version );
+    my $config = $self->read_package_config(
+        $category, $package_name, $package_version,
+    ) or return;
 
     # recursively build prereqs
     # starting with system libraries
