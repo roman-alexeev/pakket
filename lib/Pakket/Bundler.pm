@@ -1,5 +1,5 @@
 package Pakket::Bundler;
-# ABSTRACT: Bundle pakket packages into a package file
+# ABSTRACT: Bundle pakket packages into a parcel file
 
 use Moose;
 use JSON::MaybeXS;
@@ -37,15 +37,15 @@ sub bundle {
     my $original_dir = Path::Tiny->cwd;
 
     # totally arbitrary, maybe add to constants?
-    my $bundle_path = Path::Tiny->tempdir(
+    my $parcel_path = Path::Tiny->tempdir(
         TEMPLATE => 'BUNDLE-XXXXXX',
         CLEANUP  => 1,
     );
 
     my $pkg_name_ver = "$package_name-$package_version";
-    $bundle_path->child($pkg_name_ver)->mkpath;
+    $parcel_path->child($pkg_name_ver)->mkpath;
 
-    chdir $bundle_path->child($pkg_name_ver)->stringify;
+    chdir $parcel_path->child($pkg_name_ver)->stringify;
 
     foreach my $orig_file ( keys %{$files} ) {
         $log->debug("Bundling $orig_file");
@@ -85,12 +85,12 @@ sub bundle {
 
     chdir '..';
 
-    my $bundle_filename = path(
+    my $parcel_filename = path(
         join '.', $pkg_name_ver, PAKKET_EXTENSION,
     );
 
-    $log->info("Creating bundle file $bundle_filename");
-    system "tar -cJf $bundle_filename *";
+    $log->info("Creating parcel file $parcel_filename");
+    system "tar -cJf $parcel_filename *";
     my $new_location = path(
         $self->bundle_dir, $package_category, $package_name,
     );
@@ -105,8 +105,8 @@ sub bundle {
     #
     # this happened because it was installed in /tmp which was a different FS
     #   -- SX (see: d81d413e6df49c1c7284e4474457e1cd9b6655b4)
-    $bundle_filename->copy($new_location);
-    $bundle_filename->remove();
+    $parcel_filename->copy($new_location);
+    $parcel_filename->remove();
 
     chdir $original_dir;
 }
