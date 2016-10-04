@@ -73,9 +73,9 @@ sub fetch_package;
 sub install_file {
     my ( $self, $filename ) = @_;
 
-    my $bundle_file = path($filename);
+    my $parcel_file = path($filename);
 
-    if ( !-r $bundle_file ) {
+    if ( !-r $parcel_file ) {
         $log->critical(
             "Bundle file '$filename' does not exist or can't be read");
         exit 1;
@@ -95,19 +95,19 @@ sub install_file {
         exit 1;
     }
 
-    my $bundle_basename = $bundle_file->basename;
-    $bundle_file->copy($install_dir);
+    my $parcel_basename = $parcel_file->basename;
+    $parcel_file->copy($install_dir);
 
     # TODO: Archive::Any might fit here, but it doesn't support XZ
     # introduce a plugin for it? It could be based on Archive::Tar
     # but I'm not sure Archive::Tar support XZ either -- SX.
-    System::Command->spawn( qw< tar -xJf >, $bundle_basename,
+    System::Command->spawn( qw< tar -xJf >, $parcel_basename,
         { cwd => $install_dir },
     );
 
-    $install_dir->child($bundle_basename)->remove;
+    $install_dir->child($parcel_basename)->remove;
 
-    print "Installed $bundle_basename in $install_dir\n";
+    print "Installed $parcel_basename in $install_dir\n";
 }
 
 __PACKAGE__->meta->make_immutable;

@@ -33,9 +33,9 @@ sub validate_args {
     # FIXME: support more options here :)
     # (validation for URLs, at least for now)
     -f $package
-        or $self->usage_error('Currently only a bundle file is supported');
+        or $self->usage_error('Currently only a parcel file is supported');
 
-    $self->{'bundle_file'} = $package;
+    $self->{'parcel_file'} = $package;
 }
 
 sub execute {
@@ -51,7 +51,7 @@ sub execute {
     my $logger = Pakket::Log->cli_logger(1); # verbosity
     Log::Any::Adapter->set( 'Dispatch', dispatcher => $logger );
 
-    $installer->install_file( $self->{'bundle_file'} );
+    $installer->install_file( $self->{'parcel_file'} );
 }
 
 1;
