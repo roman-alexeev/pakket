@@ -172,8 +172,11 @@ sub get_latest_satisfying_version {
     my $chosen = $req->pick_maximum_satisfying_version(
         [ keys %{ $self->index->{$category}{$package_name}{versions} } ] );
     if ( !$chosen ) {
-        die
-            "Could not find maximum satisfying version for $category/$package_name in index";
+        croak(
+            printf
+                "Couldn't find maximum satisfying version for %s in index\n",
+                "$category/$package_name",
+        );
     }
     $log->debug("Chosen: $package_name $chosen");
 
@@ -225,9 +228,11 @@ sub run_build {
         = $self->get_latest_satisfying_version( $category, $package_name,
         $package_args );
 
-    $package_version
-        or $log->critical(
-        "Could not find a version number for $full_package_name"), exit 1;
+    $package_version or do {
+        $log->critical(
+            "Could not find a version number for $full_package_name");
+        exit 1;
+    };
 
     # FIXME: this is a hack
     # Once we have a proper repository, we could query it and find out
@@ -279,9 +284,10 @@ sub run_build {
     );
 
     $log->info('Copying package files');
-    -d $package_src_dir
-        or $log->critical("Cannot find source dir: $package_src_dir"),
+    -d $package_src_dir or do {
+        $log->critical("Cannot find source dir: $package_src_dir");
         exit 1;
+    };
 
     my $top_build_dir = $self->build_dir;
 
@@ -361,10 +367,10 @@ sub scan_dir {
     );
 
     if ($error_out) {
-        keys %{$package_files}
-            or $log->critical(
-            'This is odd. Build did not generate new files. Cannot package.'),
+        keys %{$package_files} or do {
+            $log->critical('This is odd. Build did not generate new files. Cannot package.');
             exit 1;
+        };
     }
 
     # store per all packages to get the diff
@@ -466,7 +472,7 @@ sub read_package_config {
     my $config_file = path( $self->config_dir, $category, $package_name,
         "$package_version.toml" );
 
-    unless ( -r $config_file ) {
+    if ( ! -r $config_file ) {
         $log->error("Could not find package information ($config_file)");
         return;
     }
@@ -480,13 +486,13 @@ sub read_package_config {
 
     # double check we have the right package configuration
     my $config_name = $config->{'Package'}{'name'};
-    unless ($config_name) {
+    if ( !$config_name ) {
         $log->error("Package config must provide 'name'");
         return;
     }
 
     my $config_category = $config->{'Package'}{'category'};
-    unless ($config_category) {
+    if ( !$config_category ) {
         $log->error("Package config must provide 'category'");
         return;
     }
