@@ -14,9 +14,8 @@ sub build_package {
 
     $log->info("Building Perl module: $package");
 
-    my $original_dir = cwd;
-    my @perl5lib     = (
-        $original_dir,
+    my @perl5lib = (
+        $build_dir,
         path( $prefix, qw<lib perl5> )->absolute->stringify,
     );
 
