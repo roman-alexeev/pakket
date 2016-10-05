@@ -2,6 +2,7 @@ package Pakket::Installer;
 
 # ABSTRACT: Install pakket packages into an installation directory
 
+use JSON::MaybeXS qw<decode_json>;
 use Moose;
 use Path::Tiny qw< path  >;
 use Types::Path::Tiny qw< Path  >;
@@ -10,6 +11,10 @@ use Log::Any qw< $log >;
 use Pakket::Log;
 use Pakket::Utils qw< is_writeable >;
 use namespace::autoclean;
+
+use constant {
+    'PARCEL_METADATA_FILE' => 'meta.json',
+};
 
 with 'Pakket::Role::RunCommand';
 
@@ -45,15 +50,22 @@ sub fetch_package;
 sub install {
     my ( $self, @parcel_filenames ) = @_;
 
+    my $installed = {};
+
     foreach my $file (@parcel_filenames) {
-        $self->install_parcel($file);
+        $self->install_parcel( $file, $installed );
     }
 
     return;
 }
 
 sub install_parcel {
-    my ( $self, $parcel_filename ) = @_;
+    my ( $self, $parcel_filename, $installed ) = @_;
+
+    $log->debug("About to install $parcel_filename");
+
+    $installed->{$parcel_filename}++
+        and return;
 
     my $parcel_file = path($parcel_filename);
 
@@ -78,20 +90,49 @@ sub install_parcel {
         exit 1;
     }
 
+    # FIXME: $parcel_dirname should come from repo
+    my $tmp_dir         = Path::Tiny->tempdir;
     my $parcel_basename = $parcel_file->basename;
-    $parcel_file->copy($library_dir);
+    my $parcel_dirname  = $parcel_basename =~ s{\.pkt$}{}rxms;
+    $parcel_file->copy($tmp_dir);
+
+    $log->debug("Unpacking $parcel_basename");
 
     # TODO: Archive::Any might fit here, but it doesn't support XZ
     # introduce a plugin for it? It could be based on Archive::Tar
     # but I'm not sure Archive::Tar support XZ either -- SX.
     $self->run_command(
-        $library_dir,
+        $tmp_dir,
         [ qw< tar -xJf >, $parcel_basename ],
     );
 
-    $library_dir->child($parcel_basename)->remove;
+    $tmp_dir->child($parcel_basename)->remove;
 
-    print "Delivered parcel $parcel_basename to $library_dir\n";
+    my $spec_file
+        = $tmp_dir->child($parcel_dirname)->child( PARCEL_METADATA_FILE() );
+
+    my $config = decode_json $spec_file->slurp_utf8;
+
+    my ( $pkg_name, $pkg_category, $pkg_version )
+        = @{ $config->{'Package'} }{qw<name category version>};
+
+    my $runtime_prereqs = $config->{'Prereqs'}{'runtime'};
+    foreach my $prereq_name ( keys %{$runtime_prereqs} ) {
+        my $prereq_data    = $runtime_prereqs->{$prereq_name};
+        my $prereq_version = $prereq_data->{'version'};
+
+        # FIXME We shouldn't be constructing this,
+        #       We should just ask the repo for it
+        #       It should maintain metadata for this
+        #       and API to retrieve it
+        my $filename = "$prereq_name-$prereq_version.pkt";
+        $self->install_parcel( $filename, $installed );
+    }
+
+    $log->info(
+        "Delivered parcel $pkg_category/$pkg_name ($pkg_version) " .
+        "to $library_dir",
+    );
 
     return;
 }
