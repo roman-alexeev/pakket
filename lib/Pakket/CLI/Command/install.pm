@@ -23,19 +23,21 @@ sub validate_args {
     my ( $self, $opt, $args ) = @_;
 
     defined $opt->{'to'}
-        and $self->{'installer'}{'repo_dir'} = $opt->{'to'};
+        and $self->{'installer'}{'library_dir'} = $opt->{'to'};
 
     @{$args} == 0
-        and $self->usage_error('Must provide package to install');
+        and $self->usage_error('Must provide parcels to install');
 
-    my $package = $args->[0];
+    my @parcels = @{$args};
 
     # FIXME: support more options here :)
     # (validation for URLs, at least for now)
-    -f $package
-        or $self->usage_error('Currently only a parcel file is supported');
+    foreach my $parcel (@parcels) {
+        -f $parcel
+            or $self->usage_error('Currently only a parcel file is supported');
+    }
 
-    $self->{'parcel_file'} = $package;
+    $self->{'parcel_files'} = \@parcels;
 }
 
 sub execute {
@@ -45,13 +47,13 @@ sub execute {
             defined $self->{'installer'}{$_}
                 ? ( $_ => $self->{'installer'}{$_} )
                 : ()
-        ), qw< repo_dir > ),
+        ), qw< library_dir > ),
     );
 
     my $logger = Pakket::Log->cli_logger(1); # verbosity
     Log::Any::Adapter->set( 'Dispatch', dispatcher => $logger );
 
-    $installer->install_file( $self->{'parcel_file'} );
+    return $installer->install( @{ $self->{'parcel_files'} } );
 }
 
 1;

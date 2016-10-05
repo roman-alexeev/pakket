@@ -6,12 +6,12 @@ use Moose;
 use Path::Tiny qw< path  >;
 use Types::Path::Tiny qw< Path  >;
 use File::HomeDir;
-use System::Command;
+use Log::Any qw< $log >;
 use Pakket::Log;
 use Pakket::Utils qw< is_writeable >;
-use Pakket::Repository;
-use Log::Any qw< $log >;
 use namespace::autoclean;
+
+with 'Pakket::Role::RunCommand';
 
 # TODO:
 # * Recursively install
@@ -28,86 +28,72 @@ use namespace::autoclean;
 #                  active ->
 #
 
-has repo_dir => (
-    is      => 'ro',
-    isa     => Path,
-    coerce  => 1,
-    default => sub {
-        # if it's installed:
-        #   * PAKKET_REPO will be configured
-        #   * if we have permission, we will install to it successfully
-        # if it isn't installed:
-        #   * this is a local installation
-        $ENV{'PAKKET_REPO'} || path( File::HomeDir->my_home, '.pakket' );
-    },
+# TODO: Derive from a config
+# --local should do it in $HOME
+has 'library_dir' => (
+    'is'       => 'ro',
+    'isa'      => Path,
+    'coerce'   => 1,
+    'required' => 1,
 );
-
-has repo => (
-    is      => 'ro',
-    isa     => 'Pakket::Repository',
-    lazy    => 1,
-    builder => '_build_repo',
-);
-
-has install_dir => (
-    is      => 'ro',
-    isa     => Path,
-    lazy    => 1,
-    coerce  => 1,
-    default => sub {
-        my $self = shift;
-        return path( $self->repo_dir, 'library' );
-    },
-);
-
-sub _build_repo {
-    my $self = shift;
-    return Pakket::Repository->new( repo_dir => $self->repo_dir );
-}
 
 # TODO:
 # this should be implemented using a fetcher class
 # because it might be from HTTP/FTP/Git/Custom/etc.
 sub fetch_package;
 
-sub install_file {
-    my ( $self, $filename ) = @_;
+sub install {
+    my ( $self, @parcel_filenames ) = @_;
 
-    my $parcel_file = path($filename);
+    foreach my $file (@parcel_filenames) {
+        $self->install_parcel($file);
+    }
 
-    if ( !-r $parcel_file ) {
+    return;
+}
+
+sub install_parcel {
+    my ( $self, $parcel_filename ) = @_;
+
+    my $parcel_file = path($parcel_filename);
+
+    if ( ! $parcel_file->exists ) {
         $log->critical(
-            "Bundle file '$filename' does not exist or can't be read");
+            "Bundle file '$parcel_filename' does not exist or can't be read",
+        );
+
         exit 1;
     }
 
-    my $install_dir = $self->install_dir;
+    my $library_dir = $self->library_dir;
 
-    if ( !$install_dir->is_dir ) {
-        $log->critical(
-            "Cannot find library directory, please run 'init' first");
-        exit 1;
-    }
+    $library_dir->is_dir
+        or $library_dir->mkpath();
 
-    if ( !is_writeable($install_dir) ) {
+    if ( !is_writeable($library_dir) ) {
         $log->critical(
-            "Can't write to your installation directory ($install_dir)");
+            "Can't write to your installation directory ($library_dir)",
+        );
+
         exit 1;
     }
 
     my $parcel_basename = $parcel_file->basename;
-    $parcel_file->copy($install_dir);
+    $parcel_file->copy($library_dir);
 
     # TODO: Archive::Any might fit here, but it doesn't support XZ
     # introduce a plugin for it? It could be based on Archive::Tar
     # but I'm not sure Archive::Tar support XZ either -- SX.
-    System::Command->spawn( qw< tar -xJf >, $parcel_basename,
-        { cwd => $install_dir },
+    $self->run_command(
+        $library_dir,
+        [ qw< tar -xJf >, $parcel_basename ],
     );
 
-    $install_dir->child($parcel_basename)->remove;
+    $library_dir->child($parcel_basename)->remove;
 
-    print "Installed $parcel_basename in $install_dir\n";
+    print "Delivered parcel $parcel_basename to $library_dir\n";
+
+    return;
 }
 
 __PACKAGE__->meta->make_immutable;
