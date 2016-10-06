@@ -14,7 +14,17 @@ sub description { 'Install a package' }
 
 sub opt_spec {
     return (
-        [ 'to=s',       'directory to install the package in'  ],
+        [
+            'to=s',
+            'directory to install the package in',
+            { 'required' => 1 },
+        ],
+        [
+            'from=s',
+            'directory to install the packages from',
+            { 'required' => 1 },
+        ],
+        [ 'index-file=s', 'Index file for the sources', { 'required' => 1 } ],
         [ 'verbose|v+', 'verbose output (can be provided multiple times)' ],
     );
 }
@@ -22,20 +32,19 @@ sub opt_spec {
 sub validate_args {
     my ( $self, $opt, $args ) = @_;
 
-    defined $opt->{'to'}
-        and $self->{'installer'}{'repo_dir'} = $opt->{'to'};
+    my $logger = Pakket::Log->cli_logger(2); # verbosity
+    Log::Any::Adapter->set( 'Dispatch', dispatcher => $logger );
+
+    $self->{'installer'}{'pakket_dir'} = $opt->{'to'};
+    $self->{'installer'}{'parcel_dir'} = $opt->{'from'};
+    $self->{'installer'}{'index_file'} = $opt->{'index_file'};
 
     @{$args} == 0
-        and $self->usage_error('Must provide package to install');
+        and $self->usage_error('Must provide parcels to install');
 
-    my $package = $args->[0];
+    my @parcels = @{$args};
 
-    # FIXME: support more options here :)
-    # (validation for URLs, at least for now)
-    -f $package
-        or $self->usage_error('Currently only a parcel file is supported');
-
-    $self->{'parcel_file'} = $package;
+    $self->{'parcels'} = \@parcels;
 }
 
 sub execute {
@@ -45,13 +54,10 @@ sub execute {
             defined $self->{'installer'}{$_}
                 ? ( $_ => $self->{'installer'}{$_} )
                 : ()
-        ), qw< repo_dir > ),
+        ), qw< pakket_dir parcel_dir index_file > ),
     );
 
-    my $logger = Pakket::Log->cli_logger(1); # verbosity
-    Log::Any::Adapter->set( 'Dispatch', dispatcher => $logger );
-
-    $installer->install_file( $self->{'parcel_file'} );
+    return $installer->install( @{ $self->{'parcels'} } );
 }
 
 1;
