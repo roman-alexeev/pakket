@@ -214,10 +214,20 @@ sub install_package {
         [ qw< tar -xJf >, $parcel_basename ],
     );
 
+    my $full_parcel_dir = $dir->child($parcel_dirname);
+    foreach my $item ( $full_parcel_dir->children ) {
+        my $inner_dir = $dir->child( basename($item) );
+
+        if ( $inner_dir->is_dir && !$inner_dir->exists ) {
+            $inner_dir->mkpath();
+        }
+
+        dircopy( $item, $inner_dir );
+    }
+
     $dir->child($parcel_basename)->remove;
 
-    my $spec_file
-        = $dir->child($parcel_dirname)->child( PARCEL_METADATA_FILE() );
+    my $spec_file = $full_parcel_dir->child( PARCEL_METADATA_FILE() );
 
     my $config = decode_json $spec_file->slurp_utf8;
 
@@ -237,6 +247,8 @@ sub install_package {
             $self->install_package( $next_pkg, $dir, $installed );
         }
     }
+
+    $full_parcel_dir->remove_tree( { 'safe' => 0 } );
 
     my $actual_version = $config->{'Package'}{'version'};
     $log->info("Delivered parcel $pkg_cat/$pkg_name ($actual_version)");
