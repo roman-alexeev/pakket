@@ -14,7 +14,17 @@ sub description { 'Install a package' }
 
 sub opt_spec {
     return (
-        [ 'to=s',       'directory to install the package in'  ],
+        [
+            'to=s',
+            'directory to install the package in',
+            { 'required' => 1 },
+        ],
+        [
+            'from=s',
+            'directory to install the packages from',
+            { 'required' => 1 },
+        ],
+        [ 'index-file=s', 'Index file for the sources', { 'required' => 1 } ],
         [ 'verbose|v+', 'verbose output (can be provided multiple times)' ],
     );
 }
@@ -25,22 +35,16 @@ sub validate_args {
     my $logger = Pakket::Log->cli_logger(2); # verbosity
     Log::Any::Adapter->set( 'Dispatch', dispatcher => $logger );
 
-    defined $opt->{'to'}
-        and $self->{'installer'}{'pakket_dir'} = $opt->{'to'};
+    $self->{'installer'}{'pakket_dir'} = $opt->{'to'};
+    $self->{'installer'}{'parcel_dir'} = $opt->{'from'};
+    $self->{'installer'}{'index_file'} = $opt->{'index_file'};
 
     @{$args} == 0
         and $self->usage_error('Must provide parcels to install');
 
     my @parcels = @{$args};
 
-    # FIXME: support more options here :)
-    # (validation for URLs, at least for now)
-    foreach my $parcel (@parcels) {
-        -f $parcel
-            or $self->usage_error('Currently only a parcel file is supported');
-    }
-
-    $self->{'parcel_files'} = \@parcels;
+    $self->{'parcels'} = \@parcels;
 }
 
 sub execute {
@@ -50,10 +54,10 @@ sub execute {
             defined $self->{'installer'}{$_}
                 ? ( $_ => $self->{'installer'}{$_} )
                 : ()
-        ), qw< pakket_dir > ),
+        ), qw< pakket_dir parcel_dir index_file > ),
     );
 
-    return $installer->install( @{ $self->{'parcel_files'} } );
+    return $installer->install( @{ $self->{'parcels'} } );
 }
 
 1;
