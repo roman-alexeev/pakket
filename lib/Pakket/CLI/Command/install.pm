@@ -26,7 +26,7 @@ sub validate_args {
     Log::Any::Adapter->set( 'Dispatch', dispatcher => $logger );
 
     defined $opt->{'to'}
-        and $self->{'installer'}{'library_dir'} = $opt->{'to'};
+        and $self->{'installer'}{'pakket_dir'} = $opt->{'to'};
 
     @{$args} == 0
         and $self->usage_error('Must provide parcels to install');
@@ -50,7 +50,7 @@ sub execute {
             defined $self->{'installer'}{$_}
                 ? ( $_ => $self->{'installer'}{$_} )
                 : ()
-        ), qw< library_dir > ),
+        ), qw< pakket_dir > ),
     );
 
     return $installer->install( @{ $self->{'parcel_files'} } );
