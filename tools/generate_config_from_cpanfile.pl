@@ -4,7 +4,6 @@ use warnings;
 use version;
 
 use TOML qw< to_toml >;
-use TOML::Parser;
 use Getopt::Long::Descriptive;
 use Path::Tiny qw< path >;
 use Module::CPANfile;
@@ -16,6 +15,7 @@ use Ref::Util qw< is_hashref >;
 use Module::CoreList;
 
 use Pakket::Utils qw< generate_json_conf >;
+use Pakket::ConfigReader;
 
 $|++;
 
@@ -347,11 +347,12 @@ sub read_cpanfile {
 }
 
 sub read_pakket_config {
-    my $conf = {};
-    my $file = path( File::HomeDir->my_home,  '.pakket' );
-    -f $file and
-	$conf = TOML::Parser->new( strict_mode => 1 )->parse_file($file);
-    return $conf;
+    my $config_file   = path( File::HomeDir->my_home,  '.pakket' );
+    my $config_reader = Pakket::ConfigReader->new(
+        'type' => 'TOML',
+        'args' => [ filename => $config_file ],
+    );
+    return $config_reader->read_config;
 }
 
 sub rewrite_download_url {
