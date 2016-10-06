@@ -2,15 +2,16 @@ package Pakket::Installer;
 
 # ABSTRACT: Install pakket packages into an installation directory
 
-use JSON::MaybeXS qw<decode_json>;
+use JSON::MaybeXS         qw< decode_json >;
 use Moose;
-use Path::Tiny qw< path  >;
-use Types::Path::Tiny qw< Path  >;
-use File::HomeDir;
-use Log::Any qw< $log >;
+use Path::Tiny            qw< path  >;
+use Types::Path::Tiny     qw< Path  >;
+use File::Copy::Recursive qw< dircopy >;
+use Time::HiRes           qw< time >;
+use Log::Any              qw< $log >;
 use Pakket::Log;
-use Pakket::Utils qw< is_writeable >;
-use Time::HiRes qw<time>;
+use Pakket::Utils         qw< is_writeable >;
+
 use namespace::autoclean;
 
 use constant {
@@ -57,6 +58,7 @@ sub install {
     }
 
     my $pakket_dir = $self->pakket_dir;
+
     $pakket_dir->is_dir
         or $pakket_dir->mkpath();
 
@@ -70,7 +72,17 @@ sub install {
         exit 1;
     }
 
-    $work_dir->mkpath();
+    my $active_link = $pakket_dir->child('active');
+
+    # we copy any previous installation
+    if ( $active_link->exists ) {
+        my $orig_work_dir = eval { my $link = readlink $active_link } or do {
+            $log->critical("$active_link is not a symlink");
+            exit 1;
+        };
+
+        dircopy($orig_work_dir,$work_dir);
+    }
 
     my $installed = {};
     foreach my $file (@parcel_filenames) {
@@ -80,7 +92,6 @@ sub install {
     # We finished installing each one recursively to the work directory
     # Now we need to set the symlink
     $log->debug('Setting symlink to new work directory');
-    my $active_link = $pakket_dir->child('active');
     $active_link->remove;
 
     if ( ! symlink $work_dir, $active_link ) {
