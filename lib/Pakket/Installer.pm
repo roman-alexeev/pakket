@@ -12,6 +12,8 @@ use Time::HiRes           qw< time >;
 use Log::Any              qw< $log >;
 use Pakket::Log;
 use Pakket::Utils         qw< is_writeable >;
+use Pakket::Version::Requirements;
+
 
 use namespace::autoclean;
 
@@ -37,11 +39,39 @@ has 'pakket_dir' => (
     'required' => 1,
 );
 
+has 'parcel_dir' => (
+    'is'       => 'ro',
+    'isa'      => Path,
+    'coerce'   => 1,
+    'required' => 1,
+);
+
 has 'keep_copies' => (
     'is'      => 'ro',
     'isa'     => 'Int',
     'default' => sub {1},
 );
+
+has 'index_file' => (
+    'is'       => 'ro',
+    'isa'      => Path,
+    'coerce'   => 1,
+    'required' => 1,
+);
+
+has 'index' => (
+    'is'       => 'ro',
+    'isa'      => 'HashRef',
+    'lazy'     => 1,
+    'builder'  => '_build_index',
+    'required' => 1,
+);
+
+sub _build_index {
+    my $self = shift;
+
+    return decode_json $self->index_file->slurp_utf8;
+}
 
 # TODO:
 # this should be implemented using a fetcher class
@@ -49,9 +79,9 @@ has 'keep_copies' => (
 sub fetch_package;
 
 sub install {
-    my ( $self, @parcel_filenames ) = @_;
+    my ( $self, @packages ) = @_;
 
-    if ( !@parcel_filenames ) {
+    if ( !@packages ) {
         $log->notice('Did not receive any parcels to deliver');
         return;
     }
@@ -80,12 +110,12 @@ sub install {
             exit 1;
         };
 
-        dircopy($orig_work_dir,$work_dir);
+        dircopy( $orig_work_dir, $work_dir );
     }
 
     my $installed = {};
-    foreach my $file (@parcel_filenames) {
-        $self->install_parcel( $file, $work_dir, $installed );
+    foreach my $package (@packages) {
+        $self->install_package( $package, $work_dir, $installed );
     }
 
     # We finished installing each one recursively to the work directory
@@ -125,21 +155,35 @@ sub install {
     return;
 }
 
-sub install_parcel {
-    my ( $self, $parcel_filename, $dir, $installed ) = @_;
+sub install_package {
+    my ( $self, $package, $dir, $installed ) = @_;
 
-    $log->debug("About to install $parcel_filename");
+    $log->debug("About to install $package");
 
-    if ( $installed->{$parcel_filename}++ ) {
-        $log->debug("$parcel_filename already installed");
+    if ( $installed->{$package}++ ) {
+        $log->debug("$package already installed");
         return;
     }
 
-    my $parcel_file = path($parcel_filename);
+    my ( $pkg_cat, $pkg_name, $pkg_ver ) = split /\//xms, $package;
+
+    my $req   = Pakket::Version::Requirements->new_from_category($pkg_cat);
+    my $index = $self->index;
+
+    my $version = $req->pick_maximum_satisfying_version(
+        [ keys %{ $index->{$pkg_cat}{$pkg_name}{'versions'} } ],
+    );
+
+
+    my $parcel_file = $self->parcel_dir->child(
+        $pkg_cat,
+        $pkg_name,
+        $index->{$pkg_cat}{$pkg_name}{'versions'}{$version} . '.pkt',
+    );
 
     if ( !$parcel_file->exists ) {
         $log->critical(
-            "Bundle file '$parcel_filename' does not exist or can't be read",
+            "Bundle file '$parcel_file' does not exist or can't be read",
         );
 
         exit 1;
@@ -175,23 +219,25 @@ sub install_parcel {
 
     my $config = decode_json $spec_file->slurp_utf8;
 
-    my ( $pkg_name, $pkg_category, $pkg_version )
-        = @{ $config->{'Package'} }{qw<name category version>};
+    my $prereqs = $config->{'Prereqs'};
+    foreach my $prereq_category ( keys %{$prereqs} ) {
+        my $runtime_prereqs = $prereqs->{$prereq_category}{'runtime'};
 
-    my $runtime_prereqs = $config->{'Prereqs'}{'runtime'};
-    foreach my $prereq_name ( keys %{$runtime_prereqs} ) {
-        my $prereq_data    = $runtime_prereqs->{$prereq_name};
-        my $prereq_version = $prereq_data->{'version'};
+        foreach my $prereq_name ( keys %{$runtime_prereqs} ) {
+            my $prereq_data    = $runtime_prereqs->{$prereq_name};
+            my $prereq_version = $prereq_data->{'version'};
 
-        # FIXME We shouldn't be constructing this,
-        #       We should just ask the repo for it
-        #       It should maintain metadata for this
-        #       and API to retrieve it
-        my $filename = "$prereq_name-$prereq_version.pkt";
-        $self->install_parcel( $filename, $installed );
+            # FIXME We shouldn't be constructing this,
+            #       We should just ask the repo for it
+            #       It should maintain metadata for this
+            #       and API to retrieve it
+            my $next_pkg = "$prereq_category/$prereq_name/$prereq_version";
+            $self->install_package( $next_pkg, $dir, $installed );
+        }
     }
 
-    $log->info("Delivered parcel $pkg_category/$pkg_name ($pkg_version)");
+    my $actual_version = $config->{'Package'}{'version'};
+    $log->info("Delivered parcel $pkg_cat/$pkg_name ($actual_version)");
 
     return;
 }
