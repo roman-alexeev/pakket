@@ -22,6 +22,9 @@ sub opt_spec {
 sub validate_args {
     my ( $self, $opt, $args ) = @_;
 
+    my $logger = Pakket::Log->cli_logger(2); # verbosity
+    Log::Any::Adapter->set( 'Dispatch', dispatcher => $logger );
+
     defined $opt->{'to'}
         and $self->{'installer'}{'library_dir'} = $opt->{'to'};
 
@@ -49,9 +52,6 @@ sub execute {
                 : ()
         ), qw< library_dir > ),
     );
-
-    my $logger = Pakket::Log->cli_logger(1); # verbosity
-    Log::Any::Adapter->set( 'Dispatch', dispatcher => $logger );
 
     return $installer->install( @{ $self->{'parcel_files'} } );
 }
