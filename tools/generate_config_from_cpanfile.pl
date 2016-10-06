@@ -355,8 +355,8 @@ sub read_pakket_config {
 }
 
 sub rewrite_download_url {
-    return unless exists $pakket_config->{metacpan}{rewrite_download_url};
     my $download_url = shift;
+    return $download_url unless exists $pakket_config->{metacpan}{rewrite_download_url};
     my ( $from, $to ) = @{ $pakket_config->{metacpan}{rewrite_download_url} }{qw< from to >};
     return ( $download_url =~ s/$from/$to/r );
 }
