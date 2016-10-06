@@ -7,6 +7,7 @@ use Moose;
 use Path::Tiny            qw< path  >;
 use Types::Path::Tiny     qw< Path  >;
 use File::Copy::Recursive qw< dircopy >;
+use File::Basename        qw< basename >;
 use Time::HiRes           qw< time >;
 use Log::Any              qw< $log >;
 use Pakket::Log;
@@ -20,12 +21,6 @@ use constant {
 
 with 'Pakket::Role::RunCommand';
 
-# TODO:
-# * Recursively install
-# * Support .pakket.local (or .pakket.config local file configuration)
-# * Support multiple libraries
-# * Support active library
-
 # Sample structure:
 # ~/.pakket/
 #        bin/
@@ -35,13 +30,17 @@ with 'Pakket::Role::RunCommand';
 #                  active ->
 #
 
-# TODO: Derive from a config
-# --local should do it in $HOME
 has 'pakket_dir' => (
     'is'       => 'ro',
     'isa'      => Path,
     'coerce'   => 1,
     'required' => 1,
+);
+
+has 'keep_copies' => (
+    'is'      => 'ro',
+    'isa'     => 'Int',
+    'default' => sub {1},
 );
 
 # TODO:
@@ -100,6 +99,28 @@ sub install {
     }
 
     $log->info("Finished installing all packages into $pakket_dir");
+
+    # Clean up
+    my $keep = $self->keep_copies;
+
+    if ( $keep <= 0 ) {
+        $log->warning(
+            "You have set your 'keep_copies' to 0 or less.\n" .
+            "Resetting it to '1'.\n",
+        );
+
+        $keep = 1;
+    }
+
+    my @dirs = sort { $a->stat->mtime <=> $b->stat->mtime }
+               grep +( basename($_) ne 'active' && $_->is_dir ), $pakket_dir->children;
+
+    my $num_dirs = @dirs;
+    foreach my $dir (@dirs) {
+        $num_dirs-- <= $keep and last;
+        $log->debug("Removing old directory: $dir");
+        path($dir)->remove_tree( { 'safe' => 0 } );
+    }
 
     return;
 }
