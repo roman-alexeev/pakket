@@ -101,6 +101,8 @@ sub install {
         exit 1;
     }
 
+    $work_dir->mkpath();
+
     my $active_link = $pakket_dir->child('active');
 
     # we copy any previous installation
