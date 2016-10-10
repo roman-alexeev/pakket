@@ -269,7 +269,7 @@ sub run_build {
     # recursively build prereqs
     # starting with system libraries
 
-    foreach my $type (qw< system perl nodejs >) {
+    foreach my $type ( keys %{ $self->builders } ) {
         if ( my $prereqs = $config->{'Prereqs'}{$type} ) {
             foreach my $category (qw<configure runtime>) {
                 foreach my $prereq ( keys %{ $prereqs->{$category} } ) {
