@@ -14,7 +14,7 @@ sub generate_env_vars {
     my $bin_path = $self->generate_bin_path($prefix);
 
     return (
-        'CPATH'           => $prefix->child('include'),
+        'CPATH'           => $prefix->child('include')->stringify,
         'LD_LIBRARY_PATH' => $lib_path,
         'LIBRARY_PATH'    => $lib_path,
         'PATH'            => $bin_path,
