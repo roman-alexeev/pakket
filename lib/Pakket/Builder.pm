@@ -21,6 +21,7 @@ use Pakket::Version::Requirements;
 use Pakket::Builder::NodeJS;
 use Pakket::Builder::Perl;
 use Pakket::Builder::System;
+use Pakket::Constants qw< PARCEL_FILES_DIR >;
 
 use constant { ALL_PACKAGES_KEY => '', };
 
@@ -234,6 +235,9 @@ sub run_build {
         exit 1;
     };
 
+    my $top_build_dir  = $self->build_dir;
+    my $main_build_dir = path( $top_build_dir, 'main' );
+
     # FIXME: this is a hack
     # Once we have a proper repository, we could query it and find out
     # instead of asking the bundler this
@@ -244,15 +248,15 @@ sub run_build {
     if ( $existing_parcel->exists ) {
         $log->debug("$full_package_name already packaged, unpacking...");
 
-        my $main_build_dir = path( $self->build_dir, 'main' );
-        my $cur            = Path::Tiny->cwd;
-        my $ex_dir         = $existing_parcel->basename =~ s/\.pkt//rms;
+        system sprintf "tar --wildcards -C $main_build_dir" .
+                       " -xJf $existing_parcel %s/*",
+                       PARCEL_FILES_DIR();
 
-        system "tar --wildcards -C $main_build_dir"
-            . " -xJf $existing_parcel $ex_dir/*";
-        system "cp -r $main_build_dir/$ex_dir/* $main_build_dir";
+        system sprintf "cp -r $main_build_dir/%s/* $main_build_dir",
+            PARCEL_FILES_DIR();
 
-        path( $main_build_dir, $ex_dir )->remove_tree( { safe => 0 } );
+        path( $main_build_dir, PARCEL_FILES_DIR() )
+            ->remove_tree( { safe => 0 } );
 
         $self->scan_dir( $category, $package_name,
             $main_build_dir->absolute, 0 );
@@ -290,8 +294,6 @@ sub run_build {
         exit 1;
     };
 
-    my $top_build_dir = $self->build_dir;
-
     # FIXME: we shouldn't be generating PKG_CONFIG_PATH every time
     #        Instead, set this as default opt and send it to the build
     #        subroutines as "default opts" to add their own stuff to
@@ -299,8 +301,6 @@ sub run_build {
     my $pkgconfig_path = path( $top_build_dir, qw<main lib pkgconfig> );
     $log->info("Setting PKG_CONFIG_PATH=$pkgconfig_path");
     local $ENV{'PKG_CONFIG_PATH'} = $pkgconfig_path;
-
-    my $main_build_dir = path( $top_build_dir, 'main' );
 
     # FIXME: This shouldn't just be configure flags
     # we should allow the builder to have access to a general
