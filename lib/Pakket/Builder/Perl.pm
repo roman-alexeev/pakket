@@ -4,7 +4,7 @@ package Pakket::Builder::Perl;
 use Moose;
 use English '-no_match_vars';
 use Log::Any   qw< $log >;
-use Path::Tiny qw< path cwd >;
+use Path::Tiny qw< path >;
 use Pakket::Log;
 
 with qw<Pakket::Role::Builder>;
