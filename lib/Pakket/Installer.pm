@@ -13,13 +13,9 @@ use Log::Any              qw< $log >;
 use Pakket::Log;
 use Pakket::Utils         qw< is_writeable >;
 use Pakket::Version::Requirements;
-
+use Pakket::Constants qw<PARCEL_METADATA_FILE PARCEL_FILES_DIR>;
 
 use namespace::autoclean;
-
-use constant {
-    'PARCEL_METADATA_FILE' => 'meta.json',
-};
 
 with 'Pakket::Role::RunCommand';
 
@@ -201,7 +197,6 @@ sub install_package {
 
     # FIXME: $parcel_dirname should come from repo
     my $parcel_basename = $parcel_file->basename;
-    my $parcel_dirname  = $parcel_basename =~ s{\.pkt$}{}rxms;
     $parcel_file->copy($dir);
 
     $log->debug("Unpacking $parcel_basename");
@@ -214,7 +209,7 @@ sub install_package {
         [ qw< tar -xJf >, $parcel_basename ],
     );
 
-    my $full_parcel_dir = $dir->child($parcel_dirname);
+    my $full_parcel_dir = $dir->child( PARCEL_FILES_DIR() );
     foreach my $item ( $full_parcel_dir->children ) {
         my $inner_dir = $dir->child( basename($item) );
 
