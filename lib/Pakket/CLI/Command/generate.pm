@@ -4,7 +4,8 @@ package Pakket::CLI::Command::generate;
 use strict;
 use warnings;
 use Log::Any::Adapter;
-use Path::Tiny qw< path >;
+use Path::Tiny qw< path  >;
+use List::Util qw< first >;
 
 use Pakket::CLI '-command';
 use Pakket::Log;
@@ -18,37 +19,32 @@ sub opt_spec {
         [
             'name=s',
             'category/module name (e.g. "perl/Moose")',
-            {},
         ],
         [
             'cpanfile=s',
             'cpanfile to configure from',
-            {},
         ],
         [
             'config-dir=s',
             'directory to write the configuration to (TOML files)',
-            { required => 1 }
+            { required => 1 },
         ],
         [
             'source-dir=s',
             'directory to write the sources to (downloads if provided)',
-            {}
         ],
         [
             'index-file=s',
             'file to generate json configuration to',
-            {}
         ],
         [
             'additional_phase=s@',
             "additional phases to use ('develop' = author_requires, 'test' = test_requires). configure & runtime are done by default.",
-            {}
         ],
         [
             'extract',
             'extract downloaded source tarball',
-            { default => 0 }
+            { default => 0 },
         ],
     );
 }
@@ -66,8 +62,8 @@ sub validate_args {
     my $type;
 
     if ( $opt->{'name'} ) {
-        ( $category, $name ) = split '/' => $opt->{'name'};
-        grep { $_ eq $category } qw< perl > # add supported categories
+        ( $category, $name ) = split /\//xms => $opt->{'name'};
+        first { $_ eq $category } qw< perl > # add supported categories
             or $self->usage_error( "Wrong 'name' format\n" );
         $type = 'module';
     }
