@@ -25,12 +25,10 @@ sub is_writeable {
 sub generate_json_conf {
     my $output_file = shift;
     my $config_dir  = shift;
+    my $index = {};
 
     my $output = path( $output_file );
-    $output->exists
-        and die "$output already exists";
-
-    my $index = {};
+    $output->exists and $index = decode_json( $output->slurp_utf8 );
 
     my $category_iter = path( $config_dir )->iterator;
     while ( my $category = $category_iter->() ) {
