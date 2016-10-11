@@ -9,9 +9,11 @@ use Types::Path::Tiny qw< AbsPath >;
 use Pakket::Log;
 use Log::Any qw< $log >;
 
-use constant {
-    PAKKET_EXTENSION => 'pkt',
-};
+use Pakket::Constants qw<
+    PARCEL_EXTENSION
+    PARCEL_FILES_DIR
+    PARCEL_METADATA_FILE
+>;
 
 has bundle_dir => (
     is      => 'ro',
@@ -42,10 +44,9 @@ sub bundle {
         CLEANUP  => 1,
     );
 
-    my $pkg_name_ver = "$package_name-$package_version";
-    $parcel_path->child($pkg_name_ver)->mkpath;
+    $parcel_path->child( PARCEL_FILES_DIR() )->mkpath;
 
-    chdir $parcel_path->child($pkg_name_ver)->stringify;
+    chdir $parcel_path->child( PARCEL_FILES_DIR() )->stringify;
 
     foreach my $orig_file ( keys %{$files} ) {
         $log->debug("Bundling $orig_file");
@@ -80,13 +81,13 @@ sub bundle {
         }
     }
 
-    path('meta.json')
+    path( PARCEL_METADATA_FILE() )
         ->spew_utf8( JSON::MaybeXS->new->pretty->encode($package_config) );
 
     chdir '..';
 
     my $parcel_filename = path(
-        join '.', $pkg_name_ver, PAKKET_EXTENSION,
+        join '.', "$package_name-$package_version", PARCEL_EXTENSION,
     );
 
     $log->info("Creating parcel file $parcel_filename");
