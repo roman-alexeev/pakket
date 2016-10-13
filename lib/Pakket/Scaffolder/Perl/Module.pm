@@ -27,6 +27,22 @@ has type => (
     default => "requires",
 );
 
+sub BUILDARGS {
+    my ( $class, @args ) = @_;
+    my %args = @args == 1 ? %{ $args[0] } : @args;
+
+    if ( $args{'name'} =~ /^ (.+) \@ (.+) $/x ) {
+        $args{'name'}    = $1;
+        $args{'version'} = "== $2";
+    }
+    elsif ( $args{'name'} =~ /^ (.+) \~ (.+) $/x ) {
+        $args{'name'}    = $1;
+        $args{'version'} = $2;
+    }
+
+    return \%args;
+}
+
 sub prereq_specs {
     my $self = shift;
     return +{
