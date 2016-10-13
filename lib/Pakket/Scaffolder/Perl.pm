@@ -108,18 +108,25 @@ sub run {
     }
 }
 
+sub skip_name {
+    my ( $self, $name ) = @_;
+
+    if ( Module::CoreList::is_core($name) and !${Module::CoreList::upstream}{$name} ) {
+        $log->debugf( "%s* skipping %s (core module, not dual-life)", $self->spaces, $name );
+        return 1;
+    }
+
+    if ( exists $self->known_names_to_skip->{ $name } ) {
+        $log->debugf( "%s* skipping %s (known 'bad' name for configuration)", $self->spaces, $name );
+        return 1;
+    }
+
+    return 0;
+}
+
 sub create_config_for {
     my ( $self, $type, $name, $requirements ) = @_;
-
-    # skip if...
-    if ( Module::CoreList::is_core($name) and !${Module::CoreList::upstream}{$name} ) {
-        $log->debugf( "%sskipping %s (core module, not dual-life)", $self->spaces, $name );
-        return;
-    }
-    if ( exists $self->known_names_to_skip->{ $name } ) {
-        $log->debugf( "%sskipping %s (known 'bad' package)", $self->spaces, $name );
-        return;
-    }
+    return if $self->skip_name($name);
     return if $self->processed_dists->{ $name }++;
 
     my $release = $self->get_release_info($type, $name, $requirements);
@@ -181,8 +188,7 @@ sub create_config_for {
             my $dep_requirements = $dep_prereqs->requirements_for( $phase, $dep_type );
 
             for my $module ( keys %{ $dep_modules->{ $phase }{ $dep_type } } ) {
-                next if exists $self->known_names_to_skip->{ $module }
-                        or Module::CoreList::is_core($module) and !${Module::CoreList::upstream}{$module};
+                next if $self->skip_name($module);
 
                 my $rel = $self->get_release_info( module => $module, $dep_requirements );
                 next if exists $rel->{'skip'};
@@ -226,9 +232,7 @@ sub get_release_info {
         ? $self->get_dist_name($name)
         : $name;
 
-    return +{ skip => 1 }
-        if exists $self->known_names_to_skip->{ $dist_name }
-           or Module::CoreList::is_core($dist_name) and !${Module::CoreList::upstream}{$dist_name};
+    return +{ skip => 1 } if $self->skip_name($dist_name);
 
     my $req_as_hash = $requirements->as_string_hash;
     my $write_version_as_zero = !!(
