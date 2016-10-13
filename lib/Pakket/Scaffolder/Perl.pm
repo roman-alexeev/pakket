@@ -111,8 +111,15 @@ sub run {
 sub create_config_for {
     my ( $self, $type, $name, $requirements ) = @_;
 
-    return if exists $self->known_names_to_skip->{ $name };
-    return if Module::CoreList::is_core($name) and !${Module::CoreList::upstream}{$name};
+    # skip if...
+    if ( Module::CoreList::is_core($name) and !${Module::CoreList::upstream}{$name} ) {
+        $log->debugf( "%sskipping %s (core module, not dual-life)", $self->spaces, $name );
+        return;
+    }
+    if ( exists $self->known_names_to_skip->{ $name } ) {
+        $log->debugf( "%sskipping %s (known 'bad' package)", $self->spaces, $name );
+        return;
+    }
     return if $self->processed_dists->{ $name }++;
 
     my $release = $self->get_release_info($type, $name, $requirements);
