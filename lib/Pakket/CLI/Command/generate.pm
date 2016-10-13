@@ -46,13 +46,15 @@ sub opt_spec {
             'extract downloaded source tarball',
             { default => 0 },
         ],
+        [ 'verbose|v+',     'verbose output (can be provided multiple times)' ],
     );
 }
 
 sub validate_args {
     my ( $self, $opt, $args ) = @_;
 
-    my $logger = Pakket::Log->cli_logger(5); # verbosity
+    my $verbosity = $opt->{'verbose'}||0 + 2;
+    my $logger = Pakket::Log->cli_logger($verbosity);
     Log::Any::Adapter->set( 'Dispatch', dispatcher => $logger );
 
     @{ $args } and $self->usage_error("No extra arguments are allowed.\n");
