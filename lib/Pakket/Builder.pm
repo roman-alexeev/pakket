@@ -175,7 +175,7 @@ sub get_latest_satisfying_version {
 
     if ( !$chosen ) {
         $log->criticalf(
-                "Couldn't find maximum satisfying version for %s in index\n",
+                "Couldn't find maximum satisfying version for %s in index",
                 "$category/$package_name",
         );
 
