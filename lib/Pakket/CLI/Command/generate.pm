@@ -52,7 +52,7 @@ sub opt_spec {
 sub validate_args {
     my ( $self, $opt, $args ) = @_;
 
-    my $logger = Pakket::Log->cli_logger(2); # verbosity
+    my $logger = Pakket::Log->cli_logger(5); # verbosity
     Log::Any::Adapter->set( 'Dispatch', dispatcher => $logger );
 
     @{ $args } and $self->usage_error("No extra arguments are allowed.\n");
