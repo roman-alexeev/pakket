@@ -3,6 +3,7 @@ package Pakket::Builder;
 
 use version 0.77;
 
+use Carp ();
 use Moose;
 use JSON::MaybeXS             qw< decode_json >;
 use Path::Tiny                qw< path        >;
@@ -173,7 +174,7 @@ sub get_latest_satisfying_version {
     my $chosen = $req->pick_maximum_satisfying_version(
         [ keys %{ $self->index->{$category}{$package_name}{versions} } ] );
     if ( !$chosen ) {
-        croak(
+        Carp::croak(
             printf
                 "Couldn't find maximum satisfying version for %s in index\n",
                 "$category/$package_name",
