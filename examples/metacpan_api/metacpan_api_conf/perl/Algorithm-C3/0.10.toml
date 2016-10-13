@@ -1,0 +1,8 @@
+[Package]
+category = "perl"
+name = "Algorithm-C3"
+version = "0.10"
+[Prereqs]
+[Prereqs.perl]
+[Prereqs.perl.configure]
+[Prereqs.perl.runtime]

@@ -1,0 +1,8 @@
+[Package]
+category = "perl"
+name = "Digest-HMAC"
+version = "1.03"
+[Prereqs]
+[Prereqs.perl]
+[Prereqs.perl.configure]
+[Prereqs.perl.runtime]

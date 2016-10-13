@@ -1,0 +1,8 @@
+[Package]
+category = "perl"
+name = "String-Trim"
+version = "0.005"
+[Prereqs]
+[Prereqs.perl]
+[Prereqs.perl.configure]
+[Prereqs.perl.runtime]

@@ -1,0 +1,10 @@
+[Package]
+category = "perl"
+name = "Class-Load-XS"
+version = "0.09"
+[Prereqs]
+[Prereqs.perl]
+[Prereqs.perl.configure]
+[Prereqs.perl.runtime]
+[Prereqs.perl.runtime.Class-Load]
+version = "0.23"

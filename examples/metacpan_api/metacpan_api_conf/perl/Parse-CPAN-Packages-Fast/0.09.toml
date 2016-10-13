@@ -1,0 +1,10 @@
+[Package]
+category = "perl"
+name = "Parse-CPAN-Packages-Fast"
+version = "0.09"
+[Prereqs]
+[Prereqs.perl]
+[Prereqs.perl.configure]
+[Prereqs.perl.runtime]
+[Prereqs.perl.runtime.CPAN-DistnameInfo]
+version = "0"

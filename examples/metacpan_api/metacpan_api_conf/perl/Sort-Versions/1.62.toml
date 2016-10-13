@@ -1,0 +1,8 @@
+[Package]
+category = "perl"
+name = "Sort-Versions"
+version = "1.62"
+[Prereqs]
+[Prereqs.perl]
+[Prereqs.perl.configure]
+[Prereqs.perl.runtime]

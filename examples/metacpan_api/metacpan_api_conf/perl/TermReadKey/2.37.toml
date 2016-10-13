@@ -1,0 +1,8 @@
+[Package]
+category = "perl"
+name = "TermReadKey"
+version = "2.37"
+[Prereqs]
+[Prereqs.perl]
+[Prereqs.perl.configure]
+[Prereqs.perl.runtime]

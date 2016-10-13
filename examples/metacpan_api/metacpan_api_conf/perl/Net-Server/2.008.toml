@@ -1,0 +1,8 @@
+[Package]
+category = "perl"
+name = "Net-Server"
+version = "2.008"
+[Prereqs]
+[Prereqs.perl]
+[Prereqs.perl.configure]
+[Prereqs.perl.runtime]

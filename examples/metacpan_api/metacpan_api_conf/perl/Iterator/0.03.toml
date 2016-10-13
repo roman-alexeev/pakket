@@ -1,0 +1,10 @@
+[Package]
+category = "perl"
+name = "Iterator"
+version = "0.03"
+[Prereqs]
+[Prereqs.perl]
+[Prereqs.perl.configure]
+[Prereqs.perl.runtime]
+[Prereqs.perl.runtime.Exception-Class]
+version = "1.40"

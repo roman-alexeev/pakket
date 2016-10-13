@@ -1,0 +1,8 @@
+[Package]
+category = "perl"
+name = "Mozilla-CA"
+version = "20160104"
+[Prereqs]
+[Prereqs.perl]
+[Prereqs.perl.configure]
+[Prereqs.perl.runtime]
