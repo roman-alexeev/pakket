@@ -182,7 +182,7 @@ sub create_config_for {
 
             for my $module ( keys %{ $dep_modules->{ $phase }{ $dep_type } } ) {
                 next if exists $self->known_names_to_skip->{ $module }
-                        or Module::CoreList::is_core($module) and !${Module::CoreList::upstream}{$name};
+                        or Module::CoreList::is_core($module) and !${Module::CoreList::upstream}{$module};
 
                 my $rel = $self->get_release_info( module => $module, $dep_requirements );
                 next if exists $rel->{'skip'};
@@ -228,7 +228,7 @@ sub get_release_info {
 
     return +{ skip => 1 }
         if exists $self->known_names_to_skip->{ $dist_name }
-           or Module::CoreList::is_core($dist_name) and !${Module::CoreList::upstream}{$name};
+           or Module::CoreList::is_core($dist_name) and !${Module::CoreList::upstream}{$dist_name};
 
     my $req_as_hash = $requirements->as_string_hash;
     my $write_version_as_zero = !!(
