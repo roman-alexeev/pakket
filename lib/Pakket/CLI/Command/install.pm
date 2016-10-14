@@ -25,6 +25,7 @@ sub opt_spec {
             { 'required' => 1 },
         ],
         [ 'index-file=s', 'Index file for the sources', { 'required' => 1 } ],
+        [ 'input-file=s', 'Index-style file to install' ],
         [ 'verbose|v+', 'verbose output (can be provided multiple times)' ],
     );
 }
@@ -38,6 +39,7 @@ sub validate_args {
     $self->{'installer'}{'pakket_dir'} = $opt->{'to'};
     $self->{'installer'}{'parcel_dir'} = $opt->{'from'};
     $self->{'installer'}{'index_file'} = $opt->{'index_file'};
+    $self->{'installer'}{'input_file'} = $opt->{'input_file'};
 
     @{$args} == 0
         and $self->usage_error('Must provide parcels to install');
@@ -54,7 +56,7 @@ sub execute {
             defined $self->{'installer'}{$_}
                 ? ( $_ => $self->{'installer'}{$_} )
                 : ()
-        ), qw< pakket_dir parcel_dir index_file > ),
+        ), qw< pakket_dir parcel_dir index_file input_file > ),
     );
 
     return $installer->install( @{ $self->{'parcels'} } );

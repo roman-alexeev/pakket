@@ -2,7 +2,6 @@ package Pakket::Installer;
 
 # ABSTRACT: Install pakket packages into an installation directory
 
-use JSON::MaybeXS         qw< decode_json >;
 use Moose;
 use Path::Tiny            qw< path  >;
 use Types::Path::Tiny     qw< Path  >;
@@ -10,6 +9,7 @@ use File::Copy::Recursive qw< dircopy >;
 use File::Basename        qw< basename >;
 use Time::HiRes           qw< time >;
 use Log::Any              qw< $log >;
+use JSON::MaybeXS         qw< decode_json >;
 use Pakket::Log;
 use Pakket::Utils         qw< is_writeable >;
 use Pakket::Version::Requirements;
@@ -63,6 +63,13 @@ has 'index' => (
     'required' => 1,
 );
 
+has 'input_file' => (
+    'is'        => 'ro',
+    'isa'       => Path,
+    'coerce'    => 1,
+    'predicate' => '_has_input_file',
+);
+
 sub _build_index {
     my $self = shift;
 
@@ -76,6 +83,14 @@ sub fetch_package;
 
 sub install {
     my ( $self, @packages ) = @_;
+
+    if ( $self->has_input_file ) {
+        my $content = decode_json $self->input_file->slurp_utf8;
+        foreach my $category ( keys %{$content} ) {
+            push @packages, "$category/$_"
+                for keys %{ $content->{$category} };
+        }
+    }
 
     if ( !@packages ) {
         $log->notice('Did not receive any parcels to deliver');
