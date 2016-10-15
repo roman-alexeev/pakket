@@ -12,7 +12,7 @@ use File::Basename            qw< basename dirname >;
 use Algorithm::Diff::Callback qw< diff_hashes >;
 use Types::Path::Tiny         qw< Path >;
 use TOML::Parser;
-use Log::Any qw< $log >;
+use Log::Any                  qw< $log >;
 
 use Pakket::Log;
 use Pakket::Bundler;
@@ -24,62 +24,70 @@ use Pakket::Builder::Perl;
 use Pakket::Builder::System;
 use Pakket::Constants qw< PARCEL_FILES_DIR >;
 
-use constant { ALL_PACKAGES_KEY => '', };
+use constant {
+    'ALL_PACKAGES_KEY'   => '',
+    'BUILD_DIR_TEMPLATE' => 'BUILD-XXXXXX',
+};
 
 with 'Pakket::Role::RunCommand';
 
-has config_dir => (
-    is      => 'ro',
-    isa     => Path,
-    coerce  => 1,
-    default => sub { Path::Tiny->cwd },
+has 'config_dir' => (
+    'is'      => 'ro',
+    'isa'     => Path,
+    'coerce'  => 1,
+    'default' => sub { Path::Tiny->cwd },
 );
 
-has source_dir => (
-    is      => 'ro',
-    isa     => Path,
-    coerce  => 1,
-    default => sub { Path::Tiny->cwd },
+has 'source_dir' => (
+    'is'      => 'ro',
+    'isa'     => Path,
+    'coerce'  => 1,
+    'default' => sub { Path::Tiny->cwd },
 );
 
-has build_dir => (
-    is      => 'ro',
-    isa     => Path,
-    coerce  => 1,
-    lazy    => 1,
-    default => sub { Path::Tiny->tempdir( 'BUILD-XXXXXX', CLEANUP => 0 ) },
+has 'build_dir' => (
+    'is'      => 'ro',
+    'isa'     => Path,
+    'coerce'  => 1,
+    'lazy'    => 1,
+    'default' => sub {
+        return Path::Tiny->tempdir(
+            BUILD_DIR_TEMPLATE(),
+            'CLEANUP' => 0,
+        );
+    },
 );
 
-has keep_build_dir => (
-    is      => 'ro',
-    isa     => 'Bool',
-    default => sub {0},
+has 'keep_build_dir' => (
+    'is'      => 'ro',
+    'isa'     => 'Bool',
+    'default' => sub {0},
 );
 
-has is_built => (
-    is      => 'ro',
-    isa     => 'HashRef',
-    default => sub { +{} },
+has 'is_built' => (
+    'is'      => 'ro',
+    'isa'     => 'HashRef',
+    'default' => sub { +{} },
 );
 
-has build_files_manifest => (
-    is      => 'ro',
-    isa     => 'HashRef',
-    default => sub { +{} },
+has 'build_files_manifest' => (
+    'is'      => 'ro',
+    'isa'     => 'HashRef',
+    'default' => sub { +{} },
 );
 
-has index_file => (
-    is       => 'ro',
-    isa      => Path,
-    coerce   => 1,
-    required => 1,
+has 'index_file' => (
+    'is'       => 'ro',
+    'isa'      => Path,
+    'coerce'   => 1,
+    'required' => 1,
 );
 
-has index => (
-    is      => 'ro',
-    isa     => 'HashRef',
-    lazy    => 1,
-    default => sub {
+has 'index' => (
+    'is'      => 'ro',
+    'isa'     => 'HashRef',
+    'lazy'    => 1,
+    'default' => sub {
         my $self = shift;
         return decode_json $self->index_file->slurp_utf8;
     },
@@ -97,17 +105,17 @@ has 'builders' => (
     },
 );
 
-has bundler => (
-    is      => 'ro',
-    isa     => 'Pakket::Bundler',
-    lazy    => 1,
-    builder => '_build_bundler',
+has 'bundler' => (
+    'is'      => 'ro',
+    'isa'     => 'Pakket::Bundler',
+    'lazy'    => 1,
+    'builder' => '_build_bundler',
 );
 
-has bundler_args => (
-    is      => 'ro',
-    isa     => 'HashRef',
-    default => sub { +{} },
+has 'bundler_args' => (
+    'is'      => 'ro',
+    'isa'     => 'HashRef',
+    'default' => sub { +{} },
 );
 
 has 'installer' => (
@@ -134,7 +142,7 @@ has 'installer' => (
 
 sub _build_bundler {
     my $self = shift;
-    Pakket::Bundler->new( $self->bundler_args );
+    return Pakket::Bundler->new( $self->bundler_args );
 }
 
 sub build {
@@ -153,8 +161,10 @@ sub DEMOLISH {
         # "safe" is false because it might hit files which it does not have
         # proper permissions to delete (example: ZMQ::Constants.3pm)
         # which means it won't be able to remove the directory
-        path($build_dir)->remove_tree( { safe => 0 } );
+        path($build_dir)->remove_tree( { 'safe' => 0 } );
     }
+
+    return;
 }
 
 sub _setup_build_dir {
@@ -164,6 +174,8 @@ sub _setup_build_dir {
     my $prefix_dir = path( $self->build_dir, 'main' );
 
     $prefix_dir->is_dir or $prefix_dir->mkpath;
+
+    return;
 }
 
 sub get_latest_satisfying_version {
@@ -201,12 +213,13 @@ sub get_latest_satisfying_version {
 
     if ( !$chosen ) {
         $log->criticalf(
-                "Couldn't find maximum satisfying version for %s in index",
-                "$category/$package_name",
+            "Couldn't find maximum satisfying version for %s in index",
+            "$category/$package_name",
         );
 
         exit 1;
     }
+
     $log->debug("Chosen: $package_name $chosen");
 
     return $chosen;
@@ -217,13 +230,13 @@ sub _new_requirements_from_config {
 
     my $config_reader = Pakket::ConfigReader->new(
         'type' => 'TOML',
-        'args' => [ filename => $config_file ],
+        'args' => [ 'filename' => $config_file ],
     );
 
     my $config = $config_reader->read_config;
 
     return Pakket::Version::Requirements->new_from_schema(
-        $config->{schema} );
+        $config->{'schema'} );
 }
 
 sub _new_requirements_from_category {
@@ -269,11 +282,14 @@ sub run_build {
     # FIXME: this is a hack
     # Once we have a proper repository, we could query it and find out
     # instead of asking the bundler this
-    my $existing_parcel =
-        $self->bundler->bundle_dir->child( $category, $package_name,
-            "$package_name-$package_version.pkt" );
+    my $existing_parcel = $self->bundler->bundle_dir->child(
+        $category,
+        $package_name,
+        "$package_name-$package_version.pkt",
+    );
 
     if ( $existing_parcel->exists ) {
+
         # Use the installer to recursively install all packages
         # that are already available
         $log->debug("$full_package_name already packaged, unpacking...");
@@ -306,7 +322,11 @@ sub run_build {
         if ( my $prereqs = $config->{'Prereqs'}{$type} ) {
             foreach my $category (qw<configure runtime>) {
                 foreach my $prereq ( keys %{ $prereqs->{$category} } ) {
-                    $self->run_build( $type, $prereq, $prereqs->{$category}{$prereq} );
+                    $self->run_build(
+                        $type,
+                        $prereq,
+                        $prereqs->{$category}{$prereq},
+                    );
                 }
             }
         }
@@ -363,17 +383,18 @@ sub run_build {
 
     $self->is_built->{$full_package_name} = 1;
 
-    my $package_files
-        = $self->scan_dir( $category, $package_name, $main_build_dir );
+    my $package_files = $self->scan_dir(
+        $category, $package_name, $main_build_dir,
+    );
 
     $log->info("Bundling $full_package_name");
-    $self->bundler->bundle(
+    return $self->bundler->bundle(
         $main_build_dir->absolute,
         {
-            category => $category,
-            name     => $package_name,
-            version  => $config->{'Package'}{'version'},
-            config   => $config,
+            'category' => $category,
+            'name'     => $package_name,
+            'version'  => $config->{'Package'}{'version'},
+            'config'   => $config,
         },
         $package_files,
     );
@@ -398,7 +419,9 @@ sub scan_dir {
 
     if ($error_out) {
         keys %{$package_files} or do {
-            $log->critical('This is odd. Build did not generate new files. Cannot package.');
+            $log->critical(
+                'This is odd. Build did not generate new files. Cannot package.'
+            );
             exit 1;
         };
     }
@@ -438,7 +461,10 @@ sub scan_directory {
         }
     };
 
-    return $dir->visit( $visitor, { recurse => 1, follow_symlinks => 0 } );
+    return $dir->visit(
+        $visitor,
+        { 'recurse' => 1, 'follow_symlinks' => 0 },
+    );
 }
 
 # There is a possible micro optimization gain here
@@ -451,8 +477,8 @@ sub _diff_nodes_list {
     diff_hashes(
         $old_nodes,
         $new_nodes,
-        added   => sub { $nodes_diff{ $_[0] } = $_[1] },
-        deleted => sub {
+        'added'   => sub { $nodes_diff{ $_[0] } = $_[1] },
+        'deleted' => sub {
             $log->critical(
                 "Last build deleted previously existing file: $_[0]");
             exit 1;
@@ -479,7 +505,7 @@ sub get_configure_flags {
 
     $self->_expand_flags_inplace( \@flags, $expand_env );
 
-    \@flags;
+    return \@flags;
 }
 
 sub _expand_flags_inplace {
@@ -491,6 +517,8 @@ sub _expand_flags_inplace {
             $flag =~ s/$placeholder/$env->{$key}/gsm;
         }
     }
+
+    return;
 }
 
 sub read_package_config {
@@ -502,14 +530,14 @@ sub read_package_config {
     my $config_file = path( $self->config_dir, $category, $package_name,
         "$package_version.toml" );
 
-    if ( ! -r $config_file ) {
+    if ( !-r $config_file ) {
         $log->error("Could not find package information ($config_file)");
         return;
     }
 
     my $config_reader = Pakket::ConfigReader->new(
         'type' => 'TOML',
-        'args' => [ filename => $config_file ],
+        'args' => [ 'filename' => $config_file ],
     );
 
     my $config = $config_reader->read_config;

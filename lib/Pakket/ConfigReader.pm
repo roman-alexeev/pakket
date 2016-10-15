@@ -4,23 +4,23 @@ package Pakket::ConfigReader;
 use Moose;
 use Module::Runtime qw< use_module >;
 
-has type => (
-	is       => 'ro',
-	isa      => 'Str',
-	required => 1,
+has 'type' => (
+	'is'       => 'ro',
+	'isa'      => 'Str',
+	'required' => 1,
 );
 
-has args => (
-	is      => 'ro',
-	isa     => 'ArrayRef',
-	default => sub { +[] },
+has 'args' => (
+	'is'      => 'ro',
+	'isa'     => 'ArrayRef',
+	'default' => sub { +[] },
 );
 
-has config_object => (
-	is      => 'ro',
-    does    => 'Pakket::Role::ConfigReader',
-	lazy    => 1,
-	builder => '_build_config_object',
+has 'config_object' => (
+	'is'      => 'ro',
+    'does'    => 'Pakket::Role::ConfigReader',
+	'lazy'    => 1,
+	'builder' => '_build_config_object',
 );
 
 sub _build_config_object {

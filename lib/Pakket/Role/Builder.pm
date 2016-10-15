@@ -4,9 +4,9 @@ package Pakket::Role::Builder;
 
 use Moose::Role;
 
-with qw<Pakket::Role::RunCommand>;
+with qw< Pakket::Role::RunCommand >;
 
-requires qw<build_package>;
+requires qw< build_package >;
 
 sub generate_env_vars {
     my ( $self, $prefix ) = @_;

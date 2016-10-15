@@ -3,10 +3,10 @@ package Pakket::Scaffolder::Perl::Role::Borked;
 
 use Moose::Role;
 
-has known_incorrect_name_fixes => (
-    is      => 'ro',
-    isa     => 'HashRef',
-    default => sub {
+has 'known_incorrect_name_fixes' => (
+    'is'      => 'ro',
+    'isa'     => 'HashRef',
+    'default' => sub {
         +{
             'App::Fatpacker'            => 'App::FatPacker',
             'Test::YAML::Meta::Version' => 'Test::YAML::Meta', # not sure about this
@@ -15,10 +15,10 @@ has known_incorrect_name_fixes => (
     },
 );
 
-has known_incorrect_version_fixes => (
-    is      => 'ro',
-    isa     => 'HashRef',
-    default => sub {
+has 'known_incorrect_version_fixes' => (
+    'is'      => 'ro',
+    'isa'     => 'HashRef',
+    'default' => sub {
         +{
             'ExtUtils-Constant' => '0.23',
             'IO-Capture'        => '0.05',
@@ -26,10 +26,10 @@ has known_incorrect_version_fixes => (
     },
 );
 
-has known_names_to_skip => (
-    is      => 'ro',
-    isa     => 'HashRef',
-    default => sub {
+has 'known_names_to_skip' => (
+    'is'      => 'ro',
+    'isa'     => 'HashRef',
+    'default' => sub {
         +{
             'perl'                    => 1,
             'tinyperl'                => 1,

@@ -3,28 +3,28 @@ package Pakket::Scaffolder::Perl::Module;
 
 use Moose;
 
-has name => (
-    is       => 'ro',
-    isa      => 'Str',
-    required => 1,
+has 'name' => (
+    'is'       => 'ro',
+    'isa'      => 'Str',
+    'required' => sub {1},
 );
 
-has version => (
-    is      => 'ro',
-    isa     => 'Str',
-    default => "0",
+has 'version' => (
+    'is'      => 'ro',
+    'isa'     => 'Str',
+    'default' => sub {0},
 );
 
-has phase => (
-    is      => 'ro',
-    isa     => 'Str',
-    default => "runtime",
+has 'phase' => (
+    'is'      => 'ro',
+    'isa'     => 'Str',
+    'default' => sub {'runtime'},
 );
 
-has type => (
-    is      => 'ro',
-    isa     => 'Str',
-    default => "requires",
+has 'type' => (
+    'is'      => 'ro',
+    'isa'     => 'Str',
+    'default' => sub {'requires'},
 );
 
 sub BUILDARGS {

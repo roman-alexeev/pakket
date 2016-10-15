@@ -3,27 +3,27 @@ package Pakket::ConfigReader::TOML;
 
 use Moose;
 use TOML::Parser;
-use Types::Path::Tiny qw< Path >;
-use Carp qw< croak >;
+use Types::Path::Tiny qw< Path  >;
+use Carp              qw< croak >;
 
 with qw< Pakket::Role::ConfigReader >;
 
-has filename => (
-	is       => 'ro',
-	isa      => Path,
-    coerce   => 1,
-	required => 1,
+has 'filename' => (
+    'is'       => 'ro',
+    'isa'      => Path,
+    'coerce'   => 1,
+    'required' => 1,
 );
 
 sub read_config {
-	my $self        = shift;
-	my $config_file = $self->filename;
+    my $self        = shift;
+    my $config_file = $self->filename;
     -r $config_file
-		or croak("Config file '$config_file' does not exist or unreadable");
+        or croak("Config file '$config_file' does not exist or unreadable");
 
-	my $config;
+    my $config;
     eval {
-        $config = TOML::Parser->new( strict_mode => 1 )
+        $config = TOML::Parser->new( 'strict_mode' => 1 )
                               ->parse_file($config_file);
         1;
     } or do {
