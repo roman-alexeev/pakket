@@ -1,5 +1,4 @@
 package Pakket::Installer;
-
 # ABSTRACT: Install pakket packages into an installation directory
 
 use Moose;
@@ -13,9 +12,10 @@ use JSON::MaybeXS         qw< decode_json >;
 use Pakket::Log;
 use Pakket::Utils         qw< is_writeable >;
 use Pakket::Version::Requirements;
-use Pakket::Constants qw<PARCEL_METADATA_FILE PARCEL_FILES_DIR>;
-
-use namespace::autoclean;
+use Pakket::Constants qw<
+    PARCEL_METADATA_FILE
+    PARCEL_FILES_DIR
+>;
 
 with 'Pakket::Role::RunCommand';
 
@@ -72,7 +72,6 @@ has 'input_file' => (
 
 sub _build_index {
     my $self = shift;
-
     return decode_json $self->index_file->slurp_utf8;
 }
 
@@ -148,15 +147,16 @@ sub install {
 
     if ( $keep <= 0 ) {
         $log->warning(
-            "You have set your 'keep_copies' to 0 or less.\n" .
-            "Resetting it to '1'.\n",
+            "You have set your 'keep_copies' to 0 or less. " .
+            "Resetting it to '1'.",
         );
 
         $keep = 1;
     }
 
     my @dirs = sort { $a->stat->mtime <=> $b->stat->mtime }
-               grep +( basename($_) ne 'active' && $_->is_dir ), $pakket_dir->children;
+               grep +( basename($_) ne 'active' && $_->is_dir ),
+               $pakket_dir->children;
 
     my $num_dirs = @dirs;
     foreach my $dir (@dirs) {

@@ -4,8 +4,8 @@ package Pakket::Utils;
 use strict;
 use warnings;
 use version;
-use Exporter qw< import >;
-use Path::Tiny qw< path >;
+use Exporter   qw< import >;
+use Path::Tiny qw< path   >;
 use File::HomeDir;
 use JSON::MaybeXS;
 
@@ -52,8 +52,8 @@ sub generate_json_conf {
             }
 
             $index->{$category_name}{ $dist->basename } = {
-                latest => $latest_version,
-                versions =>
+                'latest'   => $latest_version,
+                'versions' =>
                     { map +( $_ => $dist->basename . "-$_" ), @versions, },
             };
 

@@ -6,59 +6,59 @@ use Moose;
 use version;
 use Archive::Any;
 use CPAN::Meta::Prereqs;
-use JSON::MaybeXS qw< decode_json encode_json >;
+use JSON::MaybeXS     qw< decode_json encode_json >;
 use Module::CoreList;
-use Path::Tiny qw< path >;
-use Ref::Util qw< is_arrayref is_hashref >;
-use TOML qw< to_toml >;
-use Log::Any qw< $log >;
+use Ref::Util         qw< is_arrayref is_hashref >;
+use Path::Tiny        qw< path    >;
+use TOML              qw< to_toml >;
+use Log::Any          qw< $log    >;
 
-use Pakket::Utils qw< generate_json_conf >;
+use Pakket::Utils     qw< generate_json_conf >;
 use Pakket::Scaffolder::Perl::Module;
 use Pakket::Scaffolder::Perl::CPANfile;
 
-with 'Pakket::Scaffolder::Role::Backend',
-    'Pakket::Scaffolder::Role::Config',
-    'Pakket::Scaffolder::Role::Terminal',
-    'Pakket::Scaffolder::Perl::Role::Borked';
+with qw<
+    Pakket::Scaffolder::Role::Backend
+    Pakket::Scaffolder::Role::Config
+    Pakket::Scaffolder::Role::Terminal
+    Pakket::Scaffolder::Perl::Role::Borked
+>;
 
-has metacpan_api => (
-    is      => 'ro',
-    isa     => 'Str',
-    lazy    => 1,
-    builder => '_build_metacpan_api',
+has 'metacpan_api' => (
+    'is'      => 'ro',
+    'isa'     => 'Str',
+    'lazy'    => 1,
+    'builder' => '_build_metacpan_api',
 );
 
-has phases => (
-    is      => 'ro',
-    isa     => 'ArrayRef',
+has 'phases' => (
+    'is'  => 'ro',
+    'isa' => 'ArrayRef',
 );
 
-has processed_dists => (
-    is      => 'ro',
-    isa     => 'HashRef',
-    default => sub { +{} },
+has 'processed_dists' => (
+    'is'      => 'ro',
+    'isa'     => 'HashRef',
+    'default' => sub { return +{} },
 );
 
-has modules => (
-    is      => 'ro',
-    isa     => 'HashRef',
+has 'modules' => (
+    'is'  => 'ro',
+    'isa' => 'HashRef',
 );
 
-has prereqs => (
-    is      => 'ro',
-    isa     => 'CPAN::Meta::Prereqs',
-    lazy    => 1,
-    builder => '_build_prereqs',
+has 'prereqs' => (
+    'is'      => 'ro',
+    'isa'     => 'CPAN::Meta::Prereqs',
+    'lazy'    => 1,
+    'builder' => '_build_prereqs',
 );
 
 sub _build_metacpan_api {
     my $self = shift;
-    return (
-        $ENV{'PAKKET_METACPAN_API'}
+    return $ENV{'PAKKET_METACPAN_API'}
         || $self->pakket_config->{'perl'}{'metacpan_api'}
-        || "https://fastapi.metacpan.org"
-    );
+        || 'https://fastapi.metacpan.org';
 }
 
 sub _build_prereqs {
@@ -75,12 +75,16 @@ sub BUILDARGS {
     die "provide either 'module' or 'cpanfile'\n"
         unless $module xor $cpanfile;
 
-    $args{'modules'} = $module
-        ? Pakket::Scaffolder::Perl::Module->new( name => $module, %args )->prereq_specs
-        : Pakket::Scaffolder::Perl::CPANfile->new( cpanfile => $cpanfile )->prereq_specs;
+    $args{'modules'}
+        = $module
+        ? Pakket::Scaffolder::Perl::Module->new( 'name' => $module, %args )
+                                          ->prereq_specs
+        : Pakket::Scaffolder::Perl::CPANfile->new( 'cpanfile' => $cpanfile )
+                                            ->prereq_specs;
 
 
-    $args{'phases'} = [qw< configure runtime >];
+    $args{'phases'} = [ qw< configure runtime > ];
+
     if ( exists $args{'additional_phases'} and is_arrayref( $args{'additional_phases'} ) ) {
         push @{ $args{'phases'} } =>
             grep { $_ eq 'develop' or $_ eq 'test' } @{ $args{'additional_phases'} };
@@ -93,12 +97,12 @@ sub run {
     my $self = shift;
 
     for my $phase ( @{ $self->phases } ) {
-        $log->debugf( "phase: %s", $phase );
-        for my $type (qw< requires recommends suggests >) {
+        $log->debugf( 'phase: %s', $phase );
+        for my $type ( qw< requires recommends suggests > ) {
             next unless is_hashref( $self->modules->{ $phase }{ $type } );
 
             my $requirements = $self->prereqs->requirements_for( $phase, $type );
-            $self->create_config_for( module => $_, $requirements )
+            $self->create_config_for( 'module' => $_, $requirements )
                 for sort keys %{ $self->modules->{ $phase }{ $type } };
         }
     }
@@ -106,6 +110,8 @@ sub run {
     if ( $self->json_file ) {
         generate_json_conf( $self->json_file, $self->config_dir );
     }
+
+    return;
 }
 
 sub skip_name {
@@ -135,7 +141,7 @@ sub create_config_for {
     my $dist_name    = $release->{'distribution'};
     my $rel_version  = $release->{'version'};
     my $download_url = $self->rewrite_download_url( $release->{'download_url'} );
-    $log->infof( "%s-> Working on %s (%s)", $self->spaces, $dist_name, $rel_version );
+    $log->infof( '%s-> Working on %s (%s)', $self->spaces, $dist_name, $rel_version );
     $self->set_depth( $self->depth + 1 );
 
     my $conf_path = path( ( $self->config_dir // '.' ), 'perl', $dist_name );
@@ -168,10 +174,10 @@ sub create_config_for {
     }
 
     my $package = {
-        Package => {
-            category => 'perl',
-            name     => $dist_name,
-            version  => $rel_version,
+        'Package' => {
+            'category' => 'perl',
+            'name'     => $dist_name,
+            'version'  => $rel_version,
         },
     };
 
@@ -194,12 +200,12 @@ sub create_config_for {
                 next if exists $rel->{'skip'};
 
                 $prereq_data->{ $rel->{'distribution'} } = +{
-                    version => ( $rel->{'write_version_as_zero'} ? "0" : $rel->{'version'} )
+                    'version' => ( $rel->{'write_version_as_zero'} ? "0" : $rel->{'version'} )
                 };
             }
 
             # recurse through those as well
-            $self->create_config_for( dist => $_, $dep_requirements )
+            $self->create_config_for( 'dist' => $_, $dep_requirements )
                 for keys %{ $package->{'Prereqs'}{'perl'}{$phase} };
         }
     }
@@ -232,7 +238,7 @@ sub get_release_info {
         ? $self->get_dist_name($name)
         : $name;
 
-    return +{ skip => 1 } if $self->skip_name($dist_name);
+    return +{ 'skip' => 1 } if $self->skip_name($dist_name);
 
     my $req_as_hash = $requirements->as_string_hash;
     my $write_version_as_zero = !!(
@@ -265,8 +271,8 @@ sub get_release_info {
         %all_dist_releases =
             map {
                 $_->{'fields'}{'version'}[0] => {
-                    prereqs      => $_->{'_source'}{'metadata'}{'prereqs'},
-                    download_url => $_->{'_source'}{'download_url'},
+                    'prereqs'      => $_->{'_source'}{'metadata'}{'prereqs'},
+                    'download_url' => $_->{'_source'}{'download_url'},
                 }
             }
             @{ $res_body->{'hits'}{'hits'} };
@@ -277,9 +283,9 @@ sub get_release_info {
     for my $v ( sort { version->parse($b) <=> version->parse($a) } keys %all_dist_releases ) {
         if ( $requirements->accepts_module($name => $v) ) {
             $version         = $v;
-            $release_prereqs = $all_dist_releases{$v}{prereqs} || {};
+            $release_prereqs = $all_dist_releases{$v}{'prereqs'} || {};
             $download_url    =
-                $self->rewrite_download_url( $all_dist_releases{$v}{download_url} );
+                $self->rewrite_download_url( $all_dist_releases{$v}{'download_url'} );
             last;
         }
     }
@@ -289,11 +295,11 @@ sub get_release_info {
         if exists $self->known_incorrect_version_fixes->{ $dist_name };
 
     return +{
-        distribution          => $dist_name,
-        version               => $version,
-        prereqs               => $release_prereqs,
-        download_url          => $download_url,
-        write_version_as_zero => $write_version_as_zero,
+        'distribution'          => $dist_name,
+        'version'               => $version,
+        'prereqs'               => $release_prereqs,
+        'download_url'          => $download_url,
+        'write_version_as_zero' => $write_version_as_zero,
     };
 }
 
@@ -314,29 +320,32 @@ sub get_latest_release_info {
     my $res_body= decode_json $res->{'content'};
 
     return +{
-        distribution => $dist_name,
-        version      => $res_body->{'version'},
-        download_url => $res_body->{'download_url'},
-        prereqs      => $res_body->{'metadata'}{'prereqs'},
+        'distribution' => $dist_name,
+        'version'      => $res_body->{'version'},
+        'download_url' => $res_body->{'download_url'},
+        'prereqs'      => $res_body->{'metadata'}{'prereqs'},
     };
 }
 
 sub get_release_query {
     my ( $self, $dist_name ) = @_;
 
-    return encode_json({
-        query  => {
-            bool => {
-                must => [
-                    { term  => { distribution => $dist_name } },
-                    { terms => { status => [qw< cpan latest >] } }
-                ]
-            }
-        },
-        fields  => [qw< version >],
-        _source => [qw< metadata.prereqs download_url >],
-        size    => 999,
-    });
+    return encode_json(
+        {
+            'query' => {
+                'bool' => {
+                    'must' => [
+                        { 'term'  => { 'distribution' => $dist_name } },
+                        { 'terms' => { 'status'       => [qw< cpan latest >] } }
+                    ]
+                }
+            },
+
+            'fields'  => [qw< version >],
+            '_source' => [qw< metadata.prereqs download_url >],
+            'size'    => 999,
+        }
+    );
 }
 
 

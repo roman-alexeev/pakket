@@ -15,17 +15,21 @@ use Pakket::Constants qw<
     PARCEL_METADATA_FILE
 >;
 
-has bundle_dir => (
-    is      => 'ro',
-    isa     => AbsPath,
-    coerce  => 1,
-    default => sub { path('output')->absolute },
+use constant {
+    'BUNDLE_DIR_TEMPLATE' => 'BUNDLE-XXXXXX',
+};
+
+has 'bundle_dir' => (
+    'is'      => 'ro',
+    'isa'     => AbsPath,
+    'coerce'  => 1,
+    'default' => sub { return path('output')->absolute },
 );
 
-has files_manifest => (
-    is      => 'ro',
-    isa     => 'HashRef',
-    default => sub { +{} },
+has 'files_manifest' => (
+    'is'      => 'ro',
+    'isa'     => 'HashRef',
+    'default' => sub { return +{} },
 );
 
 sub bundle {
@@ -40,8 +44,8 @@ sub bundle {
 
     # totally arbitrary, maybe add to constants?
     my $parcel_path = Path::Tiny->tempdir(
-        TEMPLATE => 'BUNDLE-XXXXXX',
-        CLEANUP  => 1,
+        'TEMPLATE' => BUNDLE_DIR_TEMPLATE(),
+        'CLEANUP'  => 1,
     );
 
     $parcel_path->child( PARCEL_FILES_DIR() )->mkpath;
@@ -110,6 +114,8 @@ sub bundle {
     $parcel_filename->remove();
 
     chdir $original_dir;
+
+    return;
 }
 
 sub _rebase_build_to_output_dir {
