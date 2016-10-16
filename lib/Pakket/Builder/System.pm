@@ -2,6 +2,7 @@ package Pakket::Builder::System;
 # ABSTRACT: Build System Pakket packages
 
 use Moose;
+use MooseX::StrictConstructor;
 use Log::Any qw< $log >;
 use Pakket::Log;
 use Pakket::Builder::System::Makefile;

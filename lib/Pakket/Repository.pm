@@ -3,17 +3,18 @@ package Pakket::Repository;
 # ABSTRACT: An object representing a Pakket repository
 
 use Moose;
-use Path::Tiny qw< path >;
+use MooseX::StrictConstructor;
+use Path::Tiny        qw< path >;
 use Types::Path::Tiny qw< Path >;
 use File::HomeDir;
 use Pakket::Log;
-use Log::Any qw< $log >;
+use Log::Any          qw< $log >;
 use namespace::autoclean;
 
-has _possible_paths => (
-    is      => 'ro',
-    isa     => 'ArrayRef',
-    default => sub {
+has '_possible_paths' => (
+    'is'      => 'ro',
+    'isa'     => 'ArrayRef',
+    'default' => sub {
         [
             # global:
             path( Path::Tiny->rootdir,    qw< usr local pakket > ),
@@ -27,12 +28,12 @@ has _possible_paths => (
     },
 );
 
-has repo_dir => (
-    is      => 'ro',
-    isa     => Path,
-    coerce  => 1,
-    builder => '_build_repo_dir',
-    coerce  => 1,
+has 'repo_dir' => (
+    'is'      => 'ro',
+    'isa'     => Path,
+    'coerce'  => 1,
+    'builder' => '_build_repo_dir',
+    'coerce'  => 1,
 );
 
 sub _build_repo_dir {

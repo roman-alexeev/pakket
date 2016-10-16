@@ -2,8 +2,8 @@ package Pakket::Scaffolder::Perl;
 # ABSTRACT: Scffolding Perl distributions
 
 use Moose;
-
-use version;
+use MooseX::StrictConstructor;
+use version 0.77;
 use Archive::Any;
 use CPAN::Meta::Prereqs;
 use JSON::MaybeXS     qw< decode_json encode_json >;

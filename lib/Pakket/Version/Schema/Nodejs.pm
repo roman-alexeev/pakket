@@ -1,6 +1,7 @@
 package Pakket::Version::Schema::Nodejs;
 
 use Moose;
+use MooseX::StrictConstructor;
 
 with 'Pakket::Role::VersionSchema';
 

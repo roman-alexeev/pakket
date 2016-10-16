@@ -2,6 +2,7 @@ package Pakket::ConfigReader;
 # ABSTRACT: The Pakket config reader
 
 use Moose;
+use MooseX::StrictConstructor;
 use Module::Runtime qw< use_module >;
 
 has 'type' => (

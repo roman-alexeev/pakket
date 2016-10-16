@@ -2,6 +2,7 @@ package Pakket::Scaffolder::Perl::Module;
 # ABSTRACT: scaffolder: module config representation
 
 use Moose;
+use MooseX::StrictConstructor;
 
 has 'name' => (
     'is'       => 'ro',

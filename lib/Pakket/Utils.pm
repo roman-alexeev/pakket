@@ -1,9 +1,9 @@
 package Pakket::Utils;
-
 # ABSTRACT: Utilities for Pakket
+
 use strict;
 use warnings;
-use version;
+use version 0.77;
 use Exporter   qw< import >;
 use Path::Tiny qw< path   >;
 use File::HomeDir;

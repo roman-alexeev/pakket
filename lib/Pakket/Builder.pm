@@ -1,9 +1,8 @@
 package Pakket::Builder;
 # ABSTRACT: Build pakket packages
 
-use version 0.77;
-
 use Moose;
+use MooseX::StrictConstructor;
 use JSON::MaybeXS             qw< decode_json >;
 use Path::Tiny                qw< path        >;
 use File::Find                qw< find        >;
@@ -13,6 +12,7 @@ use Algorithm::Diff::Callback qw< diff_hashes >;
 use Types::Path::Tiny         qw< Path >;
 use TOML::Parser;
 use Log::Any                  qw< $log >;
+use version 0.77;
 
 use Pakket::Log;
 use Pakket::Bundler;
@@ -209,7 +209,7 @@ sub get_latest_satisfying_version {
     }
 
     my $chosen = $req->pick_maximum_satisfying_version(
-        [ keys %{ $self->index->{$category}{$package_name}{versions} } ] );
+        [ keys %{ $self->index->{$category}{$package_name}{'versions'} } ] );
 
     if ( !$chosen ) {
         $log->criticalf(

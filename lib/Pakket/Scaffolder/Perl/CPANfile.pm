@@ -2,6 +2,7 @@ package Pakket::Scaffolder::Perl::CPANfile;
 # ABSTRACT: Scffolding Perl cpanfile reader
 
 use Moose;
+use MooseX::StrictConstructor;
 use Module::CPANfile;
 
 has 'cpanfile' => (
