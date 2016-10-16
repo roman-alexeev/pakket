@@ -2,6 +2,7 @@ package Pakket::Builder::NodeJS;
 # ABSTRACT: Build Perl Pakket packages
 
 use Moose;
+use MooseX::StrictConstructor;
 use English    qw< -no_match_vars >;
 use Log::Any   qw< $log >;
 use Path::Tiny qw< path >;

@@ -2,6 +2,7 @@ package Pakket::Bundler;
 # ABSTRACT: Bundle pakket packages into a parcel file
 
 use Moose;
+use MooseX::StrictConstructor;
 use JSON::MaybeXS;
 use Path::Tiny qw< path >;
 use File::Spec;

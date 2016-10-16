@@ -2,6 +2,7 @@ package Pakket::Installer;
 # ABSTRACT: Install pakket packages into an installation directory
 
 use Moose;
+use MooseX::StrictConstructor;
 use Path::Tiny            qw< path  >;
 use Types::Path::Tiny     qw< Path  >;
 use File::Copy::Recursive qw< dircopy >;

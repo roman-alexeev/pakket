@@ -2,6 +2,7 @@ package Pakket::ConfigReader::TOML;
 # ABSTRACT: A TOML config reader
 
 use Moose;
+use MooseX::StrictConstructor;
 use TOML::Parser;
 use Types::Path::Tiny qw< Path  >;
 use Carp              qw< croak >;

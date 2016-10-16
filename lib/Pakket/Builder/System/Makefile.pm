@@ -2,6 +2,7 @@ package Pakket::Builder::System::Makefile;
 # ABSTRACT: Build System Pakket packages that use Makefile
 
 use Moose;
+use MooseX::StrictConstructor;
 use Log::Any   qw< $log >;
 use Path::Tiny qw< path >;
 use Pakket::Log;
