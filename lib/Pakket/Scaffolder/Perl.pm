@@ -321,7 +321,20 @@ sub get_release_info {
 
     # get the matching version according to the spec
 
-    for my $v ( sort { version->parse($b) <=> version->parse($a) } keys %all_dist_releases ) {
+    my @valid_versions;
+    for my $v ( keys %all_dist_releases ) {
+        eval {
+            version->parse($v);
+            push @valid_versions => $v;
+            1;
+        } or do {
+            my $err = $@ || 'zombie error';
+            $log->debugf( '[VERSION ERROR] distribution: %s, version: %s, error: %s',
+                          $dist_name, $v, $err );
+        };
+    }
+
+    for my $v ( sort { version->parse($b) <=> version->parse($a) } @valid_versions ) {
         if ( $requirements->accepts_module($name => $v) ) {
             $version         = $v;
             $release_prereqs = $all_dist_releases{$v}{'prereqs'} || {};
