@@ -75,13 +75,22 @@ sub BUILDARGS {
     die "provide either 'module' or 'cpanfile'\n"
         unless $module xor $cpanfile;
 
-    $args{'modules'}
-        = $module
-        ? Pakket::Scaffolder::Perl::Module->new( 'name' => $module, %args )
-                                          ->prereq_specs
-        : Pakket::Scaffolder::Perl::CPANfile->new( 'cpanfile' => $cpanfile )
-                                            ->prereq_specs;
-
+    if ( $module ) {
+        my ( $version, $phase, $type ) = delete @args{qw< version phase type >};
+        $args{'modules'} =
+            Pakket::Scaffolder::Perl::Module->new(
+                'name' => $module,
+                ( version => $version )x!! defined $version,
+                ( phase   => $phase   )x!! defined $phase,
+                ( type    => $type    )x!! defined $type,
+            )->prereq_specs;
+    }
+    else {
+        $args{'modules'} =
+            Pakket::Scaffolder::Perl::CPANfile->new(
+                'cpanfile' => $cpanfile
+            )->prereq_specs;
+    }
 
     $args{'phases'} = [ qw< configure runtime > ];
 
