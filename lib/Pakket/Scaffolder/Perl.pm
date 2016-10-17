@@ -95,6 +95,7 @@ sub BUILDARGS {
 
 sub run {
     my $self = shift;
+    my %failed;
 
     for my $phase ( @{ $self->phases } ) {
         $log->debugf( 'phase: %s', $phase );
@@ -102,13 +103,25 @@ sub run {
             next unless is_hashref( $self->modules->{ $phase }{ $type } );
 
             my $requirements = $self->prereqs->requirements_for( $phase, $type );
-            $self->create_config_for( 'module' => $_, $requirements )
-                for sort keys %{ $self->modules->{ $phase }{ $type } };
+
+            for ( sort keys %{ $self->modules->{ $phase }{ $type } } ) {
+                eval {
+                    $self->create_config_for( module => $_, $requirements );
+                    1;
+                } or do {
+                    my $err = $@ || 'zombie error';
+                    $failed{$_} = $err;
+                };
+            }
         }
     }
 
     if ( $self->json_file ) {
         generate_json_conf( $self->json_file, $self->config_dir );
+    }
+
+    for my $f ( keys %failed ) {
+        $log->infof( "[FAILED] %s: %s", $f, $failed{$f} );
     }
 
     return;
@@ -223,11 +236,29 @@ sub get_dist_name {
     my $dist_name;
     eval {
         my $response = $self->ua->get( $self->metacpan_api . "/module/$module_name" );
+        $response->{'status'} == 200
+            or $response = $self->ua->get( $self->metacpan_api . "/release/$module_name" );
         die if $response->{'status'} != 200;
         my $content = decode_json $response->{'content'};
         $dist_name  = $content->{'distribution'};
         1;
-    } or die "-> Cannot find module by name: '$module_name'\n";
+    };
+
+    # another check (if not found yet): check if name matches a distribution name
+    unless ( $dist_name ) {
+        eval {
+            my $name = $module_name =~ s/::/-/gr;
+            my $res = $self->ua->post( $self->metacpan_api . "/release",
+                                       +{ content => $self->get_is_dist_name_query($name) });
+            die unless $res->{'status'} == 200;
+            my $res_body = decode_json $res->{'content'};
+            die unless $res_body->{'hits'}{'total'} > 0;
+            $dist_name = $name;
+            1;
+        };
+    }
+
+    $dist_name or die "-> Cannot find module by name: '$module_name'\n";
     return $dist_name;
 }
 
@@ -254,6 +285,7 @@ sub get_release_info {
         if defined $latest->{'version'}
            and defined $latest->{'download_url'}
            and $requirements->accepts_module( $name => $latest->{'version'} );
+
 
     # else: fetch all release versions for this distribution
 
@@ -327,20 +359,37 @@ sub get_latest_release_info {
     };
 }
 
+sub get_is_dist_name_query {
+    my ( $self, $name ) = @_;
+
+    return encode_json(
+        {
+            'query'  => {
+                'bool' => {
+                    'must' => [
+                        { 'term'  => { 'distribution' => $name } },
+                    ]
+                }
+            },
+            'fields' => [qw< distribution >],
+            'size'   => 0,
+        }
+    );
+}
+
 sub get_release_query {
     my ( $self, $dist_name ) = @_;
 
     return encode_json(
         {
-            'query' => {
+            'query'  => {
                 'bool' => {
                     'must' => [
                         { 'term'  => { 'distribution' => $dist_name } },
-                        { 'terms' => { 'status'       => [qw< cpan latest >] } }
+                        # { 'terms' => { 'status' => [qw< cpan latest >] } }
                     ]
                 }
             },
-
             'fields'  => [qw< version >],
             '_source' => [qw< metadata.prereqs download_url >],
             'size'    => 999,
