@@ -161,7 +161,7 @@ sub DEMOLISH {
         # "safe" is false because it might hit files which it does not have
         # proper permissions to delete (example: ZMQ::Constants.3pm)
         # which means it won't be able to remove the directory
-        path($build_dir)->remove_tree( { 'safe' => 0 } );
+        $build_dir->remove_tree( { 'safe' => 0 } );
     }
 
     return;
@@ -171,7 +171,7 @@ sub _setup_build_dir {
     my $self = shift;
 
     $log->debugf( 'Creating build dir %s', $self->build_dir->stringify );
-    my $prefix_dir = path( $self->build_dir, 'main' );
+    my $prefix_dir = $self->build_dir->child('main');
 
     $prefix_dir->is_dir or $prefix_dir->mkpath;
 
@@ -236,7 +236,8 @@ sub _new_requirements_from_config {
     my $config = $config_reader->read_config;
 
     return Pakket::Version::Requirements->new_from_schema(
-        $config->{'schema'} );
+        $config->{'schema'},
+    );
 }
 
 sub _new_requirements_from_category {
@@ -258,7 +259,9 @@ sub run_build {
 
     if ( $self->is_built->{$full_package_name}++ ) {
         $log->debug(
-            "We already built or building $full_package_name, skipping...");
+            "We already built or building $full_package_name, skipping..."
+        );
+
         return;
     }
 
@@ -277,7 +280,7 @@ sub run_build {
     };
 
     my $top_build_dir  = $self->build_dir;
-    my $main_build_dir = path( $top_build_dir, 'main' );
+    my $main_build_dir = $top_build_dir->child('main');
 
     # FIXME: this is a hack
     # Once we have a proper repository, we could query it and find out
