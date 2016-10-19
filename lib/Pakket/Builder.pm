@@ -4,6 +4,7 @@ package Pakket::Builder;
 use Moose;
 use MooseX::StrictConstructor;
 use JSON::MaybeXS             qw< decode_json >;
+use List::Util                qw< first       >;
 use Path::Tiny                qw< path        >;
 use File::Find                qw< find        >;
 use File::Copy::Recursive     qw< dircopy     >;
@@ -15,6 +16,7 @@ use Log::Any                  qw< $log >;
 use version 0.77;
 
 use Pakket::Log;
+use Pakket::Package;
 use Pakket::Bundler;
 use Pakket::Installer;
 use Pakket::ConfigReader;
@@ -146,9 +148,16 @@ sub _build_bundler {
 }
 
 sub build {
-    my ( $self, $category, $package, $package_args ) = @_;
+    my ( $self, $category, $name, $package_args ) = @_;
+
+    my $package = Pakket::Package->new(
+        'category' => $category,
+        'name'     => $name,
+        %{$package_args},
+    );
+
     $self->_setup_build_dir;
-    $self->run_build( $category, $package, $package_args );
+    $self->run_build($package);
 }
 
 sub DEMOLISH {
@@ -179,26 +188,24 @@ sub _setup_build_dir {
 }
 
 sub get_latest_satisfying_version {
-    my ( $self, $category, $package_name, $extra ) = @_;
+    my ( $self, $package, $extra ) = @_;
 
-    my $config_file = path( $self->config_dir, $category, $package_name,
-        'versioning.toml' );
+    # This will be either a specific one for this package
+    # (from the configuration) or from the category
+    my $req = Pakket::Version::Requirements->new(
+        'schema_name' => $package->versioning_requirements,
+    );
 
-    my $req;
-    if ( -r $config_file ) {
-        $log->debug('Using per-package versioning settings');
+    my $package_name = $package->name;
+    my $category     = $package->version;
 
-        $req = $self->_new_requirements_from_config($config_file);
-    } else {
-        $log->debug('Using category-wide versioning settings');
+    $log->debugf(
+        'Package %s uses the "%s" versioning schema',
+        $package_name,
+        $package->versioning,
+    );
 
-        $req = $self->_new_requirements_from_category($category);
-    }
-
-    $log->debugf( "Package %s uses the '%s' versioning schema",
-        $package_name, $req->schema_name );
-
-    my $version = $extra->{'version'} // 0;
+    my $version = $package->version // 0;
     $log->debug("Required: $package_name $version");
 
     if ( $extra->{'exact_version'} ) {
@@ -247,16 +254,20 @@ sub _new_requirements_from_category {
 }
 
 sub run_build {
-    my ( $self, $category, $package_name, $package_args ) = @_;
+    my ( $self, $package ) = @_;
 
-    my $full_package_name = "$category/$package_name";
+    # FIXME: GH #29
+    if ( $package->category eq 'perl' ) {
+        # XXX: perl_mlb is a MetaCPAN bug
+        first { $package->name eq $_ } qw<perl perl_mlb>
+            and return;
+    }
 
-    # FIXME: this should be cleaned up as a proper excludes list
-    $full_package_name eq 'perl/perl' and return;
+    my $full_package_name = $package->full_name;
 
-    # FIXME: MetaCPAN bug
-    $full_package_name eq 'perl/perl_mlb' and return;
-
+    # FIXME: This does not include the version number
+    #        Which means we don't know if we're asked to build different
+    #        versions of the same package
     if ( $self->is_built->{$full_package_name}++ ) {
         $log->debug(
             "We already built or building $full_package_name, skipping..."
@@ -267,11 +278,8 @@ sub run_build {
 
     $log->notice("Working on $full_package_name");
 
-    $package_args //= {};
-
-    my $package_version
-        = $self->get_latest_satisfying_version( $category, $package_name,
-        $package_args );
+    my $package_version = $self->get_latest_satisfying_version($package);
+    my $category        = $package->category;
 
     $package_version or do {
         $log->critical(
@@ -285,6 +293,7 @@ sub run_build {
     # FIXME: this is a hack
     # Once we have a proper repository, we could query it and find out
     # instead of asking the bundler this
+    my $package_name    = $package->name;
     my $existing_parcel = $self->bundler->bundle_dir->child(
         $category,
         $package_name,
