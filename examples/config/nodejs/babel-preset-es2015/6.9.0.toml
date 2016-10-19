@@ -3,10 +3,10 @@ category = "nodejs"
 name = "babel-preset-es2015"
 version = "6.9.0"
 [Prereqs]
-[Prereqs.system]
-[Prereqs.system.configure]
-[Prereqs.system.configure.nodejs]
+[Prereqs.native]
+[Prereqs.native.configure]
+[Prereqs.native.configure.nodejs]
 version = "6.2.1"
-[Prereqs.system.runtime]
-[Prereqs.system.runtime.nodejs]
+[Prereqs.native.runtime]
+[Prereqs.native.runtime.nodejs]
 version = "6.2.1"
