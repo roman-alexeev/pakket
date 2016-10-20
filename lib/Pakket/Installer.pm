@@ -12,7 +12,6 @@ use Log::Any              qw< $log >;
 use JSON::MaybeXS         qw< decode_json >;
 use Pakket::Log;
 use Pakket::Utils         qw< is_writeable >;
-use Pakket::Version::Requirements;
 use Pakket::Constants qw<
     PARCEL_METADATA_FILE
     PARCEL_FILES_DIR
@@ -87,9 +86,26 @@ sub install {
     if ( $self->has_input_file ) {
         my $content = decode_json $self->input_file->slurp_utf8;
         foreach my $category ( keys %{$content} ) {
-            push @packages, "$category/$_"
-                for keys %{ $content->{$category} };
+            push @packages, Pakket::Package->new(
+                'name'     => $_,
+                'category' => $category,
+                'version'  => $content->{$category}{$_}{'latest'},
+            ) for keys %{ $content->{$category} };
         }
+    } else {
+        my @clean_packages;
+        foreach my $package_str (@packages) {
+            my ( $pkg_cat, $pkg_name, $pkg_ver ) =
+                split /\//xms, $package_str;
+
+            push @clean_packages, Pakket::Package->new(
+                'category' => $pkg_cat,
+                'name'     => $pkg_name,
+                'version'  => $pkg_ver,
+            );
+        }
+
+        @packages = @clean_packages;
     }
 
     if ( !@packages ) {
@@ -172,22 +188,23 @@ sub install {
 sub install_package {
     my ( $self, $package, $dir, $installed ) = @_;
 
-    $log->debug("About to install $package (into $dir)");
+    my $pkg_cat  = $package->category;
+    my $pkg_name = $package->name;
+    my $pkg_ver  = $package->version;
 
-    if ( $installed->{$package}++ ) {
-        $log->debug("$package already installed");
+    $log->debug("About to install $pkg_name (into $dir)");
+
+    if ( $installed->{$pkg_name}++ ) {
+        $log->debug("$pkg_name already installed");
         return;
     }
 
-    my ( $pkg_cat, $pkg_name, $pkg_ver ) = split /\//xms, $package;
-
-    my $req   = Pakket::Version::Requirements->new_from_category($pkg_cat);
+    my $req   = $package->versioning_requirements;
     my $index = $self->index;
 
     my $version = $req->pick_maximum_satisfying_version(
         [ keys %{ $index->{$pkg_cat}{$pkg_name}{'versions'} } ],
     );
-
 
     my $parcel_file = $self->parcel_dir->child(
         $pkg_cat,
@@ -253,7 +270,13 @@ sub install_package {
             #       We should just ask the repo for it
             #       It should maintain metadata for this
             #       and API to retrieve it
-            my $next_pkg = "$prereq_category/$prereq_name/$prereq_version";
+            # FIXME This shouldn't be a package but a prereq object
+            my $next_pkg = Pakket::Package->new(
+                'category' => $prereq_category,
+                'name'     => $prereq_name,
+                'version'  => $prereq_version,
+            );
+
             $self->install_package( $next_pkg, $dir, $installed );
         }
     }

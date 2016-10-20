@@ -10,12 +10,6 @@ use Path::Tiny      qw< path >;
 use Log::Any::Adapter;
 use JSON::MaybeXS qw< decode_json >;
 
-use constant {
-    INDEX_CATEGORY     => 0,
-    INDEX_PACKAGE_NAME => 1,
-    INDEX_PARAMETERS   => 2,
-};
-
 # TODO:
 # - move all hardcoded values (confs) to constants
 # - add make process log (and add it with -v -v)
@@ -67,7 +61,11 @@ sub validate_args {
         for my $cat ( keys %{ $json } ) {
             for my $package ( keys %{ $json->{$cat} } ) {
                 for my $ver ( keys %{ $json->{$cat}{$package}{versions} } ) {
-                    push @packages => $cat . '/' . $package . '/' . $ver;
+                    push @{ $self->{'to_build'} }, Pakket::Package->new(
+                        'category' => $cat,
+                        'name'     => $package,
+                        'version'  => $ver,
+                    );
                 }
             }
         }
@@ -86,13 +84,19 @@ sub validate_args {
         $self->{'builder'}{'index_file'} = $path;
     }
 
-    foreach my $package_name (@packages) {
-        my ( $cat, $package, $version ) = split m{/}ms, $package_name;
+    if ( ! @{ $self->{'to_build'} || [] } ) {
+        foreach my $package_name (@packages) {
+            my ( $cat, $package, $version ) = split m{/}ms, $package_name;
 
-        $cat && $package
-            or $self->usage_error("Wrong category/package provided: '$package_name'.");
+            $cat && $package
+                or $self->usage_error("Wrong category/package provided: '$package_name'.");
 
-        push @{ $self->{'to_build'} }, [ $cat, $package, $version ];
+            push @{ $self->{'to_build'} }, Pakket::Package->new(
+                'category' => $cat,
+                'name'     => $package,
+                'version'  => $version // 0,
+            );
+        }
     }
 
     if ( $opt->{'build_dir'} ) {
@@ -135,18 +139,8 @@ sub execute {
     my $logger  = Pakket::Log->build_logger($verbose);
     Log::Any::Adapter->set( 'Dispatch', dispatcher => $logger );
 
-    foreach my $tuple ( @{ $self->{'to_build'} } ) {
-        $builder->build(
-            $tuple->[ +INDEX_CATEGORY ],
-            $tuple->[ +INDEX_PACKAGE_NAME ],
-
-            defined $tuple->[ +INDEX_PARAMETERS ]
-                ? {
-                version       => $tuple->[ +INDEX_PARAMETERS ],
-                exact_version => 1,
-                }
-                : (),
-        );
+    foreach my $package ( @{ $self->{'to_build'} } ) {
+        $builder->build($package);
     }
 }
 
