@@ -10,7 +10,7 @@ use constant {
         # Perl's versioning is likely to be a good default
         ''       => 'Pakket::Versioning::Default',
         'perl'   => 'Pakket::Versioning::Default',
-        'system' => 'Pakket::Versioning::Default',
+        'native' => 'Pakket::Versioning::Default',
         'nodejs' => 'Pakket::Versioning::SemVer',
     },
 };

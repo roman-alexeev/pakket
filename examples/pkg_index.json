@@ -3039,7 +3039,7 @@
          "latest" : "1.00"
       }
    },
-   "system" : {
+   "native" : {
       "curl" : {
          "latest" : "7.49.1",
          "versions" : {

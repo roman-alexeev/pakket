@@ -15,10 +15,10 @@ version = "1.302022"
 [Prereqs.perl.runtime.perl]
 version = "5.024000"
 [Prereqs.perl.test]
-[Prereqs.system]
-[Prereqs.system.configure]
-[Prereqs.system.configure.openssl]
+[Prereqs.native]
+[Prereqs.native.configure]
+[Prereqs.native.configure.openssl]
 version = "1.0.2h"
-[Prereqs.system.runtime]
-[Prereqs.system.runtime.openssl]
+[Prereqs.native.runtime]
+[Prereqs.native.runtime.openssl]
 version = "1.0.2h"
