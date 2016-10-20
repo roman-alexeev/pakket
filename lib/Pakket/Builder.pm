@@ -312,10 +312,15 @@ sub run_build {
         if ( my $prereqs = $config->{'Prereqs'}{$type} ) {
             foreach my $category (qw<configure runtime>) {
                 foreach my $prereq ( keys %{ $prereqs->{$category} } ) {
+                    # FIXME: for now we're treating a requirement like
+                    #        a package, but this is wrong
+
                     $self->run_build(
-                        $type,
-                        $prereq,
-                        $prereqs->{$category}{$prereq},
+                        Pakket::Package->new(
+                            'category' => $type,
+                            'name'     => $prereq,
+                            %{ $prereqs->{$category}{$prereq} },
+                        );
                     );
                 }
             }
