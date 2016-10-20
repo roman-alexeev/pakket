@@ -188,7 +188,7 @@ sub get_latest_satisfying_version {
     my $req = $package->versioning_requirements;
 
     my $package_name = $package->name;
-    my $category     = $package->version;
+    my $category     = $package->category;
 
     $log->debugf(
         'Package %s uses the "%s" versioning schema',
@@ -274,7 +274,7 @@ sub run_build {
         my $installer_cache = {};
 
         $installer->install_package(
-            "$full_package_name/$package_version",
+            $package,
             $main_build_dir,
             $installer_cache,
         );
