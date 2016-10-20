@@ -320,7 +320,7 @@ sub run_build {
                             'category' => $type,
                             'name'     => $prereq,
                             %{ $prereqs->{$category}{$prereq} },
-                        );
+                        )
                     );
                 }
             }
