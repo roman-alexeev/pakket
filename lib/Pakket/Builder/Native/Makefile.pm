@@ -1,5 +1,5 @@
-package Pakket::Builder::System::Makefile;
-# ABSTRACT: Build System Pakket packages that use Makefile
+package Pakket::Builder::Native::Makefile;
+# ABSTRACT: Build Native Pakket packages that use Makefile
 
 use Moose;
 use MooseX::StrictConstructor;
@@ -12,7 +12,7 @@ with qw<Pakket::Role::Builder>;
 sub build_package {
     my ( $self, $package, $build_dir, $prefix, $flags ) = @_;
 
-    $log->info("Building System library: $package");
+    $log->info("Building Native library: $package");
 
     my $opts = {
         'env' => {

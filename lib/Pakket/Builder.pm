@@ -22,7 +22,7 @@ use Pakket::Installer;
 use Pakket::ConfigReader;
 use Pakket::Builder::NodeJS;
 use Pakket::Builder::Perl;
-use Pakket::Builder::System;
+use Pakket::Builder::Native;
 use Pakket::Constants qw< PARCEL_FILES_DIR >;
 
 use constant {
@@ -101,7 +101,7 @@ has 'builders' => (
         return {
             'nodejs' => Pakket::Builder::NodeJS->new(),
             'perl'   => Pakket::Builder::Perl->new(),
-            'system' => Pakket::Builder::System->new(),
+            'native' => Pakket::Builder::Native->new(),
         };
     },
 );
@@ -292,8 +292,6 @@ sub run_build {
     ) or return;
 
     # recursively build prereqs
-    # starting with system libraries
-
     foreach my $type ( keys %{ $self->builders } ) {
         if ( my $prereqs = $config->{'Prereqs'}{$type} ) {
             foreach my $category (qw<configure runtime>) {
