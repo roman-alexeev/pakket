@@ -1,15 +1,17 @@
-package Pakket::Version::Schema::Perl;
+package Pakket::Versioning::Default;
+# ABSTRACT: Default versioning scheme
 
 use Moose;
+use MooseX::StrictConstructor;
 use CPAN::Meta::Requirements;
 
-with 'Pakket::Role::VersionSchema';
+with qw< Pakket::Role::Versioning >;
 
-has requirements => (
-    is      => 'ro',
-    isa     => 'CPAN::Meta::Requirements',
-    lazy    => 1,
-    builder => '_build_requirements',
+has 'requirements' => (
+    'is'      => 'ro',
+    'isa'     => 'CPAN::Meta::Requirements',
+    'lazy'    => 1,
+    'builder' => '_build_requirements',
 );
 
 sub _build_requirements {
@@ -41,8 +43,7 @@ sub sort_candidates {
             @{$candidates} ];
 }
 
-__PACKAGE__->meta->make_immutable;
-
 no Moose;
+__PACKAGE__->meta->make_immutable;
 
 1;

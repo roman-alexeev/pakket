@@ -1,25 +1,19 @@
-package Pakket::Version::Schema::Nodejs;
+package Pakket::Versioning::SemVer;
+# ABSTRACT: Semantiv Versioning (SemVer) versioning scheme
 
 use Moose;
 use MooseX::StrictConstructor;
-
-with 'Pakket::Role::VersionSchema';
-
 use SemVer;
+
+with qw< Pakket::Role::Versioning >;
 
 # TODO port https://github.com/npm/node-semver
 
-sub accepts {
-    ...
-}
+sub accepts {...}
 
-sub add_exact {
-    ...
-}
+sub add_from_string {...}
 
-sub add_from_string {
-    ...
-}
+sub add_exact {...}
 
 sub sort_candidates {
     my ( $self, $candidates ) = @_;
@@ -28,8 +22,7 @@ sub sort_candidates {
             @{$candidates} ];
 }
 
-__PACKAGE__->meta->make_immutable;
-
 no Moose;
+__PACKAGE__->meta->make_immutable;
 
 1;

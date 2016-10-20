@@ -7,9 +7,10 @@ use Module::Runtime qw< use_module >;
 
 use constant {
     'VERSIONING_CLASSES' => {
+        # Perl's versioning is likely to be a good default
         ''       => 'Pakket::Versioning::Default',
-        'perl'   => 'Pakket::Versioning::Perl',
-        'nodejs' => 'Pakket::Versioning::NodeJS',
+        'perl'   => 'Pakket::Versioning::Default',
+        'nodejs' => 'Pakket::Versioning::SemVer',
     },
 };
 
@@ -105,7 +106,6 @@ sub full_name {
     return sprintf '%s/%s', $self->category, $self->name;
 }
 
-# XXX: I don't like this -- SX
 sub versioning_requirements {
     my $self       = shift;
     my $versioning = $self->versioning;

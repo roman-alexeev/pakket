@@ -192,9 +192,7 @@ sub get_latest_satisfying_version {
 
     # This will be either a specific one for this package
     # (from the configuration) or from the category
-    my $req = Pakket::Version::Requirements->new(
-        'schema_name' => $package->versioning_requirements,
-    );
+    my $req = $package->versioning_requirements;
 
     my $package_name = $package->name;
     my $category     = $package->version;
