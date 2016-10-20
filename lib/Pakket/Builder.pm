@@ -148,6 +148,7 @@ sub _build_bundler {
 
 sub build {
     my ( $self, $category, $name, $package_args ) = @_;
+    my $exact = delete $package_args->{'exact_version'};
 
     my $package = Pakket::Package->new(
         'category' => $category,
@@ -156,7 +157,7 @@ sub build {
     );
 
     $self->_setup_build_dir;
-    $self->run_build($package);
+    $self->run_build( $package, $exact );
 }
 
 sub DEMOLISH {
@@ -187,7 +188,7 @@ sub _setup_build_dir {
 }
 
 sub get_latest_satisfying_version {
-    my ( $self, $package, $extra ) = @_;
+    my ( $self, $package, $exact ) = @_;
 
     # This will be either a specific one for this package
     # (from the configuration) or from the category
@@ -205,7 +206,7 @@ sub get_latest_satisfying_version {
     my $version = $package->version // 0;
     $log->debug("Required: $package_name $version");
 
-    if ( $extra->{'exact_version'} ) {
+    if ($exact) {
         $log->debug('Exact version match requested');
         $req->add_exact($version);
     } else {
@@ -230,7 +231,7 @@ sub get_latest_satisfying_version {
 }
 
 sub run_build {
-    my ( $self, $package ) = @_;
+    my ( $self, $package, $exact ) = @_;
 
     # FIXME: GH #29
     if ( $package->category eq 'perl' ) {
@@ -254,7 +255,8 @@ sub run_build {
 
     $log->notice("Working on $full_package_name");
 
-    my $package_version = $self->get_latest_satisfying_version($package);
+    my $package_version
+        = $self->get_latest_satisfying_version( $package, $exact );
     my $category        = $package->category;
 
     $package_version or do {
