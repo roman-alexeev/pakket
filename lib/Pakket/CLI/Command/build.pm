@@ -61,7 +61,7 @@ sub validate_args {
         for my $cat ( keys %{ $json } ) {
             for my $package ( keys %{ $json->{$cat} } ) {
                 for my $ver ( keys %{ $json->{$cat}{$package}{versions} } ) {
-                    push @packages, Pakket::Package->new(
+                    push @{ $self->{'to_build'} }, Pakket::Package->new(
                         'category' => $cat,
                         'name'     => $package,
                         'version'  => $ver,
@@ -84,17 +84,19 @@ sub validate_args {
         $self->{'builder'}{'index_file'} = $path;
     }
 
-    foreach my $package_name (@packages) {
-        my ( $cat, $package, $version ) = split m{/}ms, $package_name;
+    if ( ! @{ $self->{'to_build'} || [] } ) {
+        foreach my $package_name (@packages) {
+            my ( $cat, $package, $version ) = split m{/}ms, $package_name;
 
-        $cat && $package
-            or $self->usage_error("Wrong category/package provided: '$package_name'.");
+            $cat && $package
+                or $self->usage_error("Wrong category/package provided: '$package_name'.");
 
-        push @{ $self->{'to_build'} }, Pakket::Package->new(
-            'category' => $cat,
-            'name'     => $package,
-            'version'  => $version // 0,
-        );
+            push @{ $self->{'to_build'} }, Pakket::Package->new(
+                'category' => $cat,
+                'name'     => $package,
+                'version'  => $version // 0,
+            );
+        }
     }
 
     if ( $opt->{'build_dir'} ) {
