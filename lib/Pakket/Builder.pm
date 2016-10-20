@@ -20,7 +20,6 @@ use Pakket::Package;
 use Pakket::Bundler;
 use Pakket::Installer;
 use Pakket::ConfigReader;
-use Pakket::Version::Requirements;
 use Pakket::Builder::NodeJS;
 use Pakket::Builder::Perl;
 use Pakket::Builder::System;
@@ -228,27 +227,6 @@ sub get_latest_satisfying_version {
     $log->debug("Chosen: $package_name $chosen");
 
     return $chosen;
-}
-
-sub _new_requirements_from_config {
-    my ( $self, $config_file ) = @_;
-
-    my $config_reader = Pakket::ConfigReader->new(
-        'type' => 'TOML',
-        'args' => [ 'filename' => $config_file ],
-    );
-
-    my $config = $config_reader->read_config;
-
-    return Pakket::Version::Requirements->new_from_schema(
-        $config->{'schema'},
-    );
-}
-
-sub _new_requirements_from_category {
-    my ( $self, $category ) = @_;
-
-    return Pakket::Version::Requirements->new_from_category($category);
 }
 
 sub run_build {

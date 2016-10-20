@@ -12,7 +12,6 @@ use Log::Any              qw< $log >;
 use JSON::MaybeXS         qw< decode_json >;
 use Pakket::Log;
 use Pakket::Utils         qw< is_writeable >;
-use Pakket::Version::Requirements;
 use Pakket::Constants qw<
     PARCEL_METADATA_FILE
     PARCEL_FILES_DIR
@@ -87,8 +86,11 @@ sub install {
     if ( $self->has_input_file ) {
         my $content = decode_json $self->input_file->slurp_utf8;
         foreach my $category ( keys %{$content} ) {
-            push @packages, "$category/$_"
-                for keys %{ $content->{$category} };
+            push @packages, Pakket::Package->new(
+                'name'     => $_,
+                'category' => $category,
+                'version'  => $content->{$category}{$_}{'latest'},
+            ) for keys %{ $content->{$category} };
         }
     }
 
