@@ -4,6 +4,7 @@ package Pakket::Builder;
 use Moose;
 use MooseX::StrictConstructor;
 use JSON::MaybeXS             qw< decode_json >;
+use List::Util                qw< first       >;
 use Path::Tiny                qw< path        >;
 use File::Find                qw< find        >;
 use File::Copy::Recursive     qw< dircopy     >;
@@ -15,10 +16,10 @@ use Log::Any                  qw< $log >;
 use version 0.77;
 
 use Pakket::Log;
+use Pakket::Package;
 use Pakket::Bundler;
 use Pakket::Installer;
 use Pakket::ConfigReader;
-use Pakket::Version::Requirements;
 use Pakket::Builder::NodeJS;
 use Pakket::Builder::Perl;
 use Pakket::Builder::System;
@@ -146,9 +147,10 @@ sub _build_bundler {
 }
 
 sub build {
-    my ( $self, $category, $package, $package_args ) = @_;
+    my ( $self, $package ) = @_;
+
     $self->_setup_build_dir;
-    $self->run_build( $category, $package, $package_args );
+    $self->run_build($package);
 }
 
 sub DEMOLISH {
@@ -161,7 +163,7 @@ sub DEMOLISH {
         # "safe" is false because it might hit files which it does not have
         # proper permissions to delete (example: ZMQ::Constants.3pm)
         # which means it won't be able to remove the directory
-        path($build_dir)->remove_tree( { 'safe' => 0 } );
+        $build_dir->remove_tree( { 'safe' => 0 } );
     }
 
     return;
@@ -171,7 +173,7 @@ sub _setup_build_dir {
     my $self = shift;
 
     $log->debugf( 'Creating build dir %s', $self->build_dir->stringify );
-    my $prefix_dir = path( $self->build_dir, 'main' );
+    my $prefix_dir = $self->build_dir->child('main');
 
     $prefix_dir->is_dir or $prefix_dir->mkpath;
 
@@ -179,34 +181,24 @@ sub _setup_build_dir {
 }
 
 sub get_latest_satisfying_version {
-    my ( $self, $category, $package_name, $extra ) = @_;
+    my ( $self, $package ) = @_;
 
-    my $config_file = path( $self->config_dir, $category, $package_name,
-        'versioning.toml' );
+    # This will be either a specific one for this package
+    # (from the configuration) or from the category
+    my $req = $package->versioning_requirements;
 
-    my $req;
-    if ( -r $config_file ) {
-        $log->debug('Using per-package versioning settings');
+    my $package_name = $package->name;
+    my $category     = $package->category;
 
-        $req = $self->_new_requirements_from_config($config_file);
-    } else {
-        $log->debug('Using category-wide versioning settings');
+    $log->debugf(
+        'Package %s uses the "%s" versioning schema',
+        $package_name,
+        $package->versioning,
+    );
 
-        $req = $self->_new_requirements_from_category($category);
-    }
-
-    $log->debugf( "Package %s uses the '%s' versioning schema",
-        $package_name, $req->schema_name );
-
-    my $version = $extra->{'version'} // 0;
+    my $version = $package->version // 0;
     $log->debug("Required: $package_name $version");
-
-    if ( $extra->{'exact_version'} ) {
-        $log->debug('Exact version match requested');
-        $req->add_exact($version);
-    } else {
-        $req->add_from_string($version);
-    }
+    $req->add_from_string($version);
 
     my $chosen = $req->pick_maximum_satisfying_version(
         [ keys %{ $self->index->{$category}{$package_name}{'versions'} } ] );
@@ -225,50 +217,33 @@ sub get_latest_satisfying_version {
     return $chosen;
 }
 
-sub _new_requirements_from_config {
-    my ( $self, $config_file ) = @_;
-
-    my $config_reader = Pakket::ConfigReader->new(
-        'type' => 'TOML',
-        'args' => [ 'filename' => $config_file ],
-    );
-
-    my $config = $config_reader->read_config;
-
-    return Pakket::Version::Requirements->new_from_schema(
-        $config->{'schema'} );
-}
-
-sub _new_requirements_from_category {
-    my ( $self, $category ) = @_;
-
-    return Pakket::Version::Requirements->new_from_category($category);
-}
-
 sub run_build {
-    my ( $self, $category, $package_name, $package_args ) = @_;
+    my ( $self, $package ) = @_;
 
-    my $full_package_name = "$category/$package_name";
+    # FIXME: GH #29
+    if ( $package->category eq 'perl' ) {
+        # XXX: perl_mlb is a MetaCPAN bug
+        first { $package->name eq $_ } qw<perl perl_mlb>
+            and return;
+    }
 
-    # FIXME: this should be cleaned up as a proper excludes list
-    $full_package_name eq 'perl/perl' and return;
+    my $full_package_name = $package->full_name;
 
-    # FIXME: MetaCPAN bug
-    $full_package_name eq 'perl/perl_mlb' and return;
-
+    # FIXME: This does not include the version number
+    #        Which means we don't know if we're asked to build different
+    #        versions of the same package
     if ( $self->is_built->{$full_package_name}++ ) {
         $log->debug(
-            "We already built or building $full_package_name, skipping...");
+            "We already built or building $full_package_name, skipping..."
+        );
+
         return;
     }
 
     $log->notice("Working on $full_package_name");
 
-    $package_args //= {};
-
-    my $package_version
-        = $self->get_latest_satisfying_version( $category, $package_name,
-        $package_args );
+    my $package_version = $self->get_latest_satisfying_version($package);
+    my $category        = $package->category;
 
     $package_version or do {
         $log->critical(
@@ -277,11 +252,12 @@ sub run_build {
     };
 
     my $top_build_dir  = $self->build_dir;
-    my $main_build_dir = path( $top_build_dir, 'main' );
+    my $main_build_dir = $top_build_dir->child('main');
 
     # FIXME: this is a hack
     # Once we have a proper repository, we could query it and find out
     # instead of asking the bundler this
+    my $package_name    = $package->name;
     my $existing_parcel = $self->bundler->bundle_dir->child(
         $category,
         $package_name,
@@ -298,7 +274,7 @@ sub run_build {
         my $installer_cache = {};
 
         $installer->install_package(
-            "$full_package_name/$package_version",
+            $package,
             $main_build_dir,
             $installer_cache,
         );
@@ -322,10 +298,15 @@ sub run_build {
         if ( my $prereqs = $config->{'Prereqs'}{$type} ) {
             foreach my $category (qw<configure runtime>) {
                 foreach my $prereq ( keys %{ $prereqs->{$category} } ) {
+                    # FIXME: for now we're treating a requirement like
+                    #        a package, but this is wrong
+
                     $self->run_build(
-                        $type,
-                        $prereq,
-                        $prereqs->{$category}{$prereq},
+                        Pakket::Package->new(
+                            'category' => $type,
+                            'name'     => $prereq,
+                            %{ $prereqs->{$category}{$prereq} },
+                        )
                     );
                 }
             }
