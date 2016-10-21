@@ -209,7 +209,7 @@ sub install_package {
     my $parcel_file = $self->parcel_dir->child(
         $pkg_cat,
         $pkg_name,
-        $index->{$pkg_cat}{$pkg_name}{'versions'}{$version} . '.pkt',
+        "$pkg_name-$version.pkt",
     );
 
     if ( !$parcel_file->exists ) {
