@@ -126,7 +126,7 @@ sub execute {
         ), qw< config_dir source_dir build_dir keep_build_dir index_file > ),
 
         # bundler args
-        bundler_args => {
+        'bundler_args' => {
             map( +(
                 defined $self->{'bundler'}{$_}
                     ? ( $_ => $self->{'bundler'}{$_} )
