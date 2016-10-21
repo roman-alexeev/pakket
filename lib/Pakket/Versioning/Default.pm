@@ -4,6 +4,7 @@ package Pakket::Versioning::Default;
 use Moose;
 use MooseX::StrictConstructor;
 use CPAN::Meta::Requirements;
+use version 0.77;
 
 with qw< Pakket::Role::Versioning >;
 
@@ -21,19 +22,25 @@ sub _build_requirements {
 sub accepts {
     my ( $self, $candidate ) = @_;
 
-    return $self->requirements->accepts_module( 'FakeModule', $candidate );
+    return $self->requirements->accepts_module(
+        'FakeModule', qv($candidate)->numify,
+    );
 }
 
 sub add_from_string {
     my ( $self, $specifier ) = @_;
 
-    $self->requirements->add_string_requirement( 'FakeModule', $specifier );
+    $self->requirements->add_string_requirement(
+        'FakeModule', qv($specifier)->numify,
+    );
 }
 
 sub add_exact {
     my ( $self, $version ) = @_;
 
-    $self->requirements->exact_version( 'FakeModule', $version );
+    $self->requirements->exact_version(
+        'FakeModule', qv($version)->numify,
+    );
 }
 
 sub sort_candidates {
