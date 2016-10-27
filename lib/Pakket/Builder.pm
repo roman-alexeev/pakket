@@ -19,6 +19,7 @@ use Pakket::Log;
 use Pakket::Package;
 use Pakket::Bundler;
 use Pakket::Installer;
+use Pakket::Requirement;
 use Pakket::ConfigReader;
 use Pakket::Builder::NodeJS;
 use Pakket::Builder::Perl;
@@ -146,11 +147,28 @@ sub _build_bundler {
     return Pakket::Bundler->new( $self->bundler_args );
 }
 
+sub versions_in_index {
+    my ( $self, $category, $name ) = @_;
+
+    my $index = $self->index;
+    if ( !exists $index->{$category}{$name} ) {
+        $log->critical("No entry for $category/$name in index");
+        exit 1;
+    }
+
+    return [ keys %{ $self->index->{$category}{$name}{'versions'} } ];
+}
+
 sub build {
-    my ( $self, $package ) = @_;
+    my ( $self, %args ) = @_;
+
+    my $prereq = Pakket::Requirement->new(
+        %args,
+        'versions' => $self->versions_in_index( @args{qw<category name>} ),
+    );
 
     $self->_setup_build_dir;
-    $self->run_build($package);
+    $self->run_build($prereq);
 }
 
 sub DEMOLISH {
@@ -180,76 +198,43 @@ sub _setup_build_dir {
     return;
 }
 
-sub get_latest_satisfying_version {
-    my ( $self, $package ) = @_;
-
-    # This will be either a specific one for this package
-    # (from the configuration) or from the category
-    my $req = $package->versioning_requirements;
-
-    my $package_name = $package->name;
-    my $category     = $package->category;
-
-    $log->debugf(
-        'Package %s uses the "%s" versioning schema',
-        $package_name,
-        $package->versioning,
-    );
-
-    my $version = $package->version // 0;
-    $log->debug("Required: $package_name $version");
-    $req->add_from_string($version);
-
-    my $chosen = $req->pick_maximum_satisfying_version(
-        [ keys %{ $self->index->{$category}{$package_name}{'versions'} } ] );
-
-    if ( !$chosen ) {
-        $log->criticalf(
-            "Couldn't find maximum satisfying version for %s in index",
-            "$category/$package_name",
-        );
-
-        exit 1;
-    }
-
-    $log->debug("Chosen: $package_name $chosen");
-
-    return $chosen;
-}
-
 sub run_build {
-    my ( $self, $package ) = @_;
+    my ( $self, $prereq ) = @_;
+
+    # We either have to build a package or a requirement, how do we know?
 
     # FIXME: GH #29
-    if ( $package->category eq 'perl' ) {
+    if ( $prereq->category eq 'perl' ) {
         # XXX: perl_mlb is a MetaCPAN bug
-        first { $package->name eq $_ } qw<perl perl_mlb>
+        first { $prereq->name eq $_ } qw<perl perl_mlb>
             and return;
     }
 
-    my $full_package_name = $package->full_name;
-
-    # FIXME: This does not include the version number
-    #        Which means we don't know if we're asked to build different
-    #        versions of the same package
-    if ( $self->is_built->{$full_package_name}++ ) {
+    # FIXME: This should also verify that the versions do not conflict.
+    #        We could only do this once we resolve GH #72
+    my $full_name = sprintf '%s/%s', $prereq->name, $prereq->version;
+    if ( $self->is_built->{$full_name}++ ) {
         $log->debug(
-            "We already built or building $full_package_name, skipping..."
+            "We already built or building $full_name, skipping..."
         );
 
         return;
     }
 
-    $log->notice("Working on $full_package_name");
+    $log->noticef( 'Working on %s', $full_name );
 
-    my $package_version = $self->get_latest_satisfying_version($package);
-    my $category        = $package->category;
+    # Create a Package instance from the configuration
+    # using the information we have on it
+    my $package = Pakket::Package->new(
+        $self->read_package_config(
+            $prereq->category,
+            $prereq->name,
+            $prereq->latest_version,
+        ),
+    );
 
-    $package_version or do {
-        $log->critical(
-            "Could not find a version number for $full_package_name");
-        exit 1;
-    };
+
+    my $category = $package->category;
 
     my $top_build_dir  = $self->build_dir;
     my $main_build_dir = $top_build_dir->child('main');
@@ -264,13 +249,17 @@ sub run_build {
         "$package_name-$package_version.pkt",
     );
 
-    if ( $existing_parcel->exists ) {
+    my $installer   = $self->installer;
+    my $parcel_file = $installer->parcel_file(
+        $category, $package_name, $package_version,
+    );
+
+    if ( $parcel_file->exists ) {
 
         # Use the installer to recursively install all packages
         # that are already available
         $log->debug("$full_package_name already packaged, unpacking...");
 
-        my $installer       = $self->installer;
         my $installer_cache = {};
 
         $installer->install_package(
@@ -282,31 +271,32 @@ sub run_build {
         $self->scan_dir( $category, $package_name,
             $main_build_dir->absolute, 0 );
 
-        $self->is_built->{$full_package_name} = 1;
-
         return;
     }
 
-    my $config = $self->read_package_config(
-        $category, $package_name, $package_version,
-    ) or return;
+    # GH #74
+    my @supported_phases = qw< configure runtime >;
 
     # recursively build prereqs
-    foreach my $type ( keys %{ $self->builders } ) {
-        if ( my $prereqs = $config->{'Prereqs'}{$type} ) {
-            foreach my $category (qw<configure runtime>) {
-                foreach my $prereq ( keys %{ $prereqs->{$category} } ) {
-                    # FIXME: for now we're treating a requirement like
-                    #        a package, but this is wrong
+    foreach my $supported_category ( keys %{ $self->builders } ) {
+        my $cat_prereqs = $package->category_prereqs($supported_category)
+            or next;
 
-                    $self->run_build(
-                        Pakket::Package->new(
-                            'category' => $type,
-                            'name'     => $prereq,
-                            %{ $prereqs->{$category}{$prereq} },
-                        )
-                    );
-                }
+        foreach my $phase (@supported_phases) {
+            my $prereqs = $cat_prereqs->{$phase};
+            foreach my $name ( keys %{$prereqs} ) {
+                # XXX: Until GH #75, any "version" in a config is a range
+                my $version = $prereqs->{$name};
+                my $req     = Pakket::Requirement->new(
+                    'category'      => $supported_category,
+                    'name'          => $name,
+                    'version_range' => $version,
+                    'versions'      => $self->versions_in_index(
+                        $supported_category, $name,
+                    ),
+                );
+
+                $self->run_build($req);
             }
         }
     }
@@ -317,7 +307,7 @@ sub run_build {
     );
 
     $log->info('Copying package files');
-    -d $package_src_dir or do {
+    $package_src_dir->is_dir or do {
         $log->critical("Cannot find source dir: $package_src_dir");
         exit 1;
     };
@@ -359,8 +349,6 @@ sub run_build {
         $log->critical("I do not have a builder for category $category.");
         exit 1;
     }
-
-    $self->is_built->{$full_package_name} = 1;
 
     my $package_files = $self->scan_dir(
         $category, $package_name, $main_build_dir,
@@ -509,9 +497,10 @@ sub read_package_config {
     my $config_file = path( $self->config_dir, $category, $package_name,
         "$package_version.toml" );
 
-    if ( !-r $config_file ) {
-        $log->error("Could not find package information ($config_file)");
-        return;
+    if ( ! $config_file->exists ) {
+        $log->critical("Could not find package config file: $config_file");
+
+        exit 1;
     }
 
     my $config_reader = Pakket::ConfigReader->new(
@@ -545,7 +534,7 @@ sub read_package_config {
         return;
     }
 
-    return $config;
+    return %{$config};
 }
 
 __PACKAGE__->meta->make_immutable;

@@ -1,5 +1,5 @@
 package Pakket::CLI::Command::build;
-# ABSTRACT: The pakket build command
+# ABSTRACT: Build a Pakket package
 
 use strict;
 use warnings;
@@ -9,6 +9,7 @@ use Pakket::Log;
 use Path::Tiny      qw< path >;
 use Log::Any::Adapter;
 use JSON::MaybeXS qw< decode_json >;
+use Pakket::Constants qw< PAKKET_PACKAGE_SPEC >;
 
 # TODO:
 # - move all hardcoded values (confs) to constants
@@ -44,13 +45,13 @@ sub validate_args {
         $self->{'bundler'}{'bundle_dir'} = path($output_dir)->absolute;
     }
 
-    my @packages;
+    my @specs;
     if ( my $file = $opt->{'input_file'} ) {
         my $path = path($file);
         $path->exists && $path->is_file
             or $self->usage_error("Bad file: $path");
 
-        push @packages, $path->lines_utf8( { chomp => 1 } );
+        push @specs, $path->lines_utf8( { chomp => 1 } );
     } elsif ( my $json_file = $opt->{'input_json'} ) {
         my $path = path($json_file);
         $path->exists && $path->is_file
@@ -60,18 +61,13 @@ sub validate_args {
 
         for my $cat ( keys %{ $json } ) {
             for my $package ( keys %{ $json->{$cat} } ) {
-                for my $ver ( keys %{ $json->{$cat}{$package}{versions} } ) {
-                    push @{ $self->{'to_build'} }, Pakket::Package->new(
-                        'category' => $cat,
-                        'name'     => $package,
-                        'version'  => $ver,
-                    );
+                for my $ver ( keys %{ $json->{$cat}{$package}{'versions'} } ) {
+                    push @specs, "$cat/$package=$ver";
                 }
             }
         }
-
     } elsif ( @{$args} ) {
-        @packages = @{$args};
+        @specs = @{$args};
     } else {
         $self->usage_error('Must specify at least one package or a file');
     }
@@ -84,19 +80,18 @@ sub validate_args {
         $self->{'builder'}{'index_file'} = $path;
     }
 
-    if ( ! @{ $self->{'to_build'} || [] } ) {
-        foreach my $package_name (@packages) {
-            my ( $cat, $package, $version ) = split m{/}ms, $package_name;
+    foreach my $spec_str (@specs) {
+        my ( $cat, $name, $version ) = $spec_str =~ PAKKET_PACKAGE_SPEC()
+            or $self->usage_error("Provide category/name, not '$spec_str'");
 
-            $cat && $package
-                or $self->usage_error("Wrong category/package provided: '$package_name'.");
+        # Latest version is default
+        $version //= '0';
 
-            push @{ $self->{'to_build'} }, Pakket::Package->new(
-                'category' => $cat,
-                'name'     => $package,
-                'version'  => $version // 0,
-            );
-        }
+        push @{ $self->{'to_build'} }, +{
+            'category'      => $cat,
+            'name'          => $name,
+            'exact_version' => $version,
+        };
     }
 
     if ( $opt->{'build_dir'} ) {
@@ -139,8 +134,8 @@ sub execute {
     my $logger  = Pakket::Log->build_logger($verbose);
     Log::Any::Adapter->set( 'Dispatch', dispatcher => $logger );
 
-    foreach my $package ( @{ $self->{'to_build'} } ) {
-        $builder->build($package);
+    foreach my $prereq_hashref ( @{ $self->{'to_build'} } ) {
+        $builder->build( %{$prereq_hashref} );
     }
 }
 
