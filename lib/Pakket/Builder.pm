@@ -284,9 +284,6 @@ sub run_build {
         ),
     );
 
-    my $full_package_name = sprintf '%s/%s=%s',
-        $package->category, $package->name, $package->version;
-
     my $category = $package->category;
 
     my $top_build_dir  = $self->build_dir;
@@ -311,7 +308,10 @@ sub run_build {
 
         # Use the installer to recursively install all packages
         # that are already available
-        $log->debug("$full_package_name already packaged, unpacking...");
+        $log->debugf(
+            '%s already packaged, unpacking...',
+            $package->full_name,
+        );
 
         my $installer_cache = {};
 
@@ -388,7 +388,7 @@ sub run_build {
         $category, $package_name, $main_build_dir,
     );
 
-    $log->info("Bundling $full_package_name");
+    $log->infof( 'Bundling %s', $package->full_name );
     $self->bundler->bundle(
         $main_build_dir->absolute,
         {
