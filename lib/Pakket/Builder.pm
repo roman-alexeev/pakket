@@ -144,10 +144,10 @@ has 'installer' => (
     },
 );
 
-has bootstrapped => (
-    is      => 'ro',
-    isa     => 'HashRef',
-    default => sub { +{} },
+has 'bootstrapped' => (
+    'is'      => 'ro',
+    'isa'     => 'HashRef',
+    'default' => sub { +{} },
 );
 
 sub _build_bundler {
@@ -215,7 +215,7 @@ sub bootstrap_build {
                 'name'     => $dist,
                 'version'  => $ver,
             );
-            $self->run_build($req, { skip_prereqs => 1 });
+            $self->run_build($req, { 'skip_prereqs' => 1 });
             $self->bootstrapped->{$dist}{$ver} = 1;
         }
     }
@@ -420,7 +420,7 @@ sub _recursive_build_phase {
             'version'  => $version,
         );
 
-        $self->run_build($req, { level => $level });
+        $self->run_build($req, { 'level' => $level });
     }
 }
 
