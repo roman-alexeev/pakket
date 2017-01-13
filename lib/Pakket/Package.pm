@@ -87,12 +87,12 @@ sub config {
 
     return +{
         'Package' => {
-            map +( $_ => $self->$_ ), qw<category name version>
+            map +( $_ => $self->$_ ), qw<category name version>,
         },
 
         'Prereqs' => $self->prereqs,
 
-        map +( $_ => $self->$_ ), qw<build_opts bundle_opts>
+        map +( $_ => $self->$_ ), qw<build_opts bundle_opts>,
     };
 }
 

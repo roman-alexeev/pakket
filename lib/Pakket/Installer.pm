@@ -11,6 +11,7 @@ use Time::HiRes           qw< time >;
 use Log::Any              qw< $log >;
 use JSON::MaybeXS         qw< decode_json >;
 use Pakket::Log;
+use Pakket::Package;
 use Pakket::Utils         qw< is_writeable >;
 use Pakket::Constants qw<
     PARCEL_METADATA_FILE
@@ -113,7 +114,7 @@ sub install {
 
             if ( !defined $pkg_version ) {
                 $log->critical(
-                    'Currently you must provide a version to install'
+                    'Currently you must provide a version to install',
                 );
 
                 exit 1;
