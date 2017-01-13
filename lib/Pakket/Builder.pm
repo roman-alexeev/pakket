@@ -478,7 +478,7 @@ sub scan_dir {
     }
 
     # store per all packages to get the diff
-    @{ $self->build_files_manifest }{ keys %{$package_files} }
+    @{ $self->build_files_manifest }{ keys( %{$package_files} ) }
         = values %{$package_files};
 
     return $package_files;
