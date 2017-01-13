@@ -284,8 +284,6 @@ sub run_build {
         ),
     );
 
-    my $category = $package->category;
-
     my $top_build_dir  = $self->build_dir;
     my $main_build_dir = $top_build_dir->child('main');
 
@@ -294,14 +292,14 @@ sub run_build {
     # instead of asking the bundler this
     my $package_name    = $package->name;
     my $existing_parcel = $self->bundler->bundle_dir->child(
-        $category,
+        $package->category,
         $package_name,
         sprintf( '%s-%s.pkt', $package->name, $package->version ),
     );
 
     my $installer   = $self->installer;
     my $parcel_file = $installer->parcel_file(
-        $category, $package_name, $package->version,
+        $package->category, $package_name, $package->version,
     );
 
     if ( $parcel_file->exists ) {
@@ -321,7 +319,7 @@ sub run_build {
             $installer_cache,
         );
 
-        $self->scan_dir( $category, $package_name,
+        $self->scan_dir( $package->category, $package_name,
             $main_build_dir->absolute, 0 );
 
         $log->noticef( '%sInstalled %s=%s', '|...'x$level, $full_name, $prereq->version );
@@ -363,11 +361,11 @@ sub run_build {
     );
 
     # FIXME: $package_dst_dir is dictated from the category
-    if ( my $builder = $self->builders->{$category} ) {
+    if ( my $builder = $self->builders->{ $package->category } ) {
         my $package_dst_dir = path(
             $top_build_dir,
             'src',
-            $category,
+            $package->category,
             basename($package_src_dir),
         );
 
@@ -380,19 +378,22 @@ sub run_build {
             $configure_flags,
         );
     } else {
-        $log->critical("I do not have a builder for category $category.");
+        $log->criticalf(
+            'I do not have a builder for category %s.',
+            $package->category,
+        );
         exit 1;
     }
 
     my $package_files = $self->scan_dir(
-        $category, $package_name, $main_build_dir,
+        $package->category, $package_name, $main_build_dir,
     );
 
     $log->infof( 'Bundling %s', $package->full_name );
     $self->bundler->bundle(
         $main_build_dir->absolute,
         {
-            'category'    => $category,
+            'category'    => $package->category,
             'name'        => $package_name,
             'version'     => $package->version,
             'bundle_opts' => $package->bundle_opts,
