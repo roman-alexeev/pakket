@@ -223,9 +223,8 @@ sub install_package {
     my $pkg_name       = $package->name;
     my $pkg_version    = $package->version;
     my $pkg_short_name = $package->short_name;
-    my $pkg_full_name  = $package->full_name;
 
-    $log->debugf( "About to install %s (into $dir)", $pkg_full_name );
+    $log->debugf( "About to install %s (into $dir)", $package->full_name );
 
     if ( $installed->{$pkg_cat}{$pkg_name} ) {
         my $version = $installed->{$pkg_cat}{$pkg_name};
@@ -239,7 +238,7 @@ sub install_package {
             exit 1;
         }
 
-        $log->debug("$pkg_full_name already installed.");
+        $log->debugf( '%s already installed.', $package->full_name );
 
         return;
     } else {
