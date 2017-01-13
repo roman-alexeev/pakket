@@ -290,16 +290,15 @@ sub run_build {
     # FIXME: this is a hack
     # Once we have a proper repository, we could query it and find out
     # instead of asking the bundler this
-    my $package_name    = $package->name;
     my $existing_parcel = $self->bundler->bundle_dir->child(
         $package->category,
-        $package_name,
+        $package->name,
         sprintf( '%s-%s.pkt', $package->name, $package->version ),
     );
 
     my $installer   = $self->installer;
     my $parcel_file = $installer->parcel_file(
-        $package->category, $package_name, $package->version,
+        $package->category, $package->name, $package->version,
     );
 
     if ( $parcel_file->exists ) {
@@ -319,7 +318,7 @@ sub run_build {
             $installer_cache,
         );
 
-        $self->scan_dir( $package->category, $package_name,
+        $self->scan_dir( $package->category, $package->name,
             $main_build_dir->absolute, 0 );
 
         $log->noticef( '%sInstalled %s=%s', '|...'x$level, $full_name, $prereq->version );
@@ -372,7 +371,7 @@ sub run_build {
         dircopy( $package_src_dir, $package_dst_dir );
 
         $builder->build_package(
-            $package_name,
+            $package->name,
             $package_dst_dir,
             $main_build_dir,
             $configure_flags,
@@ -386,7 +385,7 @@ sub run_build {
     }
 
     my $package_files = $self->scan_dir(
-        $package->category, $package_name, $main_build_dir,
+        $package->category, $package->name, $main_build_dir,
     );
 
     $log->infof( 'Bundling %s', $package->full_name );
@@ -394,7 +393,7 @@ sub run_build {
         $main_build_dir->absolute,
         {
             'category'    => $package->category,
-            'name'        => $package_name,
+            'name'        => $package->name,
             'version'     => $package->version,
             'bundle_opts' => $package->bundle_opts,
             'config'      => $package->config,
@@ -472,7 +471,7 @@ sub scan_dir {
     if ($error_out) {
         keys %{$package_files} or do {
             $log->critical(
-                'This is odd. Build did not generate new files. Cannot package.'
+              'This is odd. Build did not generate new files. Cannot package.',
             );
             exit 1;
         };
