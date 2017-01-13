@@ -196,30 +196,27 @@ sub bootstrap_build {
     my ( $self, $category ) = @_;
 
     if ( $category eq 'perl' ) {
-        # for now we'll use a static list of distributions.
-        # later we'll extract the dist/ver info for the
-        # full list of core/dual-life modules:
-        # my @core_modules = keys %{ list_core_modules() };
+        # hardcoded list of packages we have to build first
+        # using core modules to break cyclic dependencies.
+        # we have to maintain the order in order for packages to build
+        my @dists = qw<
+            ExtUtils-Manifest
+            Encode
+            Text-Abbrev
+            Module-Build
+            IO
+            Module-Build-WithXSpp
+        >;
 
-        # this is an array to maintain build order
-        my @dists = (
-            [ 'ExtUtils-Manifest'     => '1.70' ],
-            [ 'Encode'                => '2.86' ],
-            [ 'Text-Abbrev'           => '1.02' ],
-            [ 'Module-Build'          => '0.4220' ],
-            [ 'IO'                    => '1.25' ],
-            [ 'Module-Build-WithXSpp' => '0.14' ],
-        );
-
-        for ( @dists ) {
-            my ( $name, $ver ) = @$_;
+        for my $dist ( @dists ) {
+            my $ver  = $self->index->{'perl'}{$dist}{'latest'};
             my $req = Pakket::Requirement->new(
                 'category' => $category,
-                'name'     => $name,
+                'name'     => $dist,
                 'version'  => $ver,
             );
             $self->run_build($req, { skip_prereqs => 1 });
-            $self->bootstrapped->{$name}{$ver} = 1;
+            $self->bootstrapped->{$dist}{$ver} = 1;
         }
     }
     # elsif ( $category eq ...
