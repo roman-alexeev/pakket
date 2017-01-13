@@ -144,10 +144,10 @@ has 'installer' => (
     },
 );
 
-has bootstrapped => (
-    is      => 'ro',
-    isa     => 'HashRef',
-    default => sub { +{} },
+has 'bootstrapped' => (
+    'is'      => 'ro',
+    'isa'     => 'HashRef',
+    'default' => sub { +{} },
 );
 
 sub _build_bundler {
@@ -215,7 +215,7 @@ sub bootstrap_build {
                 'name'     => $dist,
                 'version'  => $ver,
             );
-            $self->run_build($req, { skip_prereqs => 1 });
+            $self->run_build($req, { 'skip_prereqs' => 1 });
             $self->bootstrapped->{$dist}{$ver} = 1;
         }
     }
@@ -226,6 +226,7 @@ sub run_build {
     my ( $self, $prereq, $params ) = @_;
     my $level        = $params->{'level'}        || 0;
     my $skip_prereqs = $params->{'skip_prereqs'} || 0;
+    my $short_name   = $prereq->short_name;
 
     # FIXME: GH #29
     if ( $prereq->category eq 'perl' ) {
@@ -243,36 +244,35 @@ sub run_build {
         )
     {
         $log->criticalf(
-            'Could not find version %s in index (%s/%s)',
-            $prereq->version, $prereq->category, $prereq->name,
+            'Could not find version %s in index (%s)',
+            $prereq->version, $prereq->short_name,
         );
 
         exit 1;
     }
 
-    my $full_name = sprintf '%s/%s', $prereq->category, $prereq->name;
-    if ( defined $self->is_built->{$full_name} ) {
-        my $built_version = $self->is_built->{$full_name};
+    if ( defined $self->is_built->{$short_name} ) {
+        my $built_version = $self->is_built->{$short_name};
 
         if ( $built_version ne $prereq->version ) {
             $log->criticalf(
-                'Asked to build %s=%s when %s=%s already built',
-                $full_name, $prereq->version, $full_name, $built_version,
+                'Asked to build %s when %s=%s already built',
+                $prereq->full_name, $short_name, $built_version,
             );
 
             exit 1;
         }
 
         $log->debug(
-            "We already built or building $full_name, skipping...",
+            "We already built or building $short_name, skipping...",
         );
 
         return;
     } else {
-        $self->is_built->{$full_name} = $prereq->version;
+        $self->is_built->{$short_name} = $prereq->version;
     }
 
-    $log->noticef( '%sWorking on %s=%s', '|...'x$level, $full_name, $prereq->version );
+    $log->noticef( '%sWorking on %s', '|...' x $level, $prereq->full_name );
 
     # Create a Package instance from the configuration
     # using the information we have on it
@@ -284,34 +284,31 @@ sub run_build {
         ),
     );
 
-    my $full_package_name = sprintf '%s/%s=%s',
-        $package->category, $package->name, $package->version;
-
-    my $category = $package->category;
-
     my $top_build_dir  = $self->build_dir;
     my $main_build_dir = $top_build_dir->child('main');
 
     # FIXME: this is a hack
     # Once we have a proper repository, we could query it and find out
     # instead of asking the bundler this
-    my $package_name    = $package->name;
     my $existing_parcel = $self->bundler->bundle_dir->child(
-        $category,
-        $package_name,
+        $package->category,
+        $package->name,
         sprintf( '%s-%s.pkt', $package->name, $package->version ),
     );
 
     my $installer   = $self->installer;
     my $parcel_file = $installer->parcel_file(
-        $category, $package_name, $package->version,
+        $package->category, $package->name, $package->version,
     );
 
     if ( $parcel_file->exists ) {
 
         # Use the installer to recursively install all packages
         # that are already available
-        $log->debug("$full_package_name already packaged, unpacking...");
+        $log->debugf(
+            '%s already packaged, unpacking...',
+            $package->full_name,
+        );
 
         my $installer_cache = {};
 
@@ -321,10 +318,13 @@ sub run_build {
             $installer_cache,
         );
 
-        $self->scan_dir( $category, $package_name,
+        $self->scan_dir( $package->category, $package->name,
             $main_build_dir->absolute, 0 );
 
-        $log->noticef( '%sInstalled %s=%s', '|...'x$level, $full_name, $prereq->version );
+        $log->noticef(
+            '%sInstalled %s', '|...' x $level, $prereq->full_name,
+        );
+
         return;
     }
 
@@ -363,37 +363,40 @@ sub run_build {
     );
 
     # FIXME: $package_dst_dir is dictated from the category
-    if ( my $builder = $self->builders->{$category} ) {
+    if ( my $builder = $self->builders->{ $package->category } ) {
         my $package_dst_dir = path(
             $top_build_dir,
             'src',
-            $category,
+            $package->category,
             basename($package_src_dir),
         );
 
         dircopy( $package_src_dir, $package_dst_dir );
 
         $builder->build_package(
-            $package_name,
+            $package->name,
             $package_dst_dir,
             $main_build_dir,
             $configure_flags,
         );
     } else {
-        $log->critical("I do not have a builder for category $category.");
+        $log->criticalf(
+            'I do not have a builder for category %s.',
+            $package->category,
+        );
         exit 1;
     }
 
     my $package_files = $self->scan_dir(
-        $category, $package_name, $main_build_dir,
+        $package->category, $package->name, $main_build_dir,
     );
 
-    $log->info("Bundling $full_package_name");
+    $log->infof( 'Bundling %s', $package->full_name );
     $self->bundler->bundle(
         $main_build_dir->absolute,
         {
-            'category'    => $category,
-            'name'        => $package_name,
+            'category'    => $package->category,
+            'name'        => $package->name,
             'version'     => $package->version,
             'bundle_opts' => $package->bundle_opts,
             'config'      => $package->config,
@@ -401,7 +404,9 @@ sub run_build {
         $package_files,
     );
 
-    $log->noticef( '%sFinished on %s=%s', '|...'x$level, $full_name, $prereq->version );
+    $log->noticef(
+        '%sFinished on %s', '|...' x $level, $prereq->full_name,
+    );
 
     return;
 }
@@ -420,7 +425,7 @@ sub _recursive_build_phase {
             'version'  => $version,
         );
 
-        $self->run_build($req, { level => $level });
+        $self->run_build($req, { 'level' => $level });
     }
 }
 
@@ -471,14 +476,14 @@ sub scan_dir {
     if ($error_out) {
         keys %{$package_files} or do {
             $log->critical(
-                'This is odd. Build did not generate new files. Cannot package.'
+              'This is odd. Build did not generate new files. Cannot package.',
             );
             exit 1;
         };
     }
 
     # store per all packages to get the diff
-    @{ $self->build_files_manifest }{ keys %{$package_files} }
+    @{ $self->build_files_manifest }{ keys( %{$package_files} ) }
         = values %{$package_files};
 
     return $package_files;

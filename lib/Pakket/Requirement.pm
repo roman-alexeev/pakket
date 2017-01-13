@@ -4,6 +4,8 @@ package Pakket::Requirement;
 use Moose;
 use MooseX::StrictConstructor;
 
+with qw< Pakket::Role::PrintableNames >;
+
 has [qw< category name version >] => (
     'is'       => 'ro',
     'isa'      => 'Str',

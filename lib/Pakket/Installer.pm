@@ -11,6 +11,7 @@ use Time::HiRes           qw< time >;
 use Log::Any              qw< $log >;
 use JSON::MaybeXS         qw< decode_json >;
 use Pakket::Log;
+use Pakket::Package;
 use Pakket::Utils         qw< is_writeable >;
 use Pakket::Constants qw<
     PARCEL_METADATA_FILE
@@ -113,7 +114,7 @@ sub install {
 
             if ( !defined $pkg_version ) {
                 $log->critical(
-                    'Currently you must provide a version to install'
+                    'Currently you must provide a version to install',
                 );
 
                 exit 1;
@@ -218,27 +219,26 @@ sub install {
 sub install_package {
     my ( $self, $package, $dir, $installed ) = @_;
 
-    my $pkg_cat       = $package->category;
-    my $pkg_name      = $package->name;
-    my $pkg_version   = $package->version;
-    my $pkg_cat_name  = $package->cat_name;
-    my $pkg_full_name = $package->full_name;
+    my $pkg_cat        = $package->category;
+    my $pkg_name       = $package->name;
+    my $pkg_version    = $package->version;
+    my $pkg_short_name = $package->short_name;
 
-    $log->debugf( "About to install %s (into $dir)", $pkg_full_name );
+    $log->debugf( "About to install %s (into $dir)", $package->full_name );
 
     if ( $installed->{$pkg_cat}{$pkg_name} ) {
         my $version = $installed->{$pkg_cat}{$pkg_name};
 
         if ( $version ne $pkg_version ) {
             $log->critical(
-                "$pkg_cat_name=$version already installed. "
-              . "Cannot install new version: $pkg_version"
+                "$pkg_short_name=$version already installed. "
+              . "Cannot install new version: $pkg_version",
             );
 
             exit 1;
         }
 
-        $log->debug("$pkg_full_name already installed.");
+        $log->debugf( '%s already installed.', $package->full_name );
 
         return;
     } else {
