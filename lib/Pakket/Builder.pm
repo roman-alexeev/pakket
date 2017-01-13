@@ -226,6 +226,7 @@ sub run_build {
     my ( $self, $prereq, $params ) = @_;
     my $level        = $params->{'level'}        || 0;
     my $skip_prereqs = $params->{'skip_prereqs'} || 0;
+    my $short_name   = $prereq->short_name;
 
     # FIXME: GH #29
     if ( $prereq->category eq 'perl' ) {
@@ -243,36 +244,35 @@ sub run_build {
         )
     {
         $log->criticalf(
-            'Could not find version %s in index (%s/%s)',
-            $prereq->version, $prereq->category, $prereq->name,
+            'Could not find version %s in index (%s)',
+            $prereq->version, $prereq->short_name,
         );
 
         exit 1;
     }
 
-    my $full_name = sprintf '%s/%s', $prereq->category, $prereq->name;
-    if ( defined $self->is_built->{$full_name} ) {
-        my $built_version = $self->is_built->{$full_name};
+    if ( defined $self->is_built->{$short_name} ) {
+        my $built_version = $self->is_built->{$short_name};
 
         if ( $built_version ne $prereq->version ) {
             $log->criticalf(
-                'Asked to build %s=%s when %s=%s already built',
-                $full_name, $prereq->version, $full_name, $built_version,
+                'Asked to build %s when %s=%s already built',
+                $prereq->full_name, $short_name, $built_version,
             );
 
             exit 1;
         }
 
         $log->debug(
-            "We already built or building $full_name, skipping...",
+            "We already built or building $short_name, skipping...",
         );
 
         return;
     } else {
-        $self->is_built->{$full_name} = $prereq->version;
+        $self->is_built->{$short_name} = $prereq->version;
     }
 
-    $log->noticef( '%sWorking on %s=%s', '|...'x$level, $full_name, $prereq->version );
+    $log->noticef( '%sWorking on %s', '|...' x $level, $prereq->full_name );
 
     # Create a Package instance from the configuration
     # using the information we have on it
@@ -321,7 +321,10 @@ sub run_build {
         $self->scan_dir( $package->category, $package->name,
             $main_build_dir->absolute, 0 );
 
-        $log->noticef( '%sInstalled %s=%s', '|...'x$level, $full_name, $prereq->version );
+        $log->noticef(
+            '%sInstalled %s', '|...' x $level, $prereq->full_name,
+        );
+
         return;
     }
 
@@ -401,7 +404,9 @@ sub run_build {
         $package_files,
     );
 
-    $log->noticef( '%sFinished on %s=%s', '|...'x$level, $full_name, $prereq->version );
+    $log->noticef(
+        '%sFinished on %s', '|...' x $level, $prereq->full_name,
+    );
 
     return;
 }
