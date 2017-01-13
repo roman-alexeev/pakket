@@ -3,7 +3,8 @@ package Pakket::Package;
 
 use Moose;
 use MooseX::StrictConstructor;
-use Pakket::Utils qw< canonical_package_name >;
+
+with qw< Pakket::Role::PrintableNames >;
 
 has 'name' => (
     'is'       => 'ro',
@@ -79,20 +80,6 @@ sub phase_prereqs {
         map { $_ => $prereqs->{$_}{$phase} }
             keys %{$prereqs},
     };
-}
-
-sub cat_name {
-    my $self = shift;
-
-    return canonical_package_name( $self->category, $self->name );
-}
-
-sub full_name {
-    my $self = shift;
-
-    return canonical_package_name(
-        $self->category, $self->name, $self->version,
-    );
 }
 
 sub config {

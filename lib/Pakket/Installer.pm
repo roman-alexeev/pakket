@@ -218,11 +218,11 @@ sub install {
 sub install_package {
     my ( $self, $package, $dir, $installed ) = @_;
 
-    my $pkg_cat       = $package->category;
-    my $pkg_name      = $package->name;
-    my $pkg_version   = $package->version;
-    my $pkg_cat_name  = $package->cat_name;
-    my $pkg_full_name = $package->full_name;
+    my $pkg_cat        = $package->category;
+    my $pkg_name       = $package->name;
+    my $pkg_version    = $package->version;
+    my $pkg_short_name = $package->short_name;
+    my $pkg_full_name  = $package->full_name;
 
     $log->debugf( "About to install %s (into $dir)", $pkg_full_name );
 
@@ -231,8 +231,8 @@ sub install_package {
 
         if ( $version ne $pkg_version ) {
             $log->critical(
-                "$pkg_cat_name=$version already installed. "
-              . "Cannot install new version: $pkg_version"
+                "$pkg_short_name=$version already installed. "
+              . "Cannot install new version: $pkg_version",
             );
 
             exit 1;
