@@ -1,6 +1,8 @@
 package Pakket::Repository::Backend::HTTP;
 # ABSTRACT: A remote HTTP backend repository
 
+# FIXME: Add methods: remove_location remove_content
+
 use Moose;
 use MooseX::StrictConstructor;
 
