@@ -5,7 +5,12 @@ use Moose::Role;
 
 # These are helper methods we want the backend to implement
 # in order for the Repository to easily use across any backend
-requires qw< latest_version packages_list >;
+requires qw<
+    all_object_ids
+
+    store_content  retrieve_content
+    store_location retrieve_location
+>;
 
 no Moose::Role;
 
