@@ -96,6 +96,18 @@ sub config {
     };
 }
 
+sub new_from_config {
+    my ( $class, $config ) = @_;
+
+	my %package_details = (
+		%{ $config->{'Package'} },
+		'prereqs'    => $config->{'Prereqs'}    || {},
+		'build_opts' => $config->{'build_opts'} || {},
+	);
+
+    return $class->new(%package_details);
+}
+
 __PACKAGE__->meta->make_immutable;
 no Moose;
 
