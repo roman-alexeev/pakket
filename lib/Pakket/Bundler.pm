@@ -4,11 +4,10 @@ package Pakket::Bundler;
 use Moose;
 use MooseX::StrictConstructor;
 use JSON::MaybeXS;
-use Path::Tiny qw< path >;
 use File::Spec;
-use Types::Path::Tiny qw< AbsPath >;
-use Pakket::Log;
-use Log::Any qw< $log >;
+use Path::Tiny        qw< path >;
+use Types::Path::Tiny qw< Path >;
+use Log::Any          qw< $log >;
 
 use Pakket::Constants qw<
     PARCEL_EXTENSION
@@ -22,9 +21,9 @@ use constant {
 
 has 'bundle_dir' => (
     'is'      => 'ro',
-    'isa'     => AbsPath,
+    'isa'     => Path,
     'coerce'  => 1,
-    'default' => sub { return path('output')->absolute },
+    'default' => sub { return path('output') },
 );
 
 has 'files_manifest' => (
