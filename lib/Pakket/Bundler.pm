@@ -85,8 +85,12 @@ sub bundle {
         }
     }
 
-    path( PARCEL_METADATA_FILE() )
-        ->spew_utf8( JSON::MaybeXS->new->pretty->canonical->encode($package_config) );
+    # FIXME: We need to add more information here, but it needs to be
+    #        synced with the Installer that reads it
+    ## no critic qw(ValuesAndExpressions::ProhibitLongChainsOfMethodCalls)
+    path( PARCEL_METADATA_FILE() )->spew_utf8(
+        JSON::MaybeXS->new->pretty->canonical->encode($package_config),
+    );
 
     chdir '..';
 
