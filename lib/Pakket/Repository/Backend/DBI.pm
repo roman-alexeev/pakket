@@ -1,6 +1,8 @@
 package Pakket::Repository::Backend::DBI;
 # ABSTRACT: A DBI-based backend repository
 
+# FIXME: Add methods: remove_location, remove_content
+
 use DBI qw(:sql_types);
 
 use Moose;
