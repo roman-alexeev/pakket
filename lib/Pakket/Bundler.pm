@@ -43,14 +43,14 @@ sub bundle {
     my $original_dir = Path::Tiny->cwd;
 
     # totally arbitrary, maybe add to constants?
-    my $parcel_path = Path::Tiny->tempdir(
+    my $parcel_dir_path = Path::Tiny->tempdir(
         'TEMPLATE' => BUNDLE_DIR_TEMPLATE(),
         'CLEANUP'  => 1,
     );
 
-    $parcel_path->child( PARCEL_FILES_DIR() )->mkpath;
+    $parcel_dir_path->child( PARCEL_FILES_DIR() )->mkpath;
 
-    chdir $parcel_path->child( PARCEL_FILES_DIR() )->stringify;
+    chdir $parcel_dir_path->child( PARCEL_FILES_DIR() )->stringify;
 
     foreach my $orig_file ( keys %{$files} ) {
         $log->debug("Bundling $orig_file");
