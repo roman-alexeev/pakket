@@ -10,7 +10,9 @@ use File::Basename        qw< basename >;
 use Time::HiRes           qw< time >;
 use Log::Any              qw< $log >;
 use JSON::MaybeXS         qw< decode_json >;
-use Pakket::Log;
+use Archive::Any;
+
+use Pakket::Repository::Parcel;
 use Pakket::Package;
 use Pakket::Utils         qw< is_writeable >;
 use Pakket::Constants qw<
@@ -57,21 +59,6 @@ has 'keep_copies' => (
     'default' => sub {1},
 );
 
-has 'index_file' => (
-    'is'       => 'ro',
-    'isa'      => Path,
-    'coerce'   => 1,
-    'required' => 1,
-);
-
-has 'index' => (
-    'is'       => 'ro',
-    'isa'      => 'HashRef',
-    'lazy'     => 1,
-    'builder'  => '_build_index',
-    'required' => 1,
-);
-
 has 'input_file' => (
     'is'        => 'ro',
     'isa'       => Path,
@@ -79,9 +66,22 @@ has 'input_file' => (
     'predicate' => '_has_input_file',
 );
 
-sub _build_index {
-    my $self = shift;
-    return decode_json $self->index_file->slurp_utf8;
+has 'parcel_repo' => (
+    'is'      => 'ro',
+    'isa'     => 'Pakket::Repository::Parcel',
+    'lazy'    => 1,
+    'builder' => '_build_parcel_repo',
+);
+
+# We're starting with a local repo
+# # but in the future this will be dictated from a configuration
+sub _build_parcel_repo {
+    my $self   = shift;
+
+    # Use default for now, but use the directory we want at least
+    return Pakket::Repository::Parcel->new(
+        'directory' => $self->parcel_dir,
+    );
 }
 
 sub _build_pakket_libraries_dir {
@@ -245,18 +245,6 @@ sub install_package {
         $installed->{$pkg_cat}{$pkg_name} = $pkg_version;
     }
 
-    my $index = $self->index;
-
-    my $parcel_file = $self->parcel_file( $pkg_cat, $pkg_name, $pkg_version );
-
-    if ( !$parcel_file->exists ) {
-        $log->critical(
-            "Bundle file '$parcel_file' does not exist or can't be read",
-        );
-
-        exit 1;
-    }
-
     if ( !is_writeable($dir) ) {
         $log->critical(
             "Can't write to your installation directory ($dir)",
@@ -265,19 +253,21 @@ sub install_package {
         exit 1;
     }
 
-    # FIXME: $parcel_dirname should come from repo
-    my $parcel_basename = $parcel_file->basename;
+    my $parcel_file
+        = $self->parcel_repo->retrieve_location( $package->full_name );
+
     $parcel_file->copy($dir);
 
+    my $parcel_basename = $parcel_file->basename;
     $log->debug("Unpacking $parcel_basename");
 
-    # TODO: Archive::Any might fit here, but it doesn't support XZ
-    # introduce a plugin for it? It could be based on Archive::Tar
-    # but I'm not sure Archive::Tar support XZ either -- SX.
-    $self->run_command(
-        $dir,
-        [ qw< tar -xJf >, $parcel_basename ],
+    # XXX: If we can remove the type here, we should
+    my $archive = Archive::Any->new(
+        $parcel_file,
+        'application/x-gtar',
     );
+
+    $archive->extract($dir);
 
     my $full_parcel_dir = $dir->child( PARCEL_FILES_DIR() );
     foreach my $item ( $full_parcel_dir->children ) {
@@ -324,16 +314,6 @@ sub install_package {
     $log->info("Delivered parcel $pkg_cat/$pkg_name ($actual_version)");
 
     return;
-}
-
-sub parcel_file {
-    my ( $self, $category, $name, $version ) = @_;
-
-    return $self->parcel_dir->child(
-        $category,
-        $name,
-        "$name-$version.pkt",
-    );
 }
 
 __PACKAGE__->meta->make_immutable;
