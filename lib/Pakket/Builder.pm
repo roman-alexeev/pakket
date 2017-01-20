@@ -24,8 +24,12 @@ use Pakket::ConfigReader;
 use Pakket::Builder::NodeJS;
 use Pakket::Builder::Perl;
 use Pakket::Builder::Native;
-use Pakket::Constants qw< PARCEL_FILES_DIR >;
-use Pakket::Utils qw< generate_env_vars >;
+use Pakket::Repository::Config;
+use Pakket::Repository::Parcel;
+use Pakket::Repository::Source;
+
+use Pakket::Constants   qw< PARCEL_FILES_DIR PAKKET_PACKAGE_SPEC >;
+use Pakket::Utils       qw< generate_env_vars >;
 use Pakket::Utils::Perl qw< list_core_modules >;
 
 use constant {
@@ -35,18 +39,46 @@ use constant {
 
 with 'Pakket::Role::RunCommand';
 
-has 'config_dir' => (
+has 'parcel_dir' => (
+    'is'       => 'ro',
+    'isa'      => Path,
+    'coerce'   => 1,
+    'required' => 1,
+);
+
+has 'parcel_repo' => (
     'is'      => 'ro',
-    'isa'     => Path,
-    'coerce'  => 1,
-    'default' => sub { Path::Tiny->cwd },
+    'isa'     => 'Pakket::Repository::Parcel',
+    'lazy'    => 1,
+    'builder' => '_build_parcel_repo',
+);
+
+has 'source_repo' => (
+    'is'      => 'ro',
+    'isa'     => 'Pakket::Repository::Source',
+    'lazy'    => 1,
+    'builder' => '_build_source_repo',
+);
+
+has 'config_repo' => (
+    'is'      => 'ro',
+    'isa'     => 'Pakket::Repository::Config',
+    'lazy'    => 1,
+    'builder' => '_build_config_repo',
+);
+
+has 'config_dir' => (
+    'is'       => 'ro',
+    'isa'      => Path,
+    'coerce'   => 1,
+    'required' => 1,
 );
 
 has 'source_dir' => (
-    'is'      => 'ro',
-    'isa'     => Path,
-    'coerce'  => 1,
-    'default' => sub { Path::Tiny->cwd },
+    'is'       => 'ro',
+    'isa'      => Path,
+    'coerce'   => 1,
+    'required' => 1,
 );
 
 has 'build_dir' => (
@@ -78,23 +110,6 @@ has 'build_files_manifest' => (
     'is'      => 'ro',
     'isa'     => 'HashRef',
     'default' => sub { +{} },
-);
-
-has 'index_file' => (
-    'is'       => 'ro',
-    'isa'      => Path,
-    'coerce'   => 1,
-    'required' => 1,
-);
-
-has 'index' => (
-    'is'      => 'ro',
-    'isa'     => 'HashRef',
-    'lazy'    => 1,
-    'default' => sub {
-        my $self = shift;
-        return decode_json $self->index_file->slurp_utf8;
-    },
 );
 
 has 'builders' => (
@@ -129,17 +144,16 @@ has 'installer' => (
     'default' => sub {
         my $self = shift;
 
-        my $parcel_dir = $self->bundler_args->{'bundle_dir'};
+        my $parcel_dir = $self->{'parcel_dir'};
         if ( !$parcel_dir ) {
             $log->critical("'bundler_args' do not contain 'bundle_dir'");
             exit 1;
         }
 
         return Pakket::Installer->new(
-            'pakket_dir' => $self->build_dir,
-            'parcel_dir' => $parcel_dir,
-            'index'      => $self->index,
-            'index_file' => $self->index_file,
+            'pakket_dir'  => $self->build_dir,
+            'parcel_repo' => $self->parcel_repo,
+            'parcel_dir'  => $self->parcel_dir,
         );
     },
 );
@@ -150,19 +164,54 @@ has 'bootstrapped' => (
     'default' => sub { +{} },
 );
 
+# We're starting with a local repo
+# # but in the future this will be dictated from a configuration
+sub _build_parcel_repo {
+    my $self = shift;
+
+    # Use default for now, but use the directory we want at least
+    return Pakket::Repository::Parcel->new(
+        'directory' => $self->parcel_dir,
+    );
+}
+
+# We're starting with a local repo
+# # but in the future this will be dictated from a configuration
+sub _build_config_repo {
+    my $self = shift;
+
+    # Use default for now, but use the directory we want at least
+    return Pakket::Repository::Config->new(
+        'directory' => $self->config_dir,
+    );
+}
+
+# We're starting with a local repo
+# # but in the future this will be dictated from a configuration
+sub _build_source_repo {
+    my $self = shift;
+
+    # Use default for now, but use the directory we want at least
+    return Pakket::Repository::Source->new(
+        'directory' => $self->source_dir,
+    );
+}
+
 sub _build_bundler {
     my $self = shift;
-    return Pakket::Bundler->new( $self->bundler_args );
+
+    return Pakket::Bundler->new(
+		%{ $self->bundler_args },
+		'parcel_repo' => $self->parcel_repo,
+	);
 }
 
 sub build {
-    my ( $self, %args ) = @_;
-
-    my $prereq = Pakket::Requirement->new(%args);
+    my ( $self, $requirement ) = @_;
 
     $self->_setup_build_dir;
-    $self->bootstrap_build($prereq->category);
-    $self->run_build($prereq);
+    $self->bootstrap_build( $requirement->category );
+    $self->run_build($requirement);
 }
 
 sub DEMOLISH {
@@ -208,15 +257,18 @@ sub bootstrap_build {
             Module-Build-WithXSpp
         >;
 
-        for my $dist ( @dists ) {
-            my $ver  = $self->index->{'perl'}{$dist}{'latest'};
-            my $req = Pakket::Requirement->new(
-                'category' => $category,
-                'name'     => $dist,
-                'version'  => $ver,
-            );
+        my @all_object_ids = @{ $self->config_repo->all_object_ids() };
+        for my $dist (@dists) {
+            # Right now everything is pinned so there is only
+            # One result. Once the version ranges feature is introduced,
+            # we will be able to get the latest version.
+            my ($pkg_str) = grep m{^ perl / \Q$dist\E =}xms, @all_object_ids;
+
+            # Create a requirement
+            my $req = Pakket::Requirement->new_from_string($pkg_str);
+
             $self->run_build($req, { 'skip_prereqs' => 1 });
-            $self->bootstrapped->{$dist}{$ver} = 1;
+            $self->bootstrapped->{$dist}{ $req->version } = 1;
         }
     }
     # elsif ( $category eq ...
@@ -236,19 +288,6 @@ sub run_build {
 
         $self->bootstrapped->{ $prereq->name }{ $prereq->version }
             and return;
-    }
-
-    if (
-        !first { $prereq->version eq $_ }
-        @{ $self->versions_in_index($prereq) }
-        )
-    {
-        $log->criticalf(
-            'Could not find version %s in index (%s)',
-            $prereq->version, $prereq->short_name,
-        );
-
-        exit 1;
     }
 
     if ( defined $self->is_built->{$short_name} ) {
@@ -276,48 +315,23 @@ sub run_build {
 
     # Create a Package instance from the configuration
     # using the information we have on it
-    my $package = Pakket::Package->new(
-        $self->read_package_config(
-            $prereq->category,
-            $prereq->name,
-            $prereq->version,
-        ),
-    );
+    my $package_config = $self->config_repo->retrieve_package_config($prereq);
+    my $package        = Pakket::Package->new_from_config($package_config);
 
     my $top_build_dir  = $self->build_dir;
     my $main_build_dir = $top_build_dir->child('main');
 
-    # FIXME: this is a hack
-    # Once we have a proper repository, we could query it and find out
-    # instead of asking the bundler this
-    my $existing_parcel = $self->bundler->bundle_dir->child(
-        $package->category,
-        $package->name,
-        sprintf( '%s-%s.pkt', $package->name, $package->version ),
+    my $installer = $self->installer;
+
+    # FIXME: The problem with this method is that it retrieves the location
+    #        in order to find if it can install, which is often a fetch.
+    #        We should instead introduce a can_install() method on a Backend
+    my $successfully_installed = $installer->try_to_install_package(
+        $package, $main_build_dir, {},
     );
 
-    my $installer   = $self->installer;
-    my $parcel_file = $installer->parcel_file(
-        $package->category, $package->name, $package->version,
-    );
-
-    if ( $parcel_file->exists ) {
-
-        # Use the installer to recursively install all packages
-        # that are already available
-        $log->debugf(
-            '%s already packaged, unpacking...',
-            $package->full_name,
-        );
-
-        my $installer_cache = {};
-
-        $installer->install_package(
-            $package,
-            $main_build_dir,
-            $installer_cache,
-        );
-
+    if ($successfully_installed) {
+        # snapshot_build_dir
         $self->scan_dir( $package->category, $package->name,
             $main_build_dir->absolute, 0 );
 
@@ -338,13 +352,11 @@ sub run_build {
             $self->_recursive_build_phase( $package, $category, 'runtime', $level+1 );
         }
     }
-    my $package_src_dir = $self->package_location($package);
+
+    my $package_src_dir
+        = $self->source_repo->retrieve_package_source($package);
 
     $log->info('Copying package files');
-    $package_src_dir->is_dir or do {
-        $log->critical("Cannot find source dir: $package_src_dir");
-        exit 1;
-    };
 
     # FIXME: we shouldn't be generating PKG_CONFIG_PATH every time
     #        Instead, set this as default opt and send it to the build
@@ -416,44 +428,16 @@ sub _recursive_build_phase {
     my @prereqs = keys %{ $package->prereqs->{$category}{$phase} };
 
     foreach my $prereq_name (@prereqs) {
-        my $version = $package->prereqs->{$category}{$phase}{$prereq_name}{'version'} //
-            $self->index->{$category}{$prereq_name}{'latest'};
+        # Right now everything is pinned so there is only
+        # One result. Once the version ranges feature is introduced,
+        # we will be able to get the latest version.
+        my ($pkg_str) = grep m{^ \Q$category\E / \Q$prereq_name\E =}xms,
+            @{ $self->config_repo->all_object_ids() };
 
-        my $req     = Pakket::Requirement->new(
-            'category' => $category,
-            'name'     => $prereq_name,
-            'version'  => $version,
-        );
+        my $req = Pakket::Requirement->new_from_string($pkg_str);
 
-        $self->run_build($req, { 'level' => $level });
+        $self->run_build( $req, { 'level' => $level } );
     }
-}
-
-sub versions_in_index {
-    my ( $self, $prereq ) = @_;
-
-    my $index    = $self->index;
-    my $category = $prereq->category;
-    my $name     = $prereq->name;
-
-    if ( !exists $index->{$category}{$name} ) {
-        $log->critical("We don't know $category/$name. Sorry.");
-        exit 1;
-    }
-
-    return [ keys %{ $index->{$category}{$name}{'versions'} } ];
-}
-
-sub package_location {
-    my ( $self, $package ) = @_;
-
-    my $index   = $self->index;
-    my $src_dir = $self->source_dir;
-
-    my $versions
-        = $index->{ $package->category }{ $package->name }{'versions'};
-
-    return $src_dir->child( $versions->{ $package->version } );
 }
 
 sub scan_dir {
@@ -567,78 +551,6 @@ sub _expand_flags_inplace {
     }
 
     return;
-}
-
-sub read_package_config {
-    my ( $self, $category, $package_name, $package_version ) = @_;
-
-    # FIXME: the config class should have "mandatory" fields, add checks
-
-    # read the configuration
-    my $config_file = path( $self->config_dir, $category, $package_name,
-        "$package_version.toml" );
-
-    if ( !$config_file->exists ) {
-        $log->critical("Could not find package config file: $config_file");
-        exit 1;
-    }
-
-    if ( !$config_file->is_file ) {
-        $log->critical("odd config file: $config_file");
-        exit 1;
-    }
-
-    my $config_reader = Pakket::ConfigReader->new(
-        'type' => 'TOML',
-        'args' => [ 'filename' => $config_file ],
-    );
-
-    my $config = $config_reader->read_config;
-
-    # double check we have the right package configuration
-    my $config_name = $config->{'Package'}{'name'};
-    if ( !$config_name ) {
-        $log->error("Package config must provide 'name'");
-        return;
-    }
-
-    my $config_category = $config->{'Package'}{'category'};
-    if ( !$config_category ) {
-        $log->error("Package config must provide 'category'");
-        return;
-    }
-
-    my $config_version = $config->{'Package'}{'version'};
-    if ( !defined $config_version ) {
-        $log->error("Package config must provide 'version'");
-        return;
-    }
-
-    if ( $config_name ne $package_name ) {
-        $log->error("Mismatch package names ($package_name / $config_name)");
-        return;
-    }
-
-    if ( $config_category ne $category ) {
-        $log->error(
-            "Mismatch package categories ($category / $config_category)");
-        return;
-    }
-
-    if ( $config_version ne $package_version ) {
-        $log->error(
-            "Mismatch package versions ($package_version / $config_version)");
-        return;
-
-    }
-
-    my %package_details = (
-        %{ $config->{'Package'} },
-        'prereqs'    => $config->{'Prereqs'}    || {},
-        'build_opts' => $config->{'build_opts'} || {},
-    );
-
-    return %package_details;
 }
 
 __PACKAGE__->meta->make_immutable;
