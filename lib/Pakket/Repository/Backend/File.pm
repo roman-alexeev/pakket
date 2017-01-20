@@ -12,7 +12,7 @@ use Digest::SHA       qw< sha1_hex >;
 
 with qw<
     Pakket::Role::HasDirectory
-	Pakket::Role::Repository::Backend
+    Pakket::Role::Repository::Backend
 >;
 
 has 'file_extension' => (
@@ -25,10 +25,10 @@ has 'index_file' => (
     'is'       => 'ro',
     'isa'      => Path,
     'coerce'   => 1,
-	'default'  => sub {
-		my $self = shift;
-		return $self->directory->child('index.json');
-	},
+    'default'  => sub {
+        my $self = shift;
+        return $self->directory->child('index.json');
+    },
 );
 
 has 'repo_index' => (
@@ -79,9 +79,9 @@ sub store_location {
 }
 
 sub retrieve_location {
-	my ( $self, $id ) = @_;
+    my ( $self, $id ) = @_;
     my $filename = $self->_retrieve_from_index($id);
-	return $self->directory->child($filename);
+    return $self->directory->child($filename);
 }
 
 sub store_content {
