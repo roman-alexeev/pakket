@@ -74,14 +74,20 @@ sub _retrieve_from_index {
 
 sub store_location {
     my ( $self, $id, $file_to_store ) = @_;
-    my $filename = $self->_store_in_index($id);
-    return path($file_to_store)->copy( $self->directory->child($filename) );
+    my $filename  = $self->_store_in_index($id);
+    my $directory = $self->directory;
+
+    return path($file_to_store)->copy( $directory->child($filename) );
 }
 
 sub retrieve_location {
     my ( $self, $id ) = @_;
     my $filename = $self->_retrieve_from_index($id);
-    return $self->directory->child($filename);
+    $filename
+        and return $self->directory->child($filename);
+
+    $log->debug("File for ID '$id' does not exist in storage");
+    return;
 }
 
 sub store_content {
