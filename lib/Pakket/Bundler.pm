@@ -6,7 +6,7 @@ use MooseX::StrictConstructor;
 use JSON::MaybeXS;
 use File::Spec;
 use Path::Tiny        qw< path >;
-use Types::Path::Tiny qw< Path >;
+use Types::Path::Tiny qw< AbsPath >;
 use Log::Any          qw< $log >;
 
 use Pakket::Package;
@@ -31,9 +31,9 @@ has 'parcel_repo' => (
 
 has 'bundle_dir' => (
     'is'      => 'ro',
-    'isa'     => Path,
+    'isa'     => AbsPath,
     'coerce'  => 1,
-    'default' => sub { return path('output') },
+    'default' => sub { return path('output')->absolute },
 );
 
 has 'files_manifest' => (
@@ -118,7 +118,7 @@ sub bundle {
     # FIXME: This is because the Bundler isn't receiving a
     #        Pakket::Package object
     my $pkg_object = Pakket::Package->new_from_config($package_config);
-    $log->info( 'Creating parcel file for %s', $pkg_object->full_name );
+    $log->infof( 'Creating parcel file for %s', $pkg_object->full_name );
 
     # The lovely thing here is that is creates a parcel file from the
     # bundled directory, which gets cleaned up automatically
