@@ -6,9 +6,9 @@ use MooseX::StrictConstructor;
 
 use JSON::MaybeXS     qw< encode_json decode_json >;
 use Path::Tiny        qw< path >;
-use HTTP::Tiny;
 use Log::Any          qw< $log >;
 use Types::Path::Tiny qw< Path >;
+use HTTP::Tiny;
 
 with qw<
     Pakket::Role::Repository::Backend
