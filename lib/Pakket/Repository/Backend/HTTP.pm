@@ -41,7 +41,7 @@ has 'http_client' => (
 
 sub _build_base_url {
     my $self = shift;
-    sprintf('http://%s:%s', $self->host, $self->port);
+    return sprintf( 'http://%s:%s', $self->host, $self->port );
 }
 
 sub all_object_ids {
@@ -49,26 +49,28 @@ sub all_object_ids {
     my $url      = '/all_object_ids';
     my $full_url = $self->base_url . $url;
     my $response = $self->http_client->get($full_url);
-    if (!$response->{success}) {
-        $log->criticalf('Could not get remote all_object_ids: %d -- %s',
-                        $response->{status}, $response->{reason});
+
+    if ( !$response->{'success'} ) {
+        $log->criticalf( 'Could not get remote all_object_ids: %d -- %s',
+            $response->{'status'}, $response->{'reason'} );
         exit 1;
     }
-    my $content = decode_json($response->{content});
-    return $content->{data};
+
+    my $content = decode_json( $response->{'content'} );
+    return $content->{'data'};
 }
 
 sub store_location {
     my ( $self, $id, $file_to_store ) = @_;
     my $content = {
-        data => path($file_to_store)->slurp( { 'binmode' => ':raw' } ),
+        'data' => path($file_to_store)->slurp( { 'binmode' => ':raw' } ),
     };
     $self->store_content( $id, $content );
 }
 
 sub retrieve_location {
     my ( $self, $id ) = @_;
-    my $content = $self->retrieve_content->($id);
+    my $content  = $self->retrieve_content->($id);
     my $location = Path::Tiny->tempfile;
     $location->spew( { 'binmode' => ':raw' }, $content );
     return $location;
@@ -78,16 +80,18 @@ sub store_content {
     my ( $self, $id, $content ) = @_;
     my $url      = "/store/$id";
     my $full_url = $self->base_url . $url;
+
     my $response = $self->http_client->post(
         $full_url => {
-            content => encode_json({ data => $content }),
-            headers => {
-                "Content-Type" => "application/json",
+            'content' => encode_json( { 'data' => $content } ),
+            'headers' => {
+                'Content-Type' => 'application/json',
             },
         },
     );
-    if (!$response->{success}) {
-        $log->criticalf('Could not store content for id %s', $id);
+
+    if ( !$response->{'success'} ) {
+        $log->criticalf( 'Could not store content for id %s', $id );
         exit 1;
     }
 }
@@ -97,11 +101,13 @@ sub retrieve_content {
     my $url      = "/retrieve/$id";
     my $full_url = $self->base_url . $url;
     my $response = $self->http_client->get($full_url);
-    if (!$response->{success}) {
-        $log->criticalf('Could not retrieve content for id %s', $id);
+
+    if ( !$response->{'success'} ) {
+        $log->criticalf( 'Could not retrieve content for id %s', $id );
         exit 1;
     }
-    my $content = decode_json($response->{content});
+
+    my $content = decode_json( $response->{content} );
     return $content->{data};
 }
 
