@@ -275,14 +275,9 @@ sub install_package {
     $parcel_file->copy($dir);
 
     my $parcel_basename = $parcel_file->basename;
+
     $log->debug("Unpacking $parcel_basename");
-
-    # XXX: If we can remove the type here, we should
-    my $archive = Archive::Any->new(
-        $parcel_file,
-        'application/x-gtar',
-    );
-
+    my $archive = Archive::Any->new($parcel_file);
     $archive->extract($dir);
 
     my $full_parcel_dir = $dir->child( PARCEL_FILES_DIR() );
