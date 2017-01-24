@@ -2,11 +2,11 @@ package Pakket::Runner;
 # ABSTRACT: Run Pakket-based applications
 
 use Moose;
-use Types::Path::Tiny qw< Path >;
+use Types::Path::Tiny qw< AbsPath >;
 
 has 'active_path' => (
     'is'       => 'ro',
-    'isa'      => Path,
+    'isa'      => AbsPath,
     'coerce'   => 1,
     'required' => 1,
 );
