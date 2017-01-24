@@ -332,7 +332,7 @@ sub run_build {
 
     if ($successfully_installed) {
         # snapshot_build_dir
-        $self->scan_dir( $package->category, $package->name,
+        $self->snapshot_build_dir( $package->category, $package->name,
             $main_build_dir->absolute, 0 );
 
         $log->noticef(
@@ -399,7 +399,7 @@ sub run_build {
         exit 1;
     }
 
-    my $package_files = $self->scan_dir(
+    my $package_files = $self->snapshot_build_dir(
         $package->category, $package->name, $main_build_dir,
     );
 
@@ -440,7 +440,7 @@ sub _recursive_build_phase {
     }
 }
 
-sub scan_dir {
+sub snapshot_build_dir {
     my ( $self, $category, $package_name, $main_build_dir, $error_out ) = @_;
     $error_out //= 1;
 
@@ -476,14 +476,14 @@ sub scan_dir {
 sub retrieve_new_files {
     my ( $self, $category, $package_name, $build_dir ) = @_;
 
-    my $nodes = $self->scan_directory($build_dir);
+    my $nodes = $self->_scan_directory($build_dir);
     my $new_files
         = $self->_diff_nodes_list( $self->build_files_manifest, $nodes, );
 
     return $new_files;
 }
 
-sub scan_directory {
+sub _scan_directory {
     my ( $self, $dir ) = @_;
 
     my $visitor = sub {
