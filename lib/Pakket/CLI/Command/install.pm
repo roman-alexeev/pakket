@@ -24,7 +24,6 @@ sub opt_spec {
             'directory to install the packages from',
             { 'required' => 1 },
         ],
-        [ 'index-file=s', 'Index file for the sources', { 'required' => 1 } ],
         [ 'input-file=s', 'Index-style file to install' ],
         [ 'verbose|v+',   'verbose output (can be provided multiple times)', { 'default' => 1 } ],
     );
@@ -38,7 +37,6 @@ sub validate_args {
 
     $self->{'installer'}{'pakket_dir'} = $opt->{'to'};
     $self->{'installer'}{'parcel_dir'} = $opt->{'from'};
-    $self->{'installer'}{'index_file'} = $opt->{'index_file'};
 
     if ( defined $opt->{'input_file'} ) {
         $self->{'installer'}{'input_file'} = $opt->{'input_file'};
@@ -60,7 +58,7 @@ sub execute {
             defined $self->{'installer'}{$_}
                 ? ( $_ => $self->{'installer'}{$_} )
                 : ()
-        ), qw< pakket_dir parcel_dir index_file input_file > ),
+        ), qw< pakket_dir parcel_dir input_file > ),
     );
 
     return $installer->install( @{ $self->{'parcels'} } );
