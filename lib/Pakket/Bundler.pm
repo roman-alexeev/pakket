@@ -4,11 +4,13 @@ package Pakket::Bundler;
 use Moose;
 use MooseX::StrictConstructor;
 use JSON::MaybeXS;
-use Path::Tiny qw< path >;
 use File::Spec;
+use Path::Tiny        qw< path >;
 use Types::Path::Tiny qw< AbsPath >;
-use Pakket::Log;
-use Log::Any qw< $log >;
+use Log::Any          qw< $log >;
+
+use Pakket::Package;
+use Pakket::Repository::Parcel;
 
 use Pakket::Constants qw<
     PARCEL_EXTENSION
@@ -19,6 +21,13 @@ use Pakket::Constants qw<
 use constant {
     'BUNDLE_DIR_TEMPLATE' => 'BUNDLE-XXXXXX',
 };
+
+has 'parcel_repo' => (
+    'is'      => 'ro',
+    'isa'     => 'Pakket::Repository::Parcel',
+    'lazy'    => 1,
+    'builder' => '_build_parcel_repo',
+);
 
 has 'bundle_dir' => (
     'is'      => 'ro',
@@ -33,6 +42,17 @@ has 'files_manifest' => (
     'default' => sub { return +{} },
 );
 
+# We're starting with a local repo
+# but in the future this will be dictated from a configuration
+sub _build_parcel_repo {
+    my $self = shift;
+
+    # Use default now for now, but use our directory at least
+    return Pakket::Repository::Parcel->new(
+        'directory' => $self->bundle_dir,
+    );
+}
+
 sub bundle {
     my ( $self, $build_dir, $pkg_data, $files ) = @_;
 
@@ -44,14 +64,14 @@ sub bundle {
     my $original_dir = Path::Tiny->cwd;
 
     # totally arbitrary, maybe add to constants?
-    my $parcel_path = Path::Tiny->tempdir(
+    my $parcel_dir_path = Path::Tiny->tempdir(
         'TEMPLATE' => BUNDLE_DIR_TEMPLATE(),
         'CLEANUP'  => 1,
     );
 
-    $parcel_path->child( PARCEL_FILES_DIR() )->mkpath;
+    $parcel_dir_path->child( PARCEL_FILES_DIR() )->mkpath;
 
-    chdir $parcel_path->child( PARCEL_FILES_DIR() )->stringify;
+    chdir $parcel_dir_path->child( PARCEL_FILES_DIR() )->stringify;
 
     foreach my $orig_file ( keys %{$files} ) {
         $log->debug("Bundling $orig_file");
@@ -86,33 +106,26 @@ sub bundle {
         }
     }
 
-    path( PARCEL_METADATA_FILE() )
-        ->spew_utf8( JSON::MaybeXS->new->pretty->canonical->encode($package_config) );
+    # FIXME: We need to add more information here, but it needs to be
+    #        synced with the Installer that reads it
+    ## no critic qw(ValuesAndExpressions::ProhibitLongChainsOfMethodCalls)
+    path( PARCEL_METADATA_FILE() )->spew_utf8(
+        JSON::MaybeXS->new->pretty->canonical->encode($package_config),
+    );
 
     chdir '..';
 
-    my $parcel_filename = path(
-        join '.', "$package_name-$package_version", PARCEL_EXTENSION,
+    # FIXME: This is because the Bundler isn't receiving a
+    #        Pakket::Package object
+    my $pkg_object = Pakket::Package->new_from_config($package_config);
+    $log->infof( 'Creating parcel file for %s', $pkg_object->full_name );
+
+    # The lovely thing here is that is creates a parcel file from the
+    # bundled directory, which gets cleaned up automatically
+    $self->parcel_repo->store_package_parcel(
+        $pkg_object,
+        $parcel_dir_path,
     );
-
-    $log->info("Creating parcel file $parcel_filename");
-    system "tar -cJf $parcel_filename *";
-    my $new_location = path(
-        $self->bundle_dir, $package_category, $package_name,
-    );
-
-    $new_location->mkpath;
-
-    # "A lot of Unix systems simply don't allow the mv command to work between
-    # different devices # (or even different partitions on the same device).
-    # The solution is to copy the file over, and then delete the original -
-    # or use GNU mv, which will do the same thing automaticaly."
-    #   -- http://www.perlmonks.org/?node_id=338699
-    #
-    # this happened because it was installed in /tmp which was a different FS
-    #   -- SX (see: d81d413e6df49c1c7284e4474457e1cd9b6655b4)
-    $parcel_filename->copy($new_location);
-    $parcel_filename->remove();
 
     chdir $original_dir;
 

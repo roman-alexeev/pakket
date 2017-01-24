@@ -31,7 +31,7 @@ sub validate_args {
     my $active_path
         = exists $ENV{'PAKKET_ACTIVE_PATH'}
         ? $ENV{'PAKKET_ACTIVE_PATH'}
-        : $self->{'runner'}{'active_path'};
+        : $opt->{'from'};
 
     $active_path
         or $self->usage_error('No active path provided');

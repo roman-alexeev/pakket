@@ -4,14 +4,15 @@ package Pakket::CLI::Command::build;
 use strict;
 use warnings;
 
-use Path::Tiny      qw< path >;
-use Log::Any::Adapter;
-
-use Pakket::Constants qw< PAKKET_PACKAGE_SPEC >;
 use Pakket::CLI '-command';
+use Pakket::Constants qw< PAKKET_PACKAGE_SPEC PAKKET_LATEST_VERSION >;
 use Pakket::Builder;
-use Pakket::Log;
-use Pakket::Repository;
+use Pakket::Requirement;
+use Pakket::Log;           # predefined loggers
+
+use Path::Tiny qw< path >;
+use Log::Any   qw< $log >; # to log
+use Log::Any::Adapter;     # to set the logger
 
 # TODO:
 # - move all hardcoded values (confs) to constants
@@ -28,12 +29,9 @@ sub description { 'Build a package' }
 
 sub opt_spec {
     return (
-        [ 'index-file=s',   'path to pkg_index.json', { 'required' => 1 } ],
-        [ 'from-index',     'build everything from the index' ],
         [ 'category=s',     'build only this key the index' ],
         [ 'input-file=s',   'build stuff from this file' ],
-        [ 'input-json=s',   'build stuff from this json file' ],
-	[ 'skip=s',         'skip this index entry' ],
+        [ 'skip=s',         'skip this index entry' ],
         [ 'build-dir=s',    'use an existing build directory' ],
         [ 'keep-build-dir', 'do not delete the build directory' ],
         [
@@ -54,22 +52,21 @@ sub opt_spec {
 sub validate_args {
     my ( $self, $opt, $args ) = @_;
 
+    Log::Any::Adapter->set(
+        'Dispatch',
+        'dispatcher' => Pakket::Log->build_logger( $opt->{'verbose'} ),
+    );
+
+    # Check that the directory for configs exists
+    # (How do we get it from the CLI?)
     my $config_dir = path( $opt->{'config_dir'} );
     $config_dir->exists && $config_dir->is_dir
         or $self->usage_error("Incorrect config directory specified: '$config_dir'");
     $self->{'builder'}{'config_dir'} = $config_dir;
 
-    my $index_file = path( $opt->{'index_file'} );
-    $index_file->exists && $index_file->is_file
-        or $self->usage_error("Incorrect index file specified: '$index_file'");
-    $self->{'builder'}{'index_file'} = $index_file;
-
-    my $repo = Pakket::Repository->new(
-        'backend' => [ 'File', 'filename' => $index_file ],
-    );
-
     if ( defined ( my $output_dir = $opt->{'output_dir'} ) ) {
         $self->{'bundler'}{'bundle_dir'} = path($output_dir)->absolute;
+        $self->{'builder'}{'parcel_dir'} = $output_dir;
     }
 
     my @specs;
@@ -79,21 +76,6 @@ sub validate_args {
             or $self->usage_error("Bad input file: $path");
 
         push @specs, $path->lines_utf8( { 'chomp' => 1 } );
-    } elsif ( $opt->{'from_index'} ) {
-        push @specs, _filter_packages(
-            $repo,
-            @{$opt}{qw< category skip >},
-            @{ $repo->packages_list },
-        );
-    } elsif ( defined ( my $json_file = $opt->{'input_json'} ) ) {
-        my $mini_repo = Pakket::Repository->new(
-            'backend' => [ 'File', 'filename' => $json_file ] );
-
-        push @specs, _filter_packages(
-            $repo,
-            @{$opt}{qw< category skip >},
-            @{ $mini_repo->packages_list },
-        );
     } elsif ( @{$args} ) {
         @specs = @{$args};
     } else {
@@ -104,15 +86,17 @@ sub validate_args {
         my ( $cat, $name, $version ) = $spec_str =~ PAKKET_PACKAGE_SPEC()
             or $self->usage_error("Provide category/name, not '$spec_str'");
 
-        # Latest version is default
-        defined $version
-            or $version = $repo->latest_version( $cat, $name );
-
-        push @{ $self->{'to_build'} }, +{
-            'category' => $cat,
-            'name'     => $name,
-            'version'  => $version,
+        my $req;
+        eval { $req = Pakket::Requirement->new_from_string($spec_str); 1; }
+        or do {
+            my $error = $@ || 'Zombie';
+            $log->debug("Failed to create Pakket::Requirement: $error");
+            $self->usage_error(
+                "We do not understand this package string: $spec_str",
+            );
         };
+
+        push @{ $self->{'to_build'} }, $req;
     }
 
     if ( $opt->{'build_dir'} ) {
@@ -124,13 +108,9 @@ sub validate_args {
 
     $self->{'builder'}{'keep_build_dir'} = $opt->{'keep_build_dir'};
 
-    Log::Any::Adapter->set( 'Dispatch',
-        'dispatcher' => Pakket::Log->build_logger( $opt->{'verbose'} ) );
-
-    foreach my $opt_name ( qw<config_dir source_dir> ) {
-        $opt->{$opt_name}
-            and $self->{'builder'}{$opt_name} = path( $opt->{$opt_name} );
-    }
+    # XXX These will get removed eventually
+    $self->{'builder'}{'config_dir'} = $opt->{'config_dir'};
+    $self->{'builder'}{'source_dir'} = $opt->{'source_dir'};
 }
 
 sub execute {
@@ -141,7 +121,7 @@ sub execute {
             defined $self->{'builder'}{$_}
                 ? ( $_ => $self->{'builder'}{$_} )
                 : ()
-        ), qw< config_dir source_dir build_dir keep_build_dir index_file > ),
+        ), qw< parcel_dir config_dir source_dir build_dir keep_build_dir > ),
 
         # bundler args
         'bundler_args' => {
@@ -153,42 +133,9 @@ sub execute {
         },
     );
 
-    my $verbose = $self->{'builder'}{'verbose'};
-    my $logger  = Pakket::Log->build_logger($verbose);
-    Log::Any::Adapter->set( 'Dispatch', 'dispatcher' => $logger );
-
-    foreach my $prereq_hashref ( @{ $self->{'to_build'} } ) {
-        $builder->build( %{$prereq_hashref} );
+    foreach my $prereq ( @{ $self->{'to_build'} } ) {
+        $builder->build($prereq);
     }
-}
-
-sub _filter_packages {
-    my ( $repo, $cat, $skip, @packages ) = @_;
-
-    $cat || $skip
-        or return @packages;
-
-    my @filtered_pkgs;
-    my @skips = split /,/xms, $skip;
-
-    foreach my $pkg_str ( @{ $repo->packages_in_index } ) {
-        # if category, skip not in category
-        if ($cat) {
-            $pkg_str =~ m{^$cat/}xms
-                or next;
-        }
-
-        # if skip pairs, skip them
-        foreach my $skip_pair (@skips) {
-            $pkg_str =~ /^\Q$skip_pair\E/xms
-                and next;
-        }
-
-        # add whatever is left
-        push @filtered_pkgs, $pkg_str;
-    }
-
-    return @filtered_pkgs;
 }
 
 1;

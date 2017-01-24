@@ -23,6 +23,8 @@ use constant {
         )?
         $
     }x,
+
+    'PAKKET_LATEST_VERSION' => 'LATEST',
 };
 
 our @EXPORT_OK = qw<
@@ -30,6 +32,7 @@ our @EXPORT_OK = qw<
     PARCEL_FILES_DIR
     PARCEL_METADATA_FILE
     PAKKET_PACKAGE_SPEC
+    PAKKET_LATEST_VERSION
 >;
 
 1;

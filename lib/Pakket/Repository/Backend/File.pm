@@ -4,19 +4,31 @@ package Pakket::Repository::Backend::File;
 use Moose;
 use MooseX::StrictConstructor;
 
-use JSON::MaybeXS     qw< decode_json >;
+use JSON::MaybeXS     qw< encode_json decode_json >;
 use Path::Tiny        qw< path >;
 use Log::Any          qw< $log >;
 use Types::Path::Tiny qw< Path >;
-use Pakket::Utils     qw< canonical_package_name >;
+use Digest::SHA       qw< sha1_hex >;
 
-with qw< Pakket::Role::Repository::Backend >;
+with qw<
+    Pakket::Role::HasDirectory
+    Pakket::Role::Repository::Backend
+>;
 
-has 'filename' => (
+has 'file_extension' => (
+    'is'      => 'ro',
+    'isa'     => 'Str',
+    'default' => sub {'sgm'},
+);
+
+has 'index_file' => (
     'is'       => 'ro',
     'isa'      => Path,
     'coerce'   => 1,
-    'required' => 1,
+    'default'  => sub {
+        my $self = shift;
+        return $self->directory->child('index.json');
+    },
 );
 
 has 'repo_index' => (
@@ -25,57 +37,72 @@ has 'repo_index' => (
     'builder' => '_build_repo_index',
 );
 
-has '_cached_packages_list' => (
-    'is'      => 'ro',
-    'isa'     => 'ArrayRef',
-    'lazy'    => 1,
-    'builder' => '_build_cached_packages_list',
-);
-
 sub _build_repo_index {
-    my $self     = shift;
-    my $filename = $self->filename;
-    my $file     = path($filename);
+    my $self = shift;
+    my $file = $self->index_file;
 
-    if ( !$file->is_file ) {
-        $log->critical("File '$file' does not exist or cannot be read");
-        exit 1;
-    }
+    $file->is_file
+        or return +{};
 
     return decode_json( $file->slurp_utf8 );
 }
 
-sub _build_cached_packages_list {
-    my $self  = shift;
-    my $index = $self->repo_index;
-    my @packages;
-
-    for my $category ( keys %{$index} ) {
-        for my $package ( keys %{ $index->{$category} } ) {
-            for my $version (
-                keys %{ $index->{$category}{$package}{'versions'} } )
-            {
-                push @packages,
-                    canonical_package_name( $category, $package, $version, );
-            }
-        }
-    }
-
-    return \@packages;
+sub all_object_ids {
+    my $self           = shift;
+    my @all_object_ids = keys %{ $self->repo_index };
+    return \@all_object_ids;
 }
 
-sub packages_list { $_[0]->_cached_packages_list }
+sub _store_in_index {
+    my ( $self, $id ) = @_;
 
-sub latest_version {
-    my ( $self, $category, $package ) = @_;
+    # Decide on a proper filename for $id
+    # Meaningless extension
+    my $filename = sha1_hex($id) . '.' . $self->file_extension;
 
-    my $repo_index = $self->repo_index;
+    # Store in the index
+    $self->repo_index->{$id} = $filename;
+    $self->index_file->spew_utf8( encode_json( $self->repo_index ) );
 
-    $repo_index->{$category}           or return;
-    $repo_index->{$category}{$package} or return;
-
-    return $repo_index->{$category}{$package}{'latest'};
+    return $filename;
 }
+
+sub _retrieve_from_index {
+    my ( $self, $id ) = @_;
+    return $self->repo_index->{$id};
+}
+
+sub store_location {
+    my ( $self, $id, $file_to_store ) = @_;
+    my $filename  = $self->_store_in_index($id);
+    my $directory = $self->directory;
+
+    return path($file_to_store)->copy( $directory->child($filename) );
+}
+
+sub retrieve_location {
+    my ( $self, $id ) = @_;
+    my $filename = $self->_retrieve_from_index($id);
+    $filename
+        and return $self->directory->child($filename);
+
+    $log->debug("File for ID '$id' does not exist in storage");
+    return;
+}
+
+sub store_content {
+    my ( $self, $id, $content ) = @_;
+    my $file_to_store = Path::Tiny->tempfile;
+    $file_to_store->spew( { 'binmode' => ':raw' }, $content );
+    return $self->store_location( $id, $file_to_store );
+}
+
+sub retrieve_content {
+    my ( $self, $id ) = @_;
+    return $self->retrieve_location($id)
+                ->slurp( { 'binmode' => ':raw' } );
+}
+
 
 __PACKAGE__->meta->make_immutable;
 no Moose;

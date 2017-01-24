@@ -7,6 +7,7 @@ use Moose::Util::TypeConstraints;
 use Log::Any qw< $log >;
 use Safe::Isa;
 use Module::Runtime qw<require_module>;
+use Pakket::Constants qw< PAKKET_LATEST_VERSION >;
 
 sub _coerce_backend_from_arrayref {
     my $backend_data = shift;
@@ -14,7 +15,7 @@ sub _coerce_backend_from_arrayref {
     my $class = "Pakket::Repository::Backend::$subclass";
 
     eval { require_module($class); 1; } or do {
-        $log->critical("Failed to load backend '$class'");
+        $log->critical("Failed to load backend '$class': $@");
         exit 1;
     };
 
@@ -29,6 +30,11 @@ subtype 'PakketRepositoryBackend', as 'Object', where {
 
 coerce 'PakketRepositoryBackend', from 'ArrayRef',
     via { return _coerce_backend_from_arrayref($_); };
+
+subtype 'PakketVersion', as 'Str';
+
+coerce 'PakketVersion', from 'Undef',
+    via { return PAKKET_LATEST_VERSION() };
 
 no Moose::Util::TypeConstraints;
 
