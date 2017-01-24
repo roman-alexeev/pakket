@@ -16,13 +16,23 @@ sub run {
 
     my $active_path = $self->active_path;
 
-    local $ENV{'PATH'}            = "$active_path/bin:$ENV{PATH}";
+    # Avoid uninitialized values
+    my $ENV_PATH            = $ENV{'PATH'}            // '';
+    my $ENV_LD_LIBRARY_PATH = $ENV{'LD_LIBRARY_PATH'} // '';
+
+    local $ENV{'PATH'}            = "$active_path/bin:$ENV_PATH";
     local $ENV{'PERL5LIB'}        = "$active_path/lib/perl5";
-    local $ENV{'LD_LIBRARY_PATH'} = "$active_path/lib:$ENV{LD_LIBRARY_PATH}";
+    local $ENV{'LD_LIBRARY_PATH'} = "$active_path/lib:$ENV_LD_LIBRARY_PATH";
 
     # FIXME: Move to IPC::Open3, use the logger, etc.
     # XXX:   Should this just use the RunCommand role?
-    system @args;
+    if (@args) {
+        system @args;
+    } else {
+        print "$_=$ENV{$_}\n" for qw< PATH PERL5LIB LD_LIBRARY_PATH >;
+    }
+
+    return 0;
 }
 
 no Moose;
