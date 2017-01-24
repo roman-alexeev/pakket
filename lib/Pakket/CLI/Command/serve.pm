@@ -3,7 +3,6 @@ package Pakket::CLI::Command::serve;
 
 use strict;
 use warnings;
-use DDP;
 
 use Path::Tiny      qw< path >;
 use Log::Any::Adapter;
