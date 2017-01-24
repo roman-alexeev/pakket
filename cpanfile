@@ -26,6 +26,19 @@ requires 'TOML';
 requires 'TOML::Parser';
 requires 'Types::Path::Tiny';
 requires 'version', '>= 0.77';
+requires 'Archive::Tar::Wrapper';
+requires 'Archive::Any';
+requires 'Digest::SHA';
+
+# For the HTTP backend
+requires 'HTTP::Tiny';
+
+# For the web service
+requires 'Dancer2';
+
+# Only for the DBI backend
+requires 'DBI';
+requires 'Types::DBI';
 
 on 'test' => sub {
     requires 'Test::Perl::Critic::Progressive';
