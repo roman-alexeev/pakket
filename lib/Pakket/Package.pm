@@ -24,6 +24,12 @@ has 'version' => (
     'required' => 1,
 );
 
+has 'is_bootstrap' => (
+    'is'      => 'ro',
+    'isa'     => 'Bool',
+    'default' => sub {0},
+);
+
 has [qw<build_opts bundle_opts>] => (
     'is'      => 'ro',
     'isa'     => 'HashRef',
@@ -87,6 +93,10 @@ sub config {
 
     return +{
         'Package' => {
+            # This is so we don't see is_bootstrap in config
+            # if not required -- SX
+            ( 'is_bootstrap' => 1 )x!! $self->is_bootstrap,
+
             map +( $_ => $self->$_ ), qw<category name version>,
         },
 
@@ -99,11 +109,12 @@ sub config {
 sub new_from_config {
     my ( $class, $config ) = @_;
 
-	my %package_details = (
-		%{ $config->{'Package'} },
-		'prereqs'    => $config->{'Prereqs'}    || {},
-		'build_opts' => $config->{'build_opts'} || {},
-	);
+    my %package_details = (
+        %{ $config->{'Package'} },
+        'prereqs'      => $config->{'Prereqs'}    || {},
+        'build_opts'   => $config->{'build_opts'} || {},
+        'is_bootstrap' => !!$config->{'is_bootstrap'},
+    );
 
     return $class->new(%package_details);
 }

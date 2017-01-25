@@ -72,6 +72,11 @@ sub _retrieve_from_index {
     return $self->repo_index->{$id};
 }
 
+sub _remove_from_index {
+    my ( $self, $id ) = @_;
+    return delete $self->repo_index->{$id};
+}
+
 sub store_location {
     my ( $self, $id, $file_to_store ) = @_;
     my $filename  = $self->_store_in_index($id);
@@ -90,6 +95,13 @@ sub retrieve_location {
     return;
 }
 
+sub remove_location {
+    my ( $self, $id ) = @_;
+    $self->retrieve_location($id)->remove;
+    $self->_remove_from_index($id);
+    return 1;
+}
+
 sub store_content {
     my ( $self, $id, $content ) = @_;
     my $file_to_store = Path::Tiny->tempfile;
@@ -103,6 +115,10 @@ sub retrieve_content {
                 ->slurp( { 'binmode' => ':raw' } );
 }
 
+sub remove_content {
+    my ( $self, $id ) = @_;
+    return $self->remove_location($id);
+}
 
 __PACKAGE__->meta->make_immutable;
 no Moose;

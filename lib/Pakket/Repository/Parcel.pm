@@ -72,6 +72,11 @@ sub store_package_parcel {
     $self->store_location( $package->full_name, $file );
 }
 
+sub remove_package_parcel {
+    my ( $self, $package ) = @_;
+    return $self->remove_location( $package->full_name );
+}
+
 no Moose;
 __PACKAGE__->meta->make_immutable;
 

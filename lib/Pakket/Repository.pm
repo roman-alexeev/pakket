@@ -15,8 +15,8 @@ has 'backend' => (
     'builder' => '_build_backend',
     'handles' => [ qw<
         all_object_ids
-        store_content  retrieve_content
-        store_location retrieve_location
+        store_content  retrieve_content  remove_content
+        store_location retrieve_location remove_location
     > ],
 );
 
