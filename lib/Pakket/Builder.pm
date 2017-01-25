@@ -343,7 +343,7 @@ sub bootstrap_build {
                 'version'  => $dist_version,
             );
 
-            $self->parcel_repo->remove_location($req);
+            $self->parcel_repo->remove_package_parcel($req);
 
             # build again with dependencies
             delete $bootstrap_builder->is_built->{ $req->short_name };
