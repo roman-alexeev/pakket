@@ -245,15 +245,16 @@ sub _setup_build_dir {
 sub bootstrap_build {
     my ( $self, $category ) = @_;
 
+    # XXX: Whoa!
     my $bootstrap_builder = ref($self)->new(
-        'index'         => $self->index,
-        'index_file'    => $self->index_file,
-        'config_dir'    => $self->config_dir,
-        'source_dir'    => $self->source_dir,
-        'bundler_args'  => $self->bundler_args,
-        'builders'      => $self->builders,
-        'installer'     => $self->installer,
-        'bootstrapping' => 0,
+        'parcel_dir'     => $self->parcel_dir,
+        'config_dir'     => $self->config_dir,
+        'source_dir'     => $self->source_dir,
+        'keep_build_dir' => $self->keep_build_dir,
+        'bundler_args'   => $self->bundler_args,
+        'builders'       => $self->builders,
+        'installer'      => $self->installer,
+        'bootstrapping'  => 0,
     );
 
     if ( $category eq 'perl' ) {
