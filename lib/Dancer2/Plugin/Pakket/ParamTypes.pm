@@ -1,0 +1,42 @@
+package Dancer2::Plugin::Pakket::ParamTypes;
+
+use strict;
+use warnings;
+use constant { 'HTTP_USER_ERROR' => 400 };
+use Dancer2::Plugin;
+
+extends('Dancer2::Plugin::ParamTypes');
+plugin_keywords('with_types');
+
+sub with_types {
+    my $self = shift;
+    return $self->SUPER::with_types(@_);
+}
+
+sub BUILD {
+    my $self = shift;
+
+    $self->register_type_check(
+		'Str' => sub { defined $_[0] && length $_[0] },
+    );
+
+    $self->register_type_action(
+        'MissingID' => sub {
+            send_error( 'Missing or incorrect ID', HTTP_USER_ERROR() );
+        },
+    );
+
+    $self->register_type_action(
+        'MissingContent' => sub {
+            send_error( 'Missing or incorrect content', HTTP_USER_ERROR() );
+        },
+    );
+
+    $self->register_type_action(
+        'MissingFilename' => sub {
+            send_error( 'Missing or incorrect filename', HTTP_USER_ERROR() );
+        },
+    );
+}
+
+1;
