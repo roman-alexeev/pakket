@@ -333,6 +333,9 @@ sub bootstrap_build {
         for my $dist_name (@dists) {
             my $dist_version = $dists{$dist_name};
 
+            $log->noticef( 'Bootstrapping: phase III: %s=%s (%s)',
+                $dist_name, $dist_version, 'full deps' );
+
             # remove the temp (no-deps) parcel
             $log->noticef( 'Removing %s=%s (no-deps parcel)',
                 $dist_name, $dist_version );
@@ -351,6 +354,8 @@ sub bootstrap_build {
         }
     }
     # elsif ( $category eq ...
+
+    $log->notice('Finished Bootstrapping!');
 }
 
 sub run_build {
@@ -419,9 +424,8 @@ sub run_build {
 
             # Phase 3 needs to avoid trying to install
             # the bare minimum toolchain (Phase 1)
-            : {
-                $prereq->category => { $package->name => $package->version }
-              };
+            : { $prereq->category => { $package->name => $package->version },
+            };
 
         my $successfully_installed = $installer->try_to_install_package(
             $package,
@@ -566,8 +570,10 @@ sub snapshot_build_dir {
 
     if ($error_out) {
         keys %{$package_files} or do {
-            $log->critical(
-              'This is odd. Build did not generate new files. Cannot package.',
+            $log->criticalf(
+                'This is odd. %s/%s build did not generate new files. '
+                    . 'Cannot package.',
+                $category, $package_name,
             );
             exit 1;
         };
