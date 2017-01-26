@@ -288,25 +288,25 @@ sub install_package {
 
     my $parcel_basename = $parcel_file->basename;
 
-    $log->debug("Unpacking $parcel_basename");
+    $log->debug("Unpacking $parcel_basename into $dir");
     my $archive = Archive::Any->new($parcel_file);
     $archive->extract($dir);
 
     my $full_parcel_dir = $dir->child( PARCEL_FILES_DIR() );
     foreach my $item ( $full_parcel_dir->children ) {
-        my $inner_dir = $dir->child( $item->basename );
-
-        if ( $inner_dir->is_dir && !$inner_dir->exists ) {
-            $inner_dir->mkpath();
-        }
-
-        dircopy( $item, $inner_dir );
+        my $target_dir = $dir->child( $item->basename );
+        dircopy( $item, $target_dir );
     }
 
     $dir->child($parcel_basename)->remove;
 
+    # FIXME: We shouldn't copy this file into the target dir
     my $spec_file = $full_parcel_dir->child( PARCEL_METADATA_FILE() );
     my $config    = decode_json $spec_file->slurp_utf8;
+
+    # FIXME: This should be deleted earlier, but we need to read
+    #        the configuration file first
+    $full_parcel_dir->remove_tree( { 'safe' => 0 } );
 
     my $prereqs = $config->{'Prereqs'};
     foreach my $prereq_category ( keys %{$prereqs} ) {
@@ -330,8 +330,6 @@ sub install_package {
             $self->install_package( $next_pkg, $dir, { 'cache' => $installer_cache } );
         }
     }
-
-    $full_parcel_dir->remove_tree( { 'safe' => 0 } );
 
     my $actual_version = $config->{'Package'}{'version'};
     $log->info("Delivered parcel $pkg_cat/$pkg_name ($actual_version)");
