@@ -551,6 +551,7 @@ sub _recursive_build_phase {
     }
 }
 
+# FIXME: This subroutine needs to get a package object
 sub snapshot_build_dir {
     my ( $self, $category, $package_name, $main_build_dir, $error_out ) = @_;
     $error_out //= 1;
