@@ -448,6 +448,18 @@ sub run_build {
                 $prereq->full_name,
             );
 
+            # sync build cache with our install cache
+            # so we do not accidentally build things
+            # that were installed in some recursive iteration
+            foreach my $category ( keys %{$installer_cache} ) {
+                foreach my $package_name (
+                    keys %{ $installer_cache->{$category} } )
+                {
+                    $self->is_built->{"$category/$package_name"}
+                        = $installer_cache->{$category}{$package_name};
+                }
+            }
+
             return;
         }
     }
