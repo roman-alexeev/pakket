@@ -327,7 +327,7 @@ sub install_package {
                 'version'  => $prereq_version,
             );
 
-            $self->install_package( $next_pkg, $dir, { 'cache' => $installer_cache } );
+            $self->install_package( $next_pkg, $dir, $opts );
         }
     }
 
