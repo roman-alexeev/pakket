@@ -6,7 +6,6 @@ use MooseX::StrictConstructor;
 use Path::Tiny            qw< path  >;
 use Types::Path::Tiny     qw< Path  >;
 use File::Copy::Recursive qw< dircopy >;
-use File::Basename        qw< basename >;
 use Time::HiRes           qw< time >;
 use Log::Any              qw< $log >;
 use JSON::MaybeXS         qw< decode_json >;
@@ -203,7 +202,7 @@ sub install {
     }
 
     my @dirs = sort { $a->stat->mtime <=> $b->stat->mtime }
-               grep +( basename($_) ne 'active' && $_->is_dir ),
+               grep +( $_->basename ne 'active' && $_->is_dir ),
                $pakket_libraries_dir->children;
 
     my $num_dirs = @dirs;
@@ -295,7 +294,7 @@ sub install_package {
 
     my $full_parcel_dir = $dir->child( PARCEL_FILES_DIR() );
     foreach my $item ( $full_parcel_dir->children ) {
-        my $inner_dir = $dir->child( basename($item) );
+        my $inner_dir = $dir->child( $item->basename );
 
         if ( $inner_dir->is_dir && !$inner_dir->exists ) {
             $inner_dir->mkpath();
