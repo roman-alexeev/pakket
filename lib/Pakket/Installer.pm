@@ -216,12 +216,12 @@ sub install {
 }
 
 sub try_to_install_package {
-    my ( $self, $package, $dir, $install_cache ) = @_;
+    my ( $self, $package, $dir, $opts ) = @_;
 
     $log->debugf( 'Trying to install %s', $package->full_name );
 
     eval {
-        $self->install_package( $package, $dir, $install_cache );
+        $self->install_package( $package, $dir, $opts );
         1;
     } or do {
         $log->debugf( 'Could not install %s', $package->full_name );
