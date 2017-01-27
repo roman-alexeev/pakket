@@ -151,7 +151,20 @@ sub install {
 
     $work_dir->mkpath();
 
+    # The only way to make a symlink point somewhere else in an atomic way is
+    # to create a new symlink pointing to the target, and then rename it to the
+    # existing symlink (that is, overwriting it).
+    #
+    # This actually works, but there is a caveat: how to generate a name for
+    # the new symlink? File::Temp will both create a new file name and open it,
+    # returning a handle; not what we need.
+    #
+    # So, we just create a file name that looks like 'active_P_T.tmp', where P
+    # is the pid and T is the current time.
     my $active_link = $pakket_libraries_dir->child('active');
+    my $active_temp = $pakket_libraries_dir->child(
+        sprintf('active_%s_%s.tmp', $$, time()),
+    );
 
     # we copy any previous installation
     if ( $active_link->exists ) {
@@ -171,14 +184,22 @@ sub install {
     # We finished installing each one recursively to the work directory
     # Now we need to set the symlink
 
-    if ( $active_link->exists ) {
-        # delete the active symlink
-        $log->debug('Deleting existing active symlink');
-        $active_link->remove;
+    if ( $active_temp->exists ) {
+        # Huh? why does this temporary pathname exist? Try to delete it...
+        $log->debug('Deleting existing temporary active object');
+        if ( ! $active_temp->remove ) {
+            $log->error('Could not activate new installation (temporary symlink remove failed)');
+            exit 1;
+        }
     }
-    $log->debug('Setting active symlink to new work directory');
-    if ( ! symlink $work_dir->basename, $active_link ) {
-        $log->error('Could not activate new installation (symlink create failed)');
+
+    $log->debug('Setting temporary active symlink to new work directory');
+    if ( ! symlink $work_dir->basename, $active_temp ) {
+        $log->error('Could not activate new installation (temporary symlink create failed)');
+        exit 1;
+    }
+    if ( ! $active_temp->move($active_link) ) {
+        $log->error('Could not atomically activate new installation (symlink rename failed)');
         exit 1;
     }
 
