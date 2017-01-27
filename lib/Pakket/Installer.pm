@@ -288,10 +288,13 @@ sub install_package {
 
     $log->debug("Unpacking $parcel_basename into $dir");
 
+    # Create a place for pkt files to be extracted
+    $dir->sibling("extracted")->mkpath;
+
     # Unpack into a separate directory
     my $tmp_extraction_dir = Path::Tiny->tempdir(
         'CLEANUP' => 1,
-        'DIR'     => $dir->stringify,
+        'DIR'     => $dir->sibling("extracted")->stringify,
     );
 
     my $archive = Archive::Any->new($parcel_file);

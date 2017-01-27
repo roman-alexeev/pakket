@@ -158,6 +158,12 @@ has 'installer' => (
     },
 );
 
+has 'installer_cache' => (
+    'is'      => 'ro',
+    'isa'     => 'HashRef',
+    'default' => sub { +{} },
+);
+
 has 'bootstrapping' => (
     'is'      => 'ro',
     'isa'     => 'Bool',
@@ -420,19 +426,20 @@ sub run_build {
         $log->debugf( '%s already packaged, unpacking...',
             $package->full_name, );
 
-        my $installer_cache = $self->bootstrapping
-            ? {}
+	my $installer_cache = $self->installer_cache;
+	my $bootstrap_cache = {
+            %{ $self->installer_cache },
 
             # Phase 3 needs to avoid trying to install
             # the bare minimum toolchain (Phase 1)
-            : { $prereq->category => { $package->name => $package->version },
-            };
+            $prereq->category => { $package->name => $package->version },
+	};
 
         my $successfully_installed = $installer->try_to_install_package(
             $package,
             $main_build_dir,
             {
-                'cache'        => $installer_cache,
+                'cache'        => ( $self->bootstrapping ? $installer_cache : $bootstrap_cache ),
                 'skip_prereqs' => $skip_prereqs,
             },
         );
@@ -452,7 +459,7 @@ sub run_build {
             # sync build cache with our install cache
             # so we do not accidentally build things
             # that were installed in some recursive iteration
-            foreach my $category ( keys %{$installer_cache} ) {
+            foreach my $category ( sort keys %{$installer_cache} ) {
                 foreach my $package_name (
                     keys %{ $installer_cache->{$category} } )
                 {
