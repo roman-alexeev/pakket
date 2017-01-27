@@ -17,19 +17,12 @@ sub description { 'Serve objects' }
 sub opt_spec {
     return (
         [ 'port=s',     'port where server will listen', ],
-        [ 'data-dir=s', 'location of local files', { 'required' => 1 } ],
         [ 'verbose|v+', 'verbose output (can be provided multiple times)' ],
     );
 }
 
 sub validate_args {
     my ( $self, $opt, $args ) = @_;
-
-    my $data_dir = path( $opt->{'data_dir'} );
-    $data_dir->exists && $data_dir->is_dir
-        or $self->usage_error("Incorrect data directory specified: '$data_dir'");
-
-    $self->{'server'}{'data_dir'} = $data_dir;
 
     $self->{'server'}{$_} = $opt->{$_} for qw< port >;
 
@@ -45,7 +38,7 @@ sub execute {
             defined $self->{'server'}{$_}
                 ? ( $_ => $self->{'server'}{$_} )
                 : ()
-        ), qw< data_dir port > ),
+        ), qw< port > ),
     );
 
     $server->run();
