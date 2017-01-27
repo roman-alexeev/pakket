@@ -97,7 +97,9 @@ sub retrieve_location {
 
 sub remove_location {
     my ( $self, $id ) = @_;
-    $self->retrieve_location($id)->remove;
+    my $location = $self->retrieve_location($id);
+    $location or return;
+    $location->remove;
     $self->_remove_from_index($id);
     return 1;
 }
