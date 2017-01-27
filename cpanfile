@@ -35,6 +35,7 @@ requires 'HTTP::Tiny';
 
 # For the web service
 requires 'Dancer2';
+requires 'Dancer2::Plugin::ParamTypes';
 
 # Only for the DBI backend
 requires 'DBI';
