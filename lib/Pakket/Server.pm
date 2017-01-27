@@ -10,13 +10,6 @@ use Plack::Runner;
 
 use Pakket::Server::App;
 
-has 'data_dir' => (
-    'is'       => 'ro',
-    'isa'      => Path,
-    'coerce'   => 1,
-    'required' => 1,
-);
-
 has 'port' => (
     'is'        => 'ro',
     'isa'       => 'Int',
