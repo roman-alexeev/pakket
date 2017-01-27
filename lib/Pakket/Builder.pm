@@ -333,9 +333,6 @@ sub bootstrap_build {
         for my $dist_name (@dists) {
             my $dist_version = $dists{$dist_name};
 
-            $log->noticef( 'Bootstrapping: phase III: %s=%s (%s)',
-                $dist_name, $dist_version, 'full deps' );
-
             # remove the temp (no-deps) parcel
             $log->noticef( 'Removing %s=%s (no-deps parcel)',
                 $dist_name, $dist_version );
@@ -349,6 +346,10 @@ sub bootstrap_build {
             $self->parcel_repo->remove_package_parcel($req);
 
             # build again with dependencies
+
+            $log->noticef( 'Bootstrapping: phase III: %s=%s (%s)',
+                $dist_name, $dist_version, 'full deps' );
+
             delete $bootstrap_builder->is_built->{ $req->short_name };
             $bootstrap_builder->build($req);
         }
