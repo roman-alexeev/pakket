@@ -6,6 +6,7 @@ package Pakket::Repository::Backend::HTTP;
 use Moose;
 use MooseX::StrictConstructor;
 
+use URI::Escape       qw< uri_escape >;
 use JSON::MaybeXS     qw< encode_json decode_json >;
 use Path::Tiny        qw< path >;
 use Log::Any          qw< $log >;
@@ -35,6 +36,12 @@ has 'base_url' => (
     'builder'  => '_build_base_url',
 );
 
+has 'base_path' => (
+    'is'      => 'ro',
+    'isa'     => 'Str',
+    'default' => sub {''},
+);
+
 has 'http_client' => (
     'is'       => 'ro',
     'isa'      => 'HTTP::Tiny',
@@ -43,7 +50,9 @@ has 'http_client' => (
 
 sub _build_base_url {
     my $self = shift;
-    return sprintf( 'http://%s:%s', $self->host, $self->port );
+    return sprintf(
+        'http://%s:%s%s', $self->host, $self->port, $self->base_path,
+    );
 }
 
 sub all_object_ids {
@@ -72,7 +81,10 @@ sub store_location {
 
 sub retrieve_location {
     my ( $self, $id ) = @_;
-    my $content  = $self->retrieve_content->($id);
+    my $url      = '/retrieve/location?id=' . uri_escape($id);
+    my $full_url = $self->base_url . $url;
+    my $response = $self->http_client->get($full_url);
+    my $content  = $response->{'content'};
     my $location = Path::Tiny->tempfile;
     $location->spew( { 'binmode' => ':raw' }, $content );
     return $location;
@@ -80,12 +92,12 @@ sub retrieve_location {
 
 sub store_content {
     my ( $self, $id, $content ) = @_;
-    my $url      = "/store/$id";
+    my $url      = "/store/content";
     my $full_url = $self->base_url . $url;
 
     my $response = $self->http_client->post(
         $full_url => {
-            'content' => encode_json( { 'data' => $content } ),
+            'content' => encode_json( { 'data' => $content, 'id' => $id, } ),
             'headers' => {
                 'Content-Type' => 'application/json',
             },
@@ -100,7 +112,7 @@ sub store_content {
 
 sub retrieve_content {
     my ( $self, $id ) = @_;
-    my $url      = "/retrieve/$id";
+    my $url      = '/retrieve/content?id=' . uri_escape($id);
     my $full_url = $self->base_url . $url;
     my $response = $self->http_client->get($full_url);
 
@@ -109,10 +121,12 @@ sub retrieve_content {
         exit 1;
     }
 
-    my $content = decode_json( $response->{content} );
-    return $content->{data};
+    return $response->{'content'};
 }
 
+# FIXME: Add these
+sub remove_content;
+sub remove_location;
 
 __PACKAGE__->meta->make_immutable;
 no Moose;
