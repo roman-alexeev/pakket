@@ -27,7 +27,7 @@ set 'repositories' => {
 };
 
 sub setup {
-    my ( $class, $config ) = @_;
+    my $class = shift;
 
     my $repositories_data = config()->{'repositories'};
     foreach my $repository_type ( keys %{$repositories_data} ) {

@@ -19,7 +19,7 @@ has 'port' => (
 sub run {
     my $self = shift;
 
-    Pakket::Server::App->setup( { 'data_dir' => $self->data_dir } );
+    Pakket::Server::App->setup();
     my $app    = Pakket::Server::App->to_app;
     my $runner = Plack::Runner->new();
 
