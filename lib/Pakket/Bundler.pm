@@ -13,7 +13,6 @@ use Pakket::Package;
 use Pakket::Repository::Parcel;
 
 use Pakket::Constants qw<
-    PARCEL_EXTENSION
     PARCEL_FILES_DIR
     PARCEL_METADATA_FILE
 >;
