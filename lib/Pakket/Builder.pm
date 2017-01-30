@@ -3,12 +3,9 @@ package Pakket::Builder;
 
 use Moose;
 use MooseX::StrictConstructor;
-use JSON::MaybeXS             qw< decode_json >;
 use List::Util                qw< first       >;
 use Path::Tiny                qw< path        >;
-use File::Find                qw< find        >;
 use File::Copy::Recursive     qw< dircopy     >;
-use File::Basename            qw< basename dirname >;
 use Algorithm::Diff::Callback qw< diff_hashes >;
 use Types::Path::Tiny         qw< Path >;
 use Log::Any                  qw< $log >;
@@ -19,7 +16,6 @@ use Pakket::Package;
 use Pakket::Bundler;
 use Pakket::Installer;
 use Pakket::Requirement;
-use Pakket::ConfigReader;
 use Pakket::Builder::NodeJS;
 use Pakket::Builder::Perl;
 use Pakket::Builder::Native;
@@ -27,12 +23,9 @@ use Pakket::Repository::Config;
 use Pakket::Repository::Parcel;
 use Pakket::Repository::Source;
 
-use Pakket::Constants   qw< PARCEL_FILES_DIR PAKKET_PACKAGE_SPEC >;
 use Pakket::Utils       qw< generate_env_vars >;
-use Pakket::Utils::Perl qw< list_core_modules >;
 
 use constant {
-    'ALL_PACKAGES_KEY'   => '',
     'BUILD_DIR_TEMPLATE' => 'BUILD-XXXXXX',
 };
 
