@@ -296,15 +296,14 @@ sub bootstrap_build {
         for my $dist_name (@dists) {
             my $dist_version = $dists{$dist_name};
 
-            $log->noticef( 'Bootstrapping: phase I: %s=%s (%s)',
-                $dist_name, $dist_version, 'no-deps' );
-
-            # Create a requirement
             my $req = Pakket::Requirement->new(
                 'category' => $category,
                 'name'     => $dist_name,
                 'version'  => $dist_version,
             );
+
+            $log->noticef( 'Bootstrapping: phase I: %s (%s)',
+                $req->full_name, 'no-deps' );
 
             $self->run_build( $req, { 'bootstrapping_1_skip_prereqs' => 1 } );
         }
@@ -329,22 +328,22 @@ sub bootstrap_build {
         for my $dist_name (@dists) {
             my $dist_version = $dists{$dist_name};
 
-            # remove the temp (no-deps) parcel
-            $log->noticef( 'Removing %s=%s (no-deps parcel)',
-                $dist_name, $dist_version );
-
             my $req = Pakket::Requirement->new(
                 'category' => $category,
                 'name'     => $dist_name,
                 'version'  => $dist_version,
             );
 
+            # remove the temp (no-deps) parcel
+            $log->noticef( 'Removing %s (no-deps parcel)',
+                $req->full_name );
+
             $self->parcel_repo->remove_package_parcel($req);
 
             # build again with dependencies
 
-            $log->noticef( 'Bootstrapping: phase III: %s=%s (%s)',
-                $dist_name, $dist_version, 'full deps' );
+            $log->noticef( 'Bootstrapping: phase III: %s (%s)',
+                $req->full_name, 'full deps' );
 
             delete $bootstrap_builder->is_built->{ $req->short_name };
             $bootstrap_builder->build($req);
