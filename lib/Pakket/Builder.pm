@@ -510,7 +510,7 @@ sub run_build {
             $top_build_dir,
             'src',
             $package->category,
-            basename($package_src_dir),
+            $package_src_dir->basename
         );
 
         dircopy( $package_src_dir, $package_dst_dir );
