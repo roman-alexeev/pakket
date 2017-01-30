@@ -21,6 +21,21 @@ sub _build_backend {
     ];
 }
 
+sub get_best_package {
+    my ($self, $category, $name) = @_;
+
+    # FIXME: this is calling all_object_ids every time;
+    # could be expensive on a remote backend...
+    my @pkgs = grep m{^ \Q$category\E / \Q$name\E =}xms,
+               @{ $self->all_object_ids() };
+
+    # Right now everything is pinned so there is only one result.
+    # Once the version ranges feature is introduced, we will be able
+    # to get the latest version.
+    return undef unless @pkgs;
+    return $pkgs[0];
+}
+
 sub retrieve_package_config {
     my ( $self, $package ) = @_;
 

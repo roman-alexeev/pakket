@@ -275,16 +275,10 @@ sub bootstrap_build {
         >;
 
         my %dists;
-        my @config_object_ids = @{ $self->config_repo->all_object_ids() };
         my @parcel_object_ids = @{ $self->parcel_repo->all_object_ids() };
 
         for my $dist (@dists) {
-            # Right now everything is pinned so there is only
-            # One result. Once the version ranges feature is introduced,
-            # we will be able to get the latest version.
-            my ($pkg_str) = grep m{^ perl / \Q$dist\E =}xms, @config_object_ids;
-
-            # Create a requirement
+            my $pkg_str = $self->config_repo->get_best_package('perl', $dist);
             my $req = Pakket::Requirement->new_from_string($pkg_str);
             $dists{ $req->name } = $req->version;
         }
@@ -426,14 +420,14 @@ sub run_build {
         $log->debugf( '%s already packaged, unpacking...',
             $package->full_name, );
 
-	my $installer_cache = $self->installer_cache;
-	my $bootstrap_cache = {
+        my $installer_cache = $self->installer_cache;
+        my $bootstrap_cache = {
             %{ $self->installer_cache },
 
             # Phase 3 needs to avoid trying to install
             # the bare minimum toolchain (Phase 1)
             $prereq->category => { $package->name => $package->version },
-	};
+        };
 
         my $successfully_installed = $installer->try_to_install_package(
             $package,
@@ -559,14 +553,8 @@ sub _recursive_build_phase {
     my @prereqs = keys %{ $package->prereqs->{$category}{$phase} };
 
     foreach my $prereq_name (@prereqs) {
-        # Right now everything is pinned so there is only
-        # One result. Once the version ranges feature is introduced,
-        # we will be able to get the latest version.
-        my ($pkg_str) = grep m{^ \Q$category\E / \Q$prereq_name\E =}xms,
-            @{ $self->config_repo->all_object_ids() };
-
+        my $pkg_str = $self->config_repo->get_best_package($category, $prereq_name);
         my $req = Pakket::Requirement->new_from_string($pkg_str);
-
         $self->run_build( $req, { 'level' => $level } );
     }
 }
