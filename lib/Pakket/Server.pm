@@ -5,7 +5,6 @@ use Moose;
 use MooseX::StrictConstructor;
 
 use Log::Any          qw< $log >;
-use Types::Path::Tiny qw< Path >;
 use Plack::Runner;
 
 use Pakket::Server::App;

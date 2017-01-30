@@ -4,9 +4,9 @@ package Pakket::Utils;
 use strict;
 use warnings;
 use version 0.77;
+
 use Exporter   qw< import >;
 use Path::Tiny qw< path   >;
-use File::HomeDir;
 use JSON::MaybeXS;
 
 our @EXPORT_OK = qw<
