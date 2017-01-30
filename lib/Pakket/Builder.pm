@@ -275,7 +275,6 @@ sub bootstrap_build {
         >;
 
         my %dists;
-        my @parcel_object_ids = @{ $self->parcel_repo->all_object_ids() };
 
         for my $dist (@dists) {
             my $pkg_str = $self->config_repo->get_best_package('perl', $dist);
@@ -285,10 +284,7 @@ sub bootstrap_build {
 
         foreach my $dist_name ( keys %dists ) {
             my $dist_version = $dists{$dist_name};
-            my ($has_parcel) = grep
-                m{^ perl / \Q$dist_name\E = \Q$dist_version\E $}xms,
-                @parcel_object_ids;
-
+            my $has_parcel = $self->parcel_repo->has_parcel('perl', $dist_name, $dist_version);
             $has_parcel or next;
 
             $log->noticef( 'Skipping: parcel %s=%s already exists',

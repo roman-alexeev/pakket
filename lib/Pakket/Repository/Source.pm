@@ -22,7 +22,16 @@ sub _build_backend {
     ];
 }
 
-# FIXME: This is duplicated in the Parcel repo
+sub has_parcel {
+    my ($self, $category, $name, $version) = @_;
+
+    # FIXME: this is calling all_object_ids every time;
+    # could be expensive on a remote backend...
+    my @pkgs = grep m{^ \Q$category\E / \Q$name\E = \Q$version\E $}xms,
+               @{ $self->all_object_ids() };
+    return scalar @pkgs;
+}
+
 sub retrieve_package_source {
     my ( $self, $package ) = @_;
     my $file = $self->retrieve_location( $package->full_name );
