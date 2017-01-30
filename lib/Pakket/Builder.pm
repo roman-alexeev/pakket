@@ -277,14 +277,14 @@ sub bootstrap_build {
         my %dists;
 
         for my $dist (@dists) {
-            my $pkg_str = $self->config_repo->get_best_package('perl', $dist);
+            my $pkg_str = $self->config_repo->get_best_package($category, $dist);
             my $req = Pakket::Requirement->new_from_string($pkg_str);
             $dists{ $req->name } = $req->version;
         }
 
         foreach my $dist_name ( keys %dists ) {
             my $dist_version = $dists{$dist_name};
-            my $has_parcel = $self->parcel_repo->has_parcel('perl', $dist_name, $dist_version);
+            my $has_parcel = $self->parcel_repo->has_parcel($category, $dist_name, $dist_version);
             $has_parcel or next;
 
             $log->noticef( 'Skipping: parcel %s=%s already exists',

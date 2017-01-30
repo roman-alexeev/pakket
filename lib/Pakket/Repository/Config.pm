@@ -53,11 +53,11 @@ sub retrieve_package_config {
         croak("Cannot read config properly: $err");
     };
 
-	return $config;
+    return $config;
 }
 
 sub store_package_config {
-	my ( $self, $package ) = @_;
+    my ( $self, $package ) = @_;
 
     return $self->store_content(
         $package->full_name,
