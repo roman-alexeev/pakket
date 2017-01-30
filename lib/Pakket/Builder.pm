@@ -11,7 +11,6 @@ use File::Copy::Recursive     qw< dircopy     >;
 use File::Basename            qw< basename dirname >;
 use Algorithm::Diff::Callback qw< diff_hashes >;
 use Types::Path::Tiny         qw< Path >;
-use TOML::Parser;
 use Log::Any                  qw< $log >;
 use version 0.77;
 
