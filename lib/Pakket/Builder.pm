@@ -467,8 +467,9 @@ sub run_build {
     # recursively build prereqs
     if ( $bootstrap_prereqs or ! $skip_prereqs ) {
         foreach my $category ( keys %{ $self->builders } ) {
-            $self->_recursive_build_phase( $package, $category, 'configure', $level+1 );
-            $self->_recursive_build_phase( $package, $category, 'runtime', $level+1 );
+            foreach my $phase (@supported_phases) {
+                $self->_recursive_build_phase( $package, $category, $phase, $level+1 );
+            }
         }
     }
 
