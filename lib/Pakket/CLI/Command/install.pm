@@ -24,7 +24,7 @@ sub opt_spec {
             'directory to install the packages from',
             { 'required' => 1 },
         ],
-        [ 'input-file=s', 'Index-style file to install' ],
+        [ 'input-file=s', 'install eveything listed in this file' ],
         [ 'verbose|v+',   'verbose output (can be provided multiple times)', { 'default' => 1 } ],
     );
 }

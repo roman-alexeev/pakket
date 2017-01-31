@@ -93,41 +93,39 @@ sub _build_pakket_libraries_dir {
 # because it might be from HTTP/FTP/Git/Custom/etc.
 sub fetch_package;
 
+sub _clean_packages {
+    my ( $self, $packages ) = @_;
+    my @clean_packages;
+
+    foreach my $package_str ( @{$packages} ) {
+        my ( $pkg_cat, $pkg_name, $pkg_version ) =
+            $package_str =~ PAKKET_PACKAGE_SPEC();
+
+        if ( !defined $pkg_version ) {
+            $log->critical(
+                'Currently you must provide a version to install',
+            );
+
+            exit 1;
+        }
+
+        push @clean_packages, Pakket::Package->new(
+            'category' => $pkg_cat,
+            'name'     => $pkg_name,
+            'version'  => $pkg_version,
+        );
+    }
+
+    @{ $packages } = @clean_packages;
+}
+
 sub install {
     my ( $self, @packages ) = @_;
 
-    if ( $self->_has_input_file ) {
-        my $content = decode_json $self->input_file->slurp_utf8;
-        foreach my $category ( keys %{$content} ) {
-            push @packages, Pakket::Package->new(
-                'name'     => $_,
-                'category' => $category,
-                'version'  => $content->{$category}{$_}{'latest'},
-            ) for keys %{ $content->{$category} };
-        }
-    } else {
-        my @clean_packages;
-        foreach my $package_str (@packages) {
-            my ( $pkg_cat, $pkg_name, $pkg_version ) =
-                $package_str =~ PAKKET_PACKAGE_SPEC();
+    $self->_has_input_file and
+        push @packages, $self->input_file->lines_utf8( { 'chomp' => 1 } );
 
-            if ( !defined $pkg_version ) {
-                $log->critical(
-                    'Currently you must provide a version to install',
-                );
-
-                exit 1;
-            }
-
-            push @clean_packages, Pakket::Package->new(
-                'category' => $pkg_cat,
-                'name'     => $pkg_name,
-                'version'  => $pkg_version,
-            );
-        }
-
-        @packages = @clean_packages;
-    }
+    $self->_clean_packages(\@packages);
 
     if ( !@packages ) {
         $log->notice('Did not receive any parcels to deliver');
