@@ -242,6 +242,23 @@ sub _setup_build_dir {
 
 sub bootstrap_build {
     my ( $self, $category ) = @_;
+    my @dists;
+
+    # TODO: replace the below hard-coding of packages to bootstrap
+    #       with a relevant config reading.
+    if ( $category eq 'perl' ) {
+        # hardcoded list of packages we have to build first
+        # using core modules to break cyclic dependencies.
+        # we have to maintain the order in order for packages to build
+        @dists = qw<
+            ExtUtils-MakeMaker
+            Module-Build
+            Module-Build-WithXSpp
+            Module-Install
+        >;
+    }
+
+    @dists or return;
 
     # XXX: Whoa!
     my $bootstrap_builder = ref($self)->new(
@@ -255,104 +272,91 @@ sub bootstrap_build {
         'bootstrapping'  => 0,
     );
 
-    if ( $category eq 'perl' ) {
-        # hardcoded list of packages we have to build first
-        # using core modules to break cyclic dependencies.
-        # we have to maintain the order in order for packages to build
-        my @dists = qw<
-            ExtUtils-MakeMaker
-            Module-Build
-            Module-Build-WithXSpp
-            Module-Install
-        >;
+    my %dists;
+    my @config_object_ids = @{ $self->config_repo->all_object_ids() };
+    my @parcel_object_ids = @{ $self->parcel_repo->all_object_ids() };
 
-        my %dists;
-        my @config_object_ids = @{ $self->config_repo->all_object_ids() };
-        my @parcel_object_ids = @{ $self->parcel_repo->all_object_ids() };
+    for my $dist (@dists) {
+        # Right now everything is pinned so there is only
+        # One result. Once the version ranges feature is introduced,
+        # we will be able to get the latest version.
+        my ($pkg_str) = grep m{^ \Q$category\E / \Q$dist\E =}xms, @config_object_ids;
 
-        for my $dist (@dists) {
-            # Right now everything is pinned so there is only
-            # One result. Once the version ranges feature is introduced,
-            # we will be able to get the latest version.
-            my ($pkg_str) = grep m{^ perl / \Q$dist\E =}xms, @config_object_ids;
-
-            # Create a requirement
-            my $req = Pakket::Requirement->new_from_string($pkg_str);
-            $dists{ $req->name } = $req->version;
-        }
-
-        foreach my $dist_name ( keys %dists ) {
-            my $dist_version = $dists{$dist_name};
-            my ($has_parcel) = grep
-                m{^ perl / \Q$dist_name\E = \Q$dist_version\E $}xms,
-                @parcel_object_ids;
-
-            $has_parcel or next;
-
-            $log->noticef( 'Skipping: parcel %s=%s already exists',
-                $dist_name, $dist_version );
-            @dists = grep +( $_ ne $dist_name ), @dists;
-        }
-
-        # Pass I: bootstrap toolchain - build w/o dependencies
-        for my $dist_name (@dists) {
-            my $dist_version = $dists{$dist_name};
-
-            $log->noticef( 'Bootstrapping: phase I: %s=%s (%s)',
-                $dist_name, $dist_version, 'no-deps' );
-
-            # Create a requirement
-            my $req = Pakket::Requirement->new(
-                'category' => $category,
-                'name'     => $dist_name,
-                'version'  => $dist_version,
-            );
-
-            $self->run_build( $req, { 'bootstrapping_1_skip_prereqs' => 1 } );
-        }
-
-        # Pass II: bootstrap toolchain - build dependencies only
-        for my $dist_name (@dists) {
-            my $dist_version = $dists{$dist_name};
-
-            my $req = Pakket::Requirement->new(
-                'category' => $category,
-                'name'     => $dist_name,
-                'version'  => $dist_version,
-            );
-
-            $log->noticef( 'Bootstrapping: phase II: %s (%s)',
-                $req->full_name, 'deps-only' );
-
-            $self->run_build( $req, { 'bootstrapping_2_deps_only' => 1 } );
-        }
-
-        # Pass III: bootstrap toolchain - rebuild w/ dependencies
-        for my $dist_name (@dists) {
-            my $dist_version = $dists{$dist_name};
-
-            # remove the temp (no-deps) parcel
-            $log->noticef( 'Removing %s=%s (no-deps parcel)',
-                $dist_name, $dist_version );
-
-            my $req = Pakket::Requirement->new(
-                'category' => $category,
-                'name'     => $dist_name,
-                'version'  => $dist_version,
-            );
-
-            $self->parcel_repo->remove_package_parcel($req);
-
-            # build again with dependencies
-
-            $log->noticef( 'Bootstrapping: phase III: %s=%s (%s)',
-                $dist_name, $dist_version, 'full deps' );
-
-            delete $bootstrap_builder->is_built->{ $req->short_name };
-            $bootstrap_builder->build($req);
-        }
+        # Create a requirement
+        my $req = Pakket::Requirement->new_from_string($pkg_str);
+        $dists{ $req->name } = $req->version;
     }
-    # elsif ( $category eq ...
+
+    foreach my $dist_name ( keys %dists ) {
+        my $dist_version = $dists{$dist_name};
+        my ($has_parcel) = grep
+            m{^ \Q$category\E / \Q$dist_name\E = \Q$dist_version\E $}xms,
+            @parcel_object_ids;
+
+        $has_parcel or next;
+
+        $log->noticef( 'Skipping: parcel %s=%s already exists',
+                       $dist_name, $dist_version );
+        @dists = grep +( $_ ne $dist_name ), @dists;
+    }
+
+    # Pass I: bootstrap toolchain - build w/o dependencies
+    for my $dist_name (@dists) {
+        my $dist_version = $dists{$dist_name};
+
+        $log->noticef( 'Bootstrapping: phase I: %s=%s (%s)',
+                       $dist_name, $dist_version, 'no-deps' );
+
+        # Create a requirement
+        my $req = Pakket::Requirement->new(
+            'category' => $category,
+            'name'     => $dist_name,
+            'version'  => $dist_version,
+        );
+
+        $self->run_build( $req, { 'bootstrapping_1_skip_prereqs' => 1 } );
+    }
+
+    # Pass II: bootstrap toolchain - build dependencies only
+    for my $dist_name (@dists) {
+        my $dist_version = $dists{$dist_name};
+
+        my $req = Pakket::Requirement->new(
+            'category' => $category,
+            'name'     => $dist_name,
+            'version'  => $dist_version,
+        );
+
+        $log->noticef( 'Bootstrapping: phase II: %s (%s)',
+                       $req->full_name, 'deps-only' );
+
+        $self->run_build( $req, { 'bootstrapping_2_deps_only' => 1 } );
+    }
+
+    # Pass III: bootstrap toolchain - rebuild w/ dependencies
+    for my $dist_name (@dists) {
+        my $dist_version = $dists{$dist_name};
+
+        # remove the temp (no-deps) parcel
+        $log->noticef( 'Removing %s=%s (no-deps parcel)',
+                       $dist_name, $dist_version );
+
+        my $req = Pakket::Requirement->new(
+            'category' => $category,
+            'name'     => $dist_name,
+            'version'  => $dist_version,
+        );
+
+        $self->parcel_repo->remove_package_parcel($req);
+
+        # build again with dependencies
+
+        $log->noticef( 'Bootstrapping: phase III: %s=%s (%s)',
+                       $dist_name, $dist_version, 'full deps' );
+
+        delete $bootstrap_builder->is_built->{ $req->short_name };
+        $bootstrap_builder->build($req);
+    }
 
     $log->notice('Finished Bootstrapping!');
 }
