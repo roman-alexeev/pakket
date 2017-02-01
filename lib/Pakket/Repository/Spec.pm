@@ -1,5 +1,5 @@
-package Pakket::Repository::Config;
-# ABSTRACT: A configuration repository
+package Pakket::Repository::Spec;
+# ABSTRACT: A spec repository
 
 use Moose;
 use MooseX::StrictConstructor;
@@ -21,17 +21,17 @@ sub _build_backend {
     ];
 }
 
-sub retrieve_package_config {
+sub retrieve_package_spec {
     my ( $self, $package ) = @_;
 
-    my $config_str = $self->retrieve_content(
+    my $spec_str = $self->retrieve_content(
         $package->full_name,
     );
 
     my $config;
     eval {
         $config = TOML::Parser->new( 'strict_mode' => 1 )
-                              ->parse($config_str);
+                              ->parse($spec_str);
         1;
     } or do {
         my $err = $@ || 'Unknown error';
@@ -41,12 +41,12 @@ sub retrieve_package_config {
 	return $config;
 }
 
-sub store_package_config {
+sub store_package_spec {
 	my ( $self, $package ) = @_;
 
     return $self->store_content(
         $package->full_name,
-        to_toml( $package->config ),
+        to_toml( $package->spec ),
     );
 }
 
