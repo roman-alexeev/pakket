@@ -88,12 +88,12 @@ sub phase_prereqs {
     };
 }
 
-sub config {
+sub spec {
     my $self = shift;
 
     return +{
         'Package' => {
-            # This is so we don't see is_bootstrap in config
+            # This is so we don't see is_bootstrap in spec
             # if not required -- SX
             ( 'is_bootstrap' => 1 )x!! $self->is_bootstrap,
 
@@ -106,14 +106,14 @@ sub config {
     };
 }
 
-sub new_from_config {
-    my ( $class, $config ) = @_;
+sub new_from_spec {
+    my ( $class, $spec ) = @_;
 
     my %package_details = (
-        %{ $config->{'Package'} },
-        'prereqs'      => $config->{'Prereqs'}    || {},
-        'build_opts'   => $config->{'build_opts'} || {},
-        'is_bootstrap' => !!$config->{'is_bootstrap'},
+        %{ $spec->{'Package'} },
+        'prereqs'      => $spec->{'Prereqs'}    || {},
+        'build_opts'   => $spec->{'build_opts'} || {},
+        'is_bootstrap' => !!$spec->{'is_bootstrap'},
     );
 
     return $class->new(%package_details);

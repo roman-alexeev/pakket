@@ -57,8 +57,8 @@ sub bundle {
 
     my (
         $package_category, $package_name,
-        $package_version,  $package_config,
-    ) = @{$pkg_data}{qw< category name version config >};
+        $package_version,  $package_spec,
+    ) = @{$pkg_data}{qw< category name version spec >};
 
     my $original_dir = Path::Tiny->cwd;
 
@@ -109,14 +109,14 @@ sub bundle {
     #        synced with the Installer that reads it
     ## no critic qw(ValuesAndExpressions::ProhibitLongChainsOfMethodCalls)
     path( PARCEL_METADATA_FILE() )->spew_utf8(
-        JSON::MaybeXS->new->pretty->canonical->encode($package_config),
+        JSON::MaybeXS->new->pretty->canonical->encode($package_spec),
     );
 
     chdir '..';
 
     # FIXME: This is because the Bundler isn't receiving a
     #        Pakket::Package object
-    my $pkg_object = Pakket::Package->new_from_config($package_config);
+    my $pkg_object = Pakket::Package->new_from_spec($package_spec);
     $log->infof( 'Creating parcel file for %s', $pkg_object->full_name );
 
     # The lovely thing here is that is creates a parcel file from the

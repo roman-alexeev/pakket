@@ -19,7 +19,7 @@ use Pakket::Requirement;
 use Pakket::Builder::NodeJS;
 use Pakket::Builder::Perl;
 use Pakket::Builder::Native;
-use Pakket::Repository::Config;
+use Pakket::Repository::Spec;
 use Pakket::Repository::Parcel;
 use Pakket::Repository::Source;
 
@@ -52,14 +52,14 @@ has 'source_repo' => (
     'builder' => '_build_source_repo',
 );
 
-has 'config_repo' => (
+has 'spec_repo' => (
     'is'      => 'ro',
-    'isa'     => 'Pakket::Repository::Config',
+    'isa'     => 'Pakket::Repository::Spec',
     'lazy'    => 1,
-    'builder' => '_build_config_repo',
+    'builder' => '_build_spec_repo',
 );
 
-has 'config_dir' => (
+has 'spec_dir' => (
     'is'       => 'ro',
     'isa'      => Path,
     'coerce'   => 1,
@@ -175,12 +175,12 @@ sub _build_parcel_repo {
 
 # We're starting with a local repo
 # # but in the future this will be dictated from a configuration
-sub _build_config_repo {
+sub _build_spec_repo {
     my $self = shift;
 
     # Use default for now, but use the directory we want at least
-    return Pakket::Repository::Config->new(
-        'directory' => $self->config_dir,
+    return Pakket::Repository::Spec->new(
+        'directory' => $self->spec_dir,
     );
 }
 
@@ -245,7 +245,7 @@ sub bootstrap_build {
     my @dists;
 
     # TODO: replace the below hard-coding of packages to bootstrap
-    #       with a relevant config reading.
+    #       with a relevant spec reading.
     if ( $category eq 'perl' ) {
         # hardcoded list of packages we have to build first
         # using core modules to break cyclic dependencies.
@@ -263,7 +263,7 @@ sub bootstrap_build {
     # XXX: Whoa!
     my $bootstrap_builder = ref($self)->new(
         'parcel_dir'     => $self->parcel_dir,
-        'config_dir'     => $self->config_dir,
+        'spec_dir'       => $self->spec_dir,
         'source_dir'     => $self->source_dir,
         'keep_build_dir' => $self->keep_build_dir,
         'bundler_args'   => $self->bundler_args,
@@ -273,14 +273,14 @@ sub bootstrap_build {
     );
 
     my %dists;
-    my @config_object_ids = @{ $self->config_repo->all_object_ids() };
+    my @spec_object_ids   = @{ $self->spec_repo->all_object_ids() };
     my @parcel_object_ids = @{ $self->parcel_repo->all_object_ids() };
 
     for my $dist (@dists) {
         # Right now everything is pinned so there is only
         # One result. Once the version ranges feature is introduced,
         # we will be able to get the latest version.
-        my ($pkg_str) = grep m{^ \Q$category\E / \Q$dist\E =}xms, @config_object_ids;
+        my ($pkg_str) = grep m{^ \Q$category\E / \Q$dist\E =}xms, @spec_object_ids;
 
         # Create a requirement
         my $req = Pakket::Requirement->new_from_string($pkg_str);
@@ -399,11 +399,11 @@ sub run_build {
 
     $log->noticef( '%sWorking on %s', '|...' x $level, $prereq->full_name );
 
-    # Create a Package instance from the configuration
+    # Create a Package instance from the spec
     # using the information we have on it
-    my $package_config = $self->config_repo->retrieve_package_config($prereq);
-    my $package        = Pakket::Package->new_from_config({
-        %{$package_config},
+    my $package_spec = $self->spec_repo->retrieve_package_spec($prereq);
+    my $package      = Pakket::Package->new_from_spec({
+        %{$package_spec},
 
         # We are dealing with a version which should not be installed
         # outside of a bootstrap phase, so we're "marking" this package
@@ -538,7 +538,7 @@ sub run_build {
             'name'        => $package->name,
             'version'     => $package->version,
             'bundle_opts' => $package->bundle_opts,
-            'config'      => $package->config,
+            'spec'        => $package->spec,
         },
         $package_files,
     );
@@ -559,7 +559,7 @@ sub _recursive_build_phase {
         # One result. Once the version ranges feature is introduced,
         # we will be able to get the latest version.
         my ($pkg_str) = grep m{^ \Q$category\E / \Q$prereq_name\E =}xms,
-            @{ $self->config_repo->all_object_ids() };
+            @{ $self->spec_repo->all_object_ids() };
 
         my $req = Pakket::Requirement->new_from_string($pkg_str);
 

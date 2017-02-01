@@ -25,8 +25,8 @@ sub opt_spec {
             'cpanfile to configure from',
         ],
         [
-            'config-dir=s',
-            'directory to write the configuration to (JSON files)',
+            'spec-dir=s',
+            'directory to write the spec to (JSON files)',
             { required => 1 },
         ],
         [
@@ -106,7 +106,7 @@ sub gen_scaffolder_perl {
     my $config = $self->{'config'};
 
     return Pakket::Scaffolder::Perl->new(
-        config_dir        => $config->{'config_dir'},
+        spec_dir          => $config->{'spec_dir'},
         json_file         => $config->{'index_file'},
         source_dir        => $config->{'source_dir'},
         extract           => $config->{'extract'},

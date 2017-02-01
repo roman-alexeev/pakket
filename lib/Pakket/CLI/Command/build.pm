@@ -35,8 +35,8 @@ sub opt_spec {
         [ 'build-dir=s',    'use an existing build directory' ],
         [ 'keep-build-dir', 'do not delete the build directory' ],
         [
-            'config-dir=s',
-            'directory holding the configurations',
+            'spec-dir=s',
+            'directory holding the specs',
             { 'required' => 1 },
         ],
         [
@@ -57,12 +57,12 @@ sub validate_args {
         'dispatcher' => Pakket::Log->build_logger( $opt->{'verbose'} ),
     );
 
-    # Check that the directory for configs exists
+    # Check that the directory for specs exists
     # (How do we get it from the CLI?)
-    my $config_dir = path( $opt->{'config_dir'} );
-    $config_dir->exists && $config_dir->is_dir
-        or $self->usage_error("Incorrect config directory specified: '$config_dir'");
-    $self->{'builder'}{'config_dir'} = $config_dir;
+    my $spec_dir = path( $opt->{'spec_dir'} );
+    $spec_dir->exists && $spec_dir->is_dir
+        or $self->usage_error("Incorrect spec directory specified: '$spec_dir'");
+    $self->{'builder'}{'spec_dir'} = $spec_dir;
 
     if ( defined ( my $output_dir = $opt->{'output_dir'} ) ) {
         $self->{'bundler'}{'bundle_dir'} = path($output_dir)->absolute;
@@ -109,7 +109,7 @@ sub validate_args {
     $self->{'builder'}{'keep_build_dir'} = $opt->{'keep_build_dir'};
 
     # XXX These will get removed eventually
-    $self->{'builder'}{'config_dir'} = $opt->{'config_dir'};
+    $self->{'builder'}{'spec_dir'}   = $opt->{'spec_dir'};
     $self->{'builder'}{'source_dir'} = $opt->{'source_dir'};
 }
 
@@ -121,7 +121,7 @@ sub execute {
             defined $self->{'builder'}{$_}
                 ? ( $_ => $self->{'builder'}{$_} )
                 : ()
-        ), qw< parcel_dir config_dir source_dir build_dir keep_build_dir > ),
+        ), qw< parcel_dir spec_dir source_dir build_dir keep_build_dir > ),
 
         # bundler args
         'bundler_args' => {

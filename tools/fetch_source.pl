@@ -9,13 +9,13 @@ use JSON::MaybeXS qw< decode_json >;
 
 Getopt::Long::GetOptions(
     "source-dir=s" => \my $source_dir,
-    "config-dir=s" => \my $config_dir,
+    "spec-dir=s"   => \my $spec_dir,
 );
--d $config_dir or die "Invalid config dir";
+-d $spec_dir   or die "Invalid spec dir";
 -d $source_dir or die "Invalid source dir";
 
 my %seen;
-my $iter = path($config_dir)->iterator( { recurse => 1 } );
+my $iter = path($spec_dir)->iterator( { recurse => 1 } );
 while ( my $next = $iter->() ) {
     if ( not $next->is_file or not $next =~ /\.json$/ ) {
         next;

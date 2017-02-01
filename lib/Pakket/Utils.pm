@@ -29,13 +29,13 @@ sub is_writeable {
 
 sub generate_json_conf {
     my $output_file = shift;
-    my $config_dir  = shift;
-    my $index = {};
+    my $spec_dir    = shift;
+    my $index       = {};
 
     my $output = path( $output_file );
     $output->exists and $index = decode_json( $output->slurp_utf8 );
 
-    my $category_iter = path( $config_dir )->iterator;
+    my $category_iter = path( $spec_dir )->iterator;
     while ( my $category = $category_iter->() ) {
         $category->is_dir and "$category" ne '.'
             or return;
