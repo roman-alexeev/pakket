@@ -5,7 +5,7 @@ use Dancer2;
 use Dancer2::Plugin::Pakket::ParamTypes;
 
 use Log::Any qw< $log >;
-use Pakket::Repository::Config;
+use Pakket::Repository::Spec;
 use Pakket::Repository::Parcel;
 use Pakket::Repository::Source;
 
@@ -13,8 +13,8 @@ use Pakket::Repository::Source;
 
 # Example
 set 'repositories' => {
-    'Config' => [
-        'File' => { 'directory' => '/opt/pakket/configs' },
+    'Spec' => [
+        'File' => { 'directory' => '/opt/pakket/specs' },
     ],
 
     'Source' => [

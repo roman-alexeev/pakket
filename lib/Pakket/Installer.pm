@@ -322,11 +322,13 @@ sub install_package {
     my $full_parcel_dir = $tmp_extraction_dir->child( PARCEL_FILES_DIR() );
 
     my $spec_file = $full_parcel_dir->child( PARCEL_METADATA_FILE() );
-    my $config    = decode_json $spec_file->slurp_utf8;
+    # FIXME: We should be creating a Package object from this
+    my $spec      = decode_json $spec_file->slurp_utf8;
 
     $dir->child($parcel_basename)->remove;
 
-    my $prereqs = $config->{'Prereqs'};
+    # FIXME: We shouldn't be acccessing this as a hash, see prev FIXME
+    my $prereqs = $spec->{'Prereqs'};
     foreach my $prereq_category ( keys %{$prereqs} ) {
         my $runtime_prereqs = $prereqs->{$prereq_category}{'runtime'};
 
@@ -359,7 +361,7 @@ sub install_package {
         dircopy( $item, $target_dir );
     }
 
-    my $actual_version = $config->{'Package'}{'version'};
+    my $actual_version = $spec->{'Package'}{'version'};
     $log->info("Delivered parcel $pkg_cat/$pkg_name ($actual_version)");
 
     return;

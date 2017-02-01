@@ -1,5 +1,5 @@
-package Pakket::Repository::Config;
-# ABSTRACT: A configuration repository
+package Pakket::Repository::Spec;
+# ABSTRACT: A spec repository
 
 use Moose;
 use MooseX::StrictConstructor;
@@ -20,31 +20,31 @@ sub _build_backend {
     ];
 }
 
-sub retrieve_package_config {
+sub retrieve_package_spec {
     my ( $self, $package ) = @_;
 
-    my $config_str = $self->retrieve_content(
+    my $spec_str = $self->retrieve_content(
         $package->full_name,
     );
 
     my $config;
     eval {
-        $config = decode_json($config_str);
+        $config = decode_json($spec_str);
         1;
     } or do {
         my $err = $@ || 'Unknown error';
-        croak("Cannot read config properly: $err");
+        croak("Cannot read spec properly: $err");
     };
 
 	return $config;
 }
 
-sub store_package_config {
+sub store_package_spec {
 	my ( $self, $package ) = @_;
 
     return $self->store_content(
         $package->full_name,
-        encode_json( $package->config ),
+        encode_json( $package->spec ),
     );
 }
 

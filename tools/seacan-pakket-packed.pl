@@ -914,22 +914,21 @@ $fatpacked{"Pakket.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PAKKET';
   is an existing instance; a requirement is a description. The requirement
   can have a range of allowed versions for a package, for example.
   
-  =head3 Configuration files
+  =head3 Spec files
   
-  Similar to RPM spec files, Pakket has configuration files. You can
-  create them yourself or you can use the
-  L<Pakket::CLI::Command::scaffold|scaffold> command to create them
-  for you.
+  Similar to RPM spec files, Pakket has spec files. You can create them
+  yourself or you can use the L<Pakket::CLI::Command::scaffold|scaffold>
+  command to create them for you.
   
-  The basic configuration file in Pakket contain a package's C<category>,
+  The basic spec file in Pakket contain a package's C<category>,
   C<name>, and C<version>. It usually contains C<prereqs> as well,
   keyed by the B<category> and the B<phase>. The phases can be
   B<configure> (for build-time), B<test> (for when testing the build),
   and B<runtime> (for using it).
   
-  At the moment Pakket keeps its configuration in JSON files.
+  At the moment Pakket keeps its specs in JSON files.
   
-  An example of a configuration in Pakket:
+  An example of a spec in Pakket:
   
       # perl/HTML-Tidy/1.56.json:
       [Package]
@@ -989,7 +988,7 @@ $fatpacked{"Pakket/Builder.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
   use Pakket::Builder::NodeJS;
   use Pakket::Builder::Perl;
   use Pakket::Builder::Native;
-  use Pakket::Repository::Config;
+  use Pakket::Repository::Spec;
   use Pakket::Repository::Parcel;
   use Pakket::Repository::Source;
   
@@ -1022,14 +1021,14 @@ $fatpacked{"Pakket/Builder.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
       'builder' => '_build_source_repo',
   );
   
-  has 'config_repo' => (
+  has 'spec_repo' => (
       'is'      => 'ro',
-      'isa'     => 'Pakket::Repository::Config',
+      'isa'     => 'Pakket::Repository::Spec',
       'lazy'    => 1,
-      'builder' => '_build_config_repo',
+      'builder' => '_build_spec_repo',
   );
   
-  has 'config_dir' => (
+  has 'spec_dir' => (
       'is'       => 'ro',
       'isa'      => Path,
       'coerce'   => 1,
@@ -1145,12 +1144,12 @@ $fatpacked{"Pakket/Builder.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
   
   # We're starting with a local repo
   # # but in the future this will be dictated from a configuration
-  sub _build_config_repo {
+  sub _build_spec_repo {
       my $self = shift;
   
       # Use default for now, but use the directory we want at least
-      return Pakket::Repository::Config->new(
-          'directory' => $self->config_dir,
+      return Pakket::Repository::Spec->new(
+          'directory' => $self->spec_dir,
       );
   }
   
@@ -1215,7 +1214,7 @@ $fatpacked{"Pakket/Builder.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
       my @dists;
   
       # TODO: replace the below hard-coding of packages to bootstrap
-      #       with a relevant config reading.
+      #       with a relevant spec reading.
       if ( $category eq 'perl' ) {
           # hardcoded list of packages we have to build first
           # using core modules to break cyclic dependencies.
@@ -1233,7 +1232,7 @@ $fatpacked{"Pakket/Builder.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
       # XXX: Whoa!
       my $bootstrap_builder = ref($self)->new(
           'parcel_dir'     => $self->parcel_dir,
-          'config_dir'     => $self->config_dir,
+          'spec_dir'       => $self->spec_dir,
           'source_dir'     => $self->source_dir,
           'keep_build_dir' => $self->keep_build_dir,
           'bundler_args'   => $self->bundler_args,
@@ -1243,14 +1242,14 @@ $fatpacked{"Pakket/Builder.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
       );
   
       my %dists;
-      my @config_object_ids = @{ $self->config_repo->all_object_ids() };
+      my @spec_object_ids   = @{ $self->spec_repo->all_object_ids() };
       my @parcel_object_ids = @{ $self->parcel_repo->all_object_ids() };
   
       for my $dist (@dists) {
           # Right now everything is pinned so there is only
           # One result. Once the version ranges feature is introduced,
           # we will be able to get the latest version.
-          my ($pkg_str) = grep m{^ \Q$category\E / \Q$dist\E =}xms, @config_object_ids;
+          my ($pkg_str) = grep m{^ \Q$category\E / \Q$dist\E =}xms, @spec_object_ids;
   
           # Create a requirement
           my $req = Pakket::Requirement->new_from_string($pkg_str);
@@ -1369,11 +1368,11 @@ $fatpacked{"Pakket/Builder.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
   
       $log->noticef( '%sWorking on %s', '|...' x $level, $prereq->full_name );
   
-      # Create a Package instance from the configuration
+      # Create a Package instance from the spec
       # using the information we have on it
-      my $package_config = $self->config_repo->retrieve_package_config($prereq);
-      my $package        = Pakket::Package->new_from_config({
-          %{$package_config},
+      my $package_spec = $self->spec_repo->retrieve_package_spec($prereq);
+      my $package      = Pakket::Package->new_from_spec({
+          %{$package_spec},
   
           # We are dealing with a version which should not be installed
           # outside of a bootstrap phase, so we're "marking" this package
@@ -1508,7 +1507,7 @@ $fatpacked{"Pakket/Builder.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
               'name'        => $package->name,
               'version'     => $package->version,
               'bundle_opts' => $package->bundle_opts,
-              'config'      => $package->config,
+              'spec'        => $package->spec,
           },
           $package_files,
       );
@@ -1529,7 +1528,7 @@ $fatpacked{"Pakket/Builder.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
           # One result. Once the version ranges feature is introduced,
           # we will be able to get the latest version.
           my ($pkg_str) = grep m{^ \Q$category\E / \Q$prereq_name\E =}xms,
-              @{ $self->config_repo->all_object_ids() };
+              @{ $self->spec_repo->all_object_ids() };
   
           my $req = Pakket::Requirement->new_from_string($pkg_str);
   
@@ -1990,8 +1989,8 @@ $fatpacked{"Pakket/Bundler.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
   
       my (
           $package_category, $package_name,
-          $package_version,  $package_config,
-      ) = @{$pkg_data}{qw< category name version config >};
+          $package_version,  $package_spec,
+      ) = @{$pkg_data}{qw< category name version spec >};
   
       my $original_dir = Path::Tiny->cwd;
   
@@ -2042,14 +2041,14 @@ $fatpacked{"Pakket/Bundler.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
       #        synced with the Installer that reads it
       ## no critic qw(ValuesAndExpressions::ProhibitLongChainsOfMethodCalls)
       path( PARCEL_METADATA_FILE() )->spew_utf8(
-          JSON::MaybeXS->new->pretty->canonical->encode($package_config),
+          JSON::MaybeXS->new->pretty->canonical->encode($package_spec),
       );
   
       chdir '..';
   
       # FIXME: This is because the Bundler isn't receiving a
       #        Pakket::Package object
-      my $pkg_object = Pakket::Package->new_from_config($package_config);
+      my $pkg_object = Pakket::Package->new_from_spec($package_spec);
       $log->infof( 'Creating parcel file for %s', $pkg_object->full_name );
   
       # The lovely thing here is that is creates a parcel file from the
@@ -2135,8 +2134,8 @@ $fatpacked{"Pakket/CLI/Command/build.pm"} = '#line '.(1+__LINE__).' "'.__FILE__.
           [ 'build-dir=s',    'use an existing build directory' ],
           [ 'keep-build-dir', 'do not delete the build directory' ],
           [
-              'config-dir=s',
-              'directory holding the configurations',
+              'spec-dir=s',
+              'directory holding the specs',
               { 'required' => 1 },
           ],
           [
@@ -2157,12 +2156,12 @@ $fatpacked{"Pakket/CLI/Command/build.pm"} = '#line '.(1+__LINE__).' "'.__FILE__.
           'dispatcher' => Pakket::Log->build_logger( $opt->{'verbose'} ),
       );
   
-      # Check that the directory for configs exists
+      # Check that the directory for specs exists
       # (How do we get it from the CLI?)
-      my $config_dir = path( $opt->{'config_dir'} );
-      $config_dir->exists && $config_dir->is_dir
-          or $self->usage_error("Incorrect config directory specified: '$config_dir'");
-      $self->{'builder'}{'config_dir'} = $config_dir;
+      my $spec_dir = path( $opt->{'spec_dir'} );
+      $spec_dir->exists && $spec_dir->is_dir
+          or $self->usage_error("Incorrect spec directory specified: '$spec_dir'");
+      $self->{'builder'}{'spec_dir'} = $spec_dir;
   
       if ( defined ( my $output_dir = $opt->{'output_dir'} ) ) {
           $self->{'bundler'}{'bundle_dir'} = path($output_dir)->absolute;
@@ -2209,7 +2208,7 @@ $fatpacked{"Pakket/CLI/Command/build.pm"} = '#line '.(1+__LINE__).' "'.__FILE__.
       $self->{'builder'}{'keep_build_dir'} = $opt->{'keep_build_dir'};
   
       # XXX These will get removed eventually
-      $self->{'builder'}{'config_dir'} = $opt->{'config_dir'};
+      $self->{'builder'}{'spec_dir'}   = $opt->{'spec_dir'};
       $self->{'builder'}{'source_dir'} = $opt->{'source_dir'};
   }
   
@@ -2221,7 +2220,7 @@ $fatpacked{"Pakket/CLI/Command/build.pm"} = '#line '.(1+__LINE__).' "'.__FILE__.
               defined $self->{'builder'}{$_}
                   ? ( $_ => $self->{'builder'}{$_} )
                   : ()
-          ), qw< parcel_dir config_dir source_dir build_dir keep_build_dir > ),
+          ), qw< parcel_dir spec_dir source_dir build_dir keep_build_dir > ),
   
           # bundler args
           'bundler_args' => {
@@ -2271,8 +2270,8 @@ $fatpacked{"Pakket/CLI/Command/generate.pm"} = '#line '.(1+__LINE__).' "'.__FILE
               'cpanfile to configure from',
           ],
           [
-              'config-dir=s',
-              'directory to write the configuration to (JSON files)',
+              'spec-dir=s',
+              'directory to write the spec to (JSON files)',
               { required => 1 },
           ],
           [
@@ -2352,7 +2351,7 @@ $fatpacked{"Pakket/CLI/Command/generate.pm"} = '#line '.(1+__LINE__).' "'.__FILE
       my $config = $self->{'config'};
   
       return Pakket::Scaffolder::Perl->new(
-          config_dir        => $config->{'config_dir'},
+          spec_dir          => $config->{'spec_dir'},
           json_file         => $config->{'index_file'},
           source_dir        => $config->{'source_dir'},
           extract           => $config->{'extract'},
@@ -3003,11 +3002,13 @@ $fatpacked{"Pakket/Installer.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<
       my $full_parcel_dir = $tmp_extraction_dir->child( PARCEL_FILES_DIR() );
   
       my $spec_file = $full_parcel_dir->child( PARCEL_METADATA_FILE() );
-      my $config    = decode_json $spec_file->slurp_utf8;
+      # FIXME: We should be creating a Package object from this
+      my $spec      = decode_json $spec_file->slurp_utf8;
   
       $dir->child($parcel_basename)->remove;
   
-      my $prereqs = $config->{'Prereqs'};
+      # FIXME: We shouldn't be acccessing this as a hash, see prev FIXME
+      my $prereqs = $spec->{'Prereqs'};
       foreach my $prereq_category ( keys %{$prereqs} ) {
           my $runtime_prereqs = $prereqs->{$prereq_category}{'runtime'};
   
@@ -3040,7 +3041,7 @@ $fatpacked{"Pakket/Installer.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<
           dircopy( $item, $target_dir );
       }
   
-      my $actual_version = $config->{'Package'}{'version'};
+      my $actual_version = $spec->{'Package'}{'version'};
       $log->info("Delivered parcel $pkg_cat/$pkg_name ($actual_version)");
   
       return;
@@ -3249,12 +3250,12 @@ $fatpacked{"Pakket/Package.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
       };
   }
   
-  sub config {
+  sub spec {
       my $self = shift;
   
       return +{
           'Package' => {
-              # This is so we don't see is_bootstrap in config
+              # This is so we don't see is_bootstrap in spec
               # if not required -- SX
               ( 'is_bootstrap' => 1 )x!! $self->is_bootstrap,
   
@@ -3267,14 +3268,14 @@ $fatpacked{"Pakket/Package.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
       };
   }
   
-  sub new_from_config {
-      my ( $class, $config ) = @_;
+  sub new_from_spec {
+      my ( $class, $spec ) = @_;
   
       my %package_details = (
-          %{ $config->{'Package'} },
-          'prereqs'      => $config->{'Prereqs'}    || {},
-          'build_opts'   => $config->{'build_opts'} || {},
-          'is_bootstrap' => !!$config->{'is_bootstrap'},
+          %{ $spec->{'Package'} },
+          'prereqs'      => $spec->{'Prereqs'}    || {},
+          'build_opts'   => $spec->{'build_opts'} || {},
+          'is_bootstrap' => !!$spec->{'is_bootstrap'},
       );
   
       return $class->new(%package_details);
@@ -3531,7 +3532,9 @@ $fatpacked{"Pakket/Repository/Backend/File.pm"} = '#line '.(1+__LINE__).' "'.__F
   
   sub _remove_from_index {
       my ( $self, $id ) = @_;
-      return delete $self->repo_index->{$id};
+      delete $self->repo_index->{$id};
+      # Store in the index
+      $self->index_file->spew_utf8( encode_json( $self->repo_index ) );
   }
   
   sub store_location {
@@ -3730,63 +3733,6 @@ $fatpacked{"Pakket/Repository/Backend/HTTP.pm"} = '#line '.(1+__LINE__).' "'.__F
   =pod
 PAKKET_REPOSITORY_BACKEND_HTTP
 
-$fatpacked{"Pakket/Repository/Config.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PAKKET_REPOSITORY_CONFIG';
-  package Pakket::Repository::Config;
-  # ABSTRACT: A configuration repository
-  
-  use Moose;
-  use MooseX::StrictConstructor;
-  use Types::Path::Tiny qw< Path >;
-  use Carp              qw< croak >;
-  use JSON::MaybeXS     qw< encode_json decode_json >;
-  
-  extends qw< Pakket::Repository >;
-  with    qw< Pakket::Role::HasDirectory >;
-  
-  sub _build_backend {
-      my $self = shift;
-  
-      return [
-          'File',
-          'directory'      => $self->directory,
-          'file_extension' => 'ini',
-      ];
-  }
-  
-  sub retrieve_package_config {
-      my ( $self, $package ) = @_;
-  
-      my $config_str = $self->retrieve_content(
-          $package->full_name,
-      );
-  
-      my $config;
-      eval {
-          decode_json($config_str);
-          1;
-      } or do {
-          my $err = $@ || 'Unknown error';
-          croak("Cannot read config properly: $err");
-      };
-  
-  	return $config;
-  }
-  
-  sub store_package_config {
-  	my ( $self, $package ) = @_;
-  
-      return $self->store_content(
-          $package->full_name,
-          encode_json( $package->config ),
-      );
-  }
-  
-  no Moose;
-  __PACKAGE__->meta->make_immutable;
-  
-  1;
-PAKKET_REPOSITORY_CONFIG
-
 $fatpacked{"Pakket/Repository/Parcel.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PAKKET_REPOSITORY_PARCEL';
   package Pakket::Repository::Parcel;
   # ABSTRACT: A parcel repository
@@ -3950,11 +3896,85 @@ $fatpacked{"Pakket/Repository/Source.pm"} = '#line '.(1+__LINE__).' "'.__FILE__.
       $self->store_location( $package->full_name, $file );
   }
   
+  sub remove_package_source {
+      my ( $self, $package ) = @_;
+      my $file = $self->retrieve_location( $package->full_name );
+  
+      if ( !$file ) {
+          $log->criticalf(
+              'We do not have the source for package %s',
+              $package->full_name,
+          );
+  
+          exit 1;
+      }
+  
+      $log->debug("Removing package");
+      $self->remove_location( $package->full_name );
+  }
+  
   no Moose;
   __PACKAGE__->meta->make_immutable;
   
   1;
 PAKKET_REPOSITORY_SOURCE
+
+$fatpacked{"Pakket/Repository/Spec.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PAKKET_REPOSITORY_SPEC';
+  package Pakket::Repository::Spec;
+  # ABSTRACT: A spec repository
+  
+  use Moose;
+  use MooseX::StrictConstructor;
+  use Types::Path::Tiny qw< Path >;
+  use Carp              qw< croak >;
+  use JSON::MaybeXS     qw< encode_json decode_json >;
+  
+  extends qw< Pakket::Repository >;
+  with    qw< Pakket::Role::HasDirectory >;
+  
+  sub _build_backend {
+      my $self = shift;
+  
+      return [
+          'File',
+          'directory'      => $self->directory,
+          'file_extension' => 'ini',
+      ];
+  }
+  
+  sub retrieve_package_spec {
+      my ( $self, $package ) = @_;
+  
+      my $spec_str = $self->retrieve_content(
+          $package->full_name,
+      );
+  
+      my $config;
+      eval {
+          $config = decode_json($spec_str);
+          1;
+      } or do {
+          my $err = $@ || 'Unknown error';
+          croak("Cannot read spec properly: $err");
+      };
+  
+  	return $config;
+  }
+  
+  sub store_package_spec {
+  	my ( $self, $package ) = @_;
+  
+      return $self->store_content(
+          $package->full_name,
+          encode_json( $package->spec ),
+      );
+  }
+  
+  no Moose;
+  __PACKAGE__->meta->make_immutable;
+  
+  1;
+PAKKET_REPOSITORY_SPEC
 
 $fatpacked{"Pakket/Requirement.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PAKKET_REQUIREMENT';
   package Pakket::Requirement;
@@ -4995,7 +5015,7 @@ $fatpacked{"Pakket/Server/App.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".
   use Dancer2::Plugin::Pakket::ParamTypes;
   
   use Log::Any qw< $log >;
-  use Pakket::Repository::Config;
+  use Pakket::Repository::Spec;
   use Pakket::Repository::Parcel;
   use Pakket::Repository::Source;
   
@@ -5003,8 +5023,8 @@ $fatpacked{"Pakket/Server/App.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".
   
   # Example
   set 'repositories' => {
-      'Config' => [
-          'File' => { 'directory' => '/opt/pakket/configs' },
+      'Spec' => [
+          'File' => { 'directory' => '/opt/pakket/specs' },
       ],
   
       'Source' => [
@@ -5168,13 +5188,13 @@ $fatpacked{"Pakket/Utils.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PA
   
   sub generate_json_conf {
       my $output_file = shift;
-      my $config_dir  = shift;
-      my $index = {};
+      my $spec_dir    = shift;
+      my $index       = {};
   
       my $output = path( $output_file );
       $output->exists and $index = decode_json( $output->slurp_utf8 );
   
-      my $category_iter = path( $config_dir )->iterator;
+      my $category_iter = path( $spec_dir )->iterator;
       while ( my $category = $category_iter->() ) {
           $category->is_dir and "$category" ne '.'
               or return;
@@ -9920,7 +9940,7 @@ $fatpacked{"Types/Serialiser/Error.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\
   
 TYPES_SERIALISER_ERROR
 
-$fatpacked{"x86_64-linux-gnu-thread-multi/common/sense.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'X86_64-LINUX-GNU-THREAD-MULTI_COMMON_SENSE';
+$fatpacked{"common/sense.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'X86_64-LINUX-GNU-THREAD-MULTI_COMMON_SENSE';
   package common::sense;
   
   our $VERSION = 3.74;
