@@ -20,7 +20,6 @@ my ( $index_file, $prev_source_dir, $repo_source_dir ) = @ARGV;
 $index_file && $prev_source_dir && $repo_source_dir
     or die "$0 <index.json> <source dir> <repo source dir>\n";
 
-my $base_path = path($prev_source_dir);
 my $source_repo = Pakket::Repository::Source->new(
     'directory' => $repo_source_dir,
 );
