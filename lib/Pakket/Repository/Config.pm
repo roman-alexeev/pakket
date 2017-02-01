@@ -29,7 +29,7 @@ sub retrieve_package_config {
 
     my $config;
     eval {
-        decode_json($config_str);
+        $config = decode_json($config_str);
         1;
     } or do {
         my $err = $@ || 'Unknown error';
