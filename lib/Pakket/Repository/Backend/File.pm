@@ -74,7 +74,9 @@ sub _retrieve_from_index {
 
 sub _remove_from_index {
     my ( $self, $id ) = @_;
-    return delete $self->repo_index->{$id};
+    delete $self->repo_index->{$id};
+    # Store in the index
+    $self->index_file->spew_utf8( encode_json( $self->repo_index ) );
 }
 
 sub store_location {
