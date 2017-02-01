@@ -74,6 +74,23 @@ sub store_package_source {
     $self->store_location( $package->full_name, $file );
 }
 
+sub remove_package_source {
+    my ( $self, $package ) = @_;
+    my $file = $self->retrieve_location( $package->full_name );
+
+    if ( !$file ) {
+        $log->criticalf(
+            'We do not have the source for package %s',
+            $package->full_name,
+        );
+
+        exit 1;
+    }
+
+    $log->debug("Removing package");
+    $self->remove_location( $package->full_name );
+}
+
 no Moose;
 __PACKAGE__->meta->make_immutable;
 
