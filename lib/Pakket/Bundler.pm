@@ -17,6 +17,8 @@ use Pakket::Constants qw<
     PARCEL_METADATA_FILE
 >;
 
+use Pakket::Utils qw< encode_json_pretty >;
+
 use constant {
     'BUNDLE_DIR_TEMPLATE' => 'BUNDLE-XXXXXX',
 };
@@ -100,9 +102,8 @@ sub bundle {
         }
     }
 
-    ## no critic qw(ValuesAndExpressions::ProhibitLongChainsOfMethodCalls)
     path( PARCEL_METADATA_FILE() )->spew_utf8(
-        JSON::MaybeXS->new->pretty->canonical->encode( $package->spec ),
+        encode_json_pretty( $package->spec ),
     );
 
     chdir '..';
