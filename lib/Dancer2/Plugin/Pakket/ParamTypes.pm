@@ -1,4 +1,5 @@
 package Dancer2::Plugin::Pakket::ParamTypes;
+# ABSTRACT: Parameter types for the Dancer2 Pakket app
 
 use strict;
 use warnings;
