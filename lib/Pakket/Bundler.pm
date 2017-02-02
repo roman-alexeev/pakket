@@ -53,12 +53,7 @@ sub _build_parcel_repo {
 }
 
 sub bundle {
-    my ( $self, $build_dir, $pkg_data, $files ) = @_;
-
-    my (
-        $package_category, $package_name,
-        $package_version,  $package_spec,
-    ) = @{$pkg_data}{qw< category name version spec >};
+    my ( $self, $build_dir, $package, $files ) = @_;
 
     my $original_dir = Path::Tiny->cwd;
 
@@ -107,20 +102,17 @@ sub bundle {
 
     ## no critic qw(ValuesAndExpressions::ProhibitLongChainsOfMethodCalls)
     path( PARCEL_METADATA_FILE() )->spew_utf8(
-        JSON::MaybeXS->new->pretty->canonical->encode($package_spec),
+        JSON::MaybeXS->new->pretty->canonical->encode( $package->spec ),
     );
 
     chdir '..';
 
-    # FIXME: This is because the Bundler isn't receiving a
-    #        Pakket::Package object
-    my $pkg_object = Pakket::Package->new_from_spec($package_spec);
-    $log->infof( 'Creating parcel file for %s', $pkg_object->full_name );
+    $log->infof( 'Creating parcel file for %s', $package->full_name );
 
     # The lovely thing here is that is creates a parcel file from the
     # bundled directory, which gets cleaned up automatically
     $self->parcel_repo->store_package_parcel(
-        $pkg_object,
+        $package,
         $parcel_dir_path,
     );
 

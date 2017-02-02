@@ -532,13 +532,7 @@ sub run_build {
     $log->infof( 'Bundling %s', $package->full_name );
     $self->bundler->bundle(
         $main_build_dir->absolute,
-        {
-            'category'    => $package->category,
-            'name'        => $package->name,
-            'version'     => $package->version,
-            'bundle_opts' => $package->bundle_opts,
-            'spec'        => $package->spec,
-        },
+        $package,
         $package_files,
     );
 
