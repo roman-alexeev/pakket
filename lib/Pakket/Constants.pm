@@ -22,7 +22,7 @@ use constant {
             (.+) # optional version
         )?
         $
-    }x,
+    }xms,
 
     'PAKKET_LATEST_VERSION' => 'LATEST',
 };
