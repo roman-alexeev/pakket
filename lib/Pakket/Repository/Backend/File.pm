@@ -9,6 +9,7 @@ use Path::Tiny        qw< path >;
 use Log::Any          qw< $log >;
 use Types::Path::Tiny qw< Path >;
 use Digest::SHA       qw< sha1_hex >;
+use Pakket::Utils     qw< encode_json_pretty >;
 
 with qw<
     Pakket::Role::HasDirectory
@@ -37,6 +38,12 @@ has 'repo_index' => (
     'builder' => '_build_repo_index',
 );
 
+has 'pretty_json' => (
+    'is'      => 'ro',
+    'isa'     => 'Bool',
+    'default' => sub {1},
+);
+
 sub _build_repo_index {
     my $self = shift;
     my $file = $self->index_file;
@@ -62,9 +69,21 @@ sub _store_in_index {
 
     # Store in the index
     $self->repo_index->{$id} = $filename;
-    $self->index_file->spew_utf8( encode_json( $self->repo_index ) );
+
+    $self->_save_index();
 
     return $filename;
+}
+
+sub _save_index {
+    my $self = shift;
+
+    my $content
+        = $self->pretty_json
+        ? encode_json_pretty( $self->repo_index )
+        : encode_json( $self->repo_index );
+
+    $self->index_file->spew_utf8($content);
 }
 
 sub _retrieve_from_index {
@@ -75,8 +94,7 @@ sub _retrieve_from_index {
 sub _remove_from_index {
     my ( $self, $id ) = @_;
     delete $self->repo_index->{$id};
-    # Store in the index
-    $self->index_file->spew_utf8( encode_json( $self->repo_index ) );
+    $self->_save_index();
 }
 
 sub store_location {
