@@ -88,11 +88,6 @@ sub _build_pakket_libraries_dir {
     return $self->pakket_dir->child('libraries');
 }
 
-# TODO:
-# this should be implemented using a fetcher class
-# because it might be from HTTP/FTP/Git/Custom/etc.
-sub fetch_package;
-
 sub _clean_packages {
     my ( $self, $packages ) = @_;
     my @clean_packages;
