@@ -443,8 +443,7 @@ sub run_build {
         if ($successfully_installed) {
 
             # snapshot_build_dir
-            $self->snapshot_build_dir( $package->category, $package->name,
-                $main_build_dir->absolute, 0 );
+            $self->snapshot_build_dir( $package, $main_build_dir->absolute, 0 );
 
             $log->noticef(
                 '%sInstalled %s',
@@ -527,7 +526,7 @@ sub run_build {
     }
 
     my $package_files = $self->snapshot_build_dir(
-        $package->category, $package->name, $main_build_dir,
+        $package, $main_build_dir,
     );
 
     $log->infof( 'Bundling %s', $package->full_name );
@@ -567,9 +566,8 @@ sub _recursive_build_phase {
     }
 }
 
-# FIXME: This subroutine needs to get a package object
 sub snapshot_build_dir {
-    my ( $self, $category, $package_name, $main_build_dir, $error_out ) = @_;
+    my ( $self, $package, $main_build_dir, $error_out ) = @_;
     $error_out //= 1;
 
     $log->debug('Scanning directory.');
@@ -581,16 +579,14 @@ sub snapshot_build_dir {
     # perhaps rsync(1) should be used to deploy the package files
     # (because then we want *all* content)
     # (only if unpacking it directly into the directory fails)
-    my $package_files = $self->retrieve_new_files(
-        $category, $package_name, $main_build_dir,
-    );
+    my $package_files = $self->retrieve_new_files($main_build_dir);
 
     if ($error_out) {
         keys %{$package_files} or do {
             $log->criticalf(
-                'This is odd. %s/%s build did not generate new files. '
+                'This is odd. %s build did not generate new files. '
                     . 'Cannot package.',
-                $category, $package_name,
+                $package->full_name,
             );
             exit 1;
         };
@@ -604,7 +600,7 @@ sub snapshot_build_dir {
 }
 
 sub retrieve_new_files {
-    my ( $self, $category, $package_name, $build_dir ) = @_;
+    my ( $self, $build_dir ) = @_;
 
     my $nodes = $self->_scan_directory($build_dir);
     my $new_files
