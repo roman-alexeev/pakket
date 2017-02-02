@@ -111,22 +111,21 @@ Pakket makes a difference between a package and a requirement. A package
 is an existing instance; a requirement is a description. The requirement
 can have a range of allowed versions for a package, for example.
 
-### Configuration files
+### Spec files
 
-Similar to RPM spec files, Pakket has configuration files. You can
-create them yourself or you can use the
-[Pakket::CLI::Command::scaffold](https://metacpan.org/pod/scaffold) command to create them
-for you.
+Similar to RPM spec files, Pakket has spec files. You can create them
+yourself or you can use the [Pakket::CLI::Command::scaffold](https://metacpan.org/pod/scaffold)
+command to create them for you.
 
-The basic configuration file in Pakket contain a package's `category`,
+The basic spec file in Pakket contain a package's `category`,
 `name`, and `version`. It usually contains `prereqs` as well,
 keyed by the **category** and the **phase**. The phases can be
 **configure** (for build-time), **test** (for when testing the build),
 and **runtime** (for using it).
 
-At the moment Pakket keeps its configuration in TOML files.
+At the moment Pakket keeps its specs in JSON files.
 
-An example of a configuration in Pakket:
+An example of a spec in Pakket:
 
     # perl/HTML-Tidy/1.56.json:
     [Package]
