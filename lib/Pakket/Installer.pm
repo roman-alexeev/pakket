@@ -10,8 +10,10 @@ use Time::HiRes           qw< time >;
 use Log::Any              qw< $log >;
 use JSON::MaybeXS         qw< decode_json >;
 use Archive::Any;
+use English               qw< -no_match_vars >;
 
 use Pakket::Repository::Parcel;
+use Pakket::Requirement;
 use Pakket::Package;
 use Pakket::Utils         qw< is_writeable >;
 use Pakket::Constants qw<
@@ -156,7 +158,7 @@ sub install {
     # is the pid and T is the current time.
     my $active_link = $pakket_libraries_dir->child('active');
     my $active_temp = $pakket_libraries_dir->child(
-        sprintf('active_%s_%s.tmp', $$, time()),
+        sprintf('active_%s_%s.tmp', $PID, time()),
     );
 
     # we copy any previous installation
@@ -259,20 +261,21 @@ sub install_package {
         exit 1;
     }
 
-    my $pkg_cat        = $package->category;
-    my $pkg_name       = $package->name;
-    my $pkg_version    = $package->version;
-    my $pkg_short_name = $package->short_name;
+    # Extracted to use more easily in the install cache below
+    my $pkg_cat  = $package->category;
+    my $pkg_name = $package->name;
 
     $log->debugf( "About to install %s (into $dir)", $package->full_name );
 
     if ( defined $installer_cache->{$pkg_cat}{$pkg_name} ) {
         my $version = $installer_cache->{$pkg_cat}{$pkg_name};
 
-        if ( $version ne $pkg_version ) {
-            $log->critical(
-                "$pkg_short_name=$version already installed. "
-              . "Cannot install new version: $pkg_version",
+        if ( $version ne $package->version ) {
+            $log->criticalf(
+                "%s=$version already installed. "
+              . "Cannot install new version: %s",
+              $package->short_name,
+              $package->version,
             );
 
             exit 1;
@@ -282,7 +285,7 @@ sub install_package {
 
         return;
     } else {
-        $installer_cache->{$pkg_cat}{$pkg_name} = $pkg_version;
+        $installer_cache->{$pkg_cat}{$pkg_name} = $package->version;
     }
 
     if ( !is_writeable($dir) ) {
@@ -294,7 +297,7 @@ sub install_package {
     }
 
     my $parcel_file
-        = $self->parcel_repo->retrieve_location( $package->full_name );
+        = $self->parcel_repo->retrieve_package_parcel($package);
 
     $parcel_file->copy($dir);
 
@@ -303,7 +306,7 @@ sub install_package {
     $log->debug("Unpacking $parcel_basename into $dir");
 
     # Create a place for pkt files to be extracted
-    $dir->sibling("extracted")->mkpath;
+    $dir->sibling('extracted')->mkpath;
 
     # Unpack into a separate directory
     my $tmp_extraction_dir = Path::Tiny->tempdir(
@@ -316,14 +319,15 @@ sub install_package {
 
     my $full_parcel_dir = $tmp_extraction_dir->child( PARCEL_FILES_DIR() );
 
-    my $spec_file = $full_parcel_dir->child( PARCEL_METADATA_FILE() );
-    # FIXME: We should be creating a Package object from this
-    my $spec      = decode_json $spec_file->slurp_utf8;
+    # Get the spec and create a new Package object
+    # This one will have the dependencies as well
+    my $spec_file    = $full_parcel_dir->child( PARCEL_METADATA_FILE() );
+    my $spec         = decode_json $spec_file->slurp_utf8;
+    my $full_package = Pakket::Package->new_from_spec($spec);
 
     $dir->child($parcel_basename)->remove;
 
-    # FIXME: We shouldn't be acccessing this as a hash, see prev FIXME
-    my $prereqs = $spec->{'Prereqs'};
+    my $prereqs = $full_package->prereqs;
     foreach my $prereq_category ( keys %{$prereqs} ) {
         my $runtime_prereqs = $prereqs->{$prereq_category}{'runtime'};
 
@@ -331,18 +335,13 @@ sub install_package {
             my $prereq_data    = $runtime_prereqs->{$prereq_name};
             my $prereq_version = $prereq_data->{'version'};
 
-            # FIXME We shouldn't be constructing this,
-            #       We should just ask the repo for it
-            #       It should maintain metadata for this
-            #       and API to retrieve it
-            # FIXME This shouldn't be a package but a prereq object
-            my $next_pkg = Pakket::Package->new(
+            my $prereq = Pakket::Requirement->new(
                 'category' => $prereq_category,
                 'name'     => $prereq_name,
                 'version'  => $prereq_version,
             );
 
-            $self->install_package( $next_pkg, $dir, $opts );
+            $self->install_package( $prereq, $dir, $opts );
         }
     }
 
@@ -356,8 +355,7 @@ sub install_package {
         dircopy( $item, $target_dir );
     }
 
-    my $actual_version = $spec->{'Package'}{'version'};
-    $log->info("Delivered parcel $pkg_cat/$pkg_name ($actual_version)");
+    $log->info( 'Delivered parcel %s', $full_package->full_name );
 
     return;
 }
