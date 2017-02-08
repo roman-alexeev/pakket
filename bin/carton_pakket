@@ -1,0 +1,8 @@
+#!/bin/sh
+if [ -d "local/lib/perl5" ]; then
+    PERL_CARTON_PATH=.
+    carton exec perl -Ilib ./bin/pakket "$@"
+else
+    echo "no local directory."
+    exit 1
+fi
