@@ -7,7 +7,7 @@ use HTTP::Tiny;
 
 requires 'run';
 
-has [qw< config_dir source_dir json_file >]=> (
+has [qw< spec_dir source_dir >]=> (
     is       => 'ro',
     isa      => 'Str',
     required => 1,

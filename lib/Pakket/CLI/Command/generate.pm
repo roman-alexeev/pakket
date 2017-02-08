@@ -34,10 +34,6 @@ sub opt_spec {
             'directory to write the sources to (downloads if provided)',
         ],
         [
-            'index-file=s',
-            'file to generate json configuration to',
-        ],
-        [
             'additional_phase=s@',
             "additional phases to use ('develop' = author_requires, 'test' = test_requires). configure & runtime are done by default.",
         ],
@@ -81,9 +77,8 @@ sub validate_args {
         name       => $name,
         category   => $category,
         type       => $type,
-        config_dir => $opt->{'config_dir'},
+        spec_dir   => $opt->{'spec_dir'},
         source_dir => $opt->{'source_dir'},
-        index_file => $opt->{'index_file'},
         extract    => $opt->{'extract'},
     };
 }
@@ -107,7 +102,6 @@ sub gen_scaffolder_perl {
 
     return Pakket::Scaffolder::Perl->new(
         spec_dir          => $config->{'spec_dir'},
-        json_file         => $config->{'index_file'},
         source_dir        => $config->{'source_dir'},
         extract           => $config->{'extract'},
         $config->{'type'} => $config->{'name'},

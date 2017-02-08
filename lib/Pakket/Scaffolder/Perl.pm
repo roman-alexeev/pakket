@@ -119,7 +119,7 @@ sub run {
 
             for ( sort keys %{ $self->modules->{ $phase }{ $type } } ) {
                 eval {
-                    $self->create_config_for( module => $_, $requirements );
+                    $self->create_spec_for( module => $_, $requirements );
                     1;
                 } or do {
                     my $err = $@ || 'zombie error';
@@ -127,10 +127,6 @@ sub run {
                 };
             }
         }
-    }
-
-    if ( $self->json_file ) {
-        generate_json_conf( $self->json_file, $self->config_dir );
     }
 
     for my $f ( keys %failed ) {
@@ -156,7 +152,7 @@ sub skip_name {
     return 0;
 }
 
-sub create_config_for {
+sub create_spec_for {
     my ( $self, $type, $name, $requirements ) = @_;
     return if $self->skip_name($name);
     return if $self->processed_dists->{ $name }++;
@@ -170,10 +166,9 @@ sub create_config_for {
     $log->infof( '%s-> Working on %s (%s)', $self->spaces, $dist_name, $rel_version );
     $self->set_depth( $self->depth + 1 );
 
-    my $conf_path = path( ( $self->config_dir // '.' ), 'perl', $dist_name );
-    $conf_path->mkpath;
-
-    my $conf_file = path( $conf_path, "$rel_version.json" );
+    my $spec_path = path( ( $self->spec_dir // '.' ), 'perl', $dist_name );
+    $spec_path->mkpath;
+    my $spec_file = path( $spec_path, "$rel_version.json" );
 
     # download source if dir provided and file doesn't already exist
     if ( $self->source_dir ) {
@@ -192,7 +187,7 @@ sub create_config_for {
         }
     }
 
-    if ( $conf_file->exists ) {
+    if ( $spec_file->exists ) {
         $self->set_depth( $self->depth - 1 );
         return;
     }
@@ -229,14 +224,14 @@ sub create_config_for {
             }
 
             # recurse through those as well
-            $self->create_config_for( 'dist' => $_, $dep_requirements )
+            $self->create_spec_for( 'dist' => $_, $dep_requirements )
                 for keys %{ $package->{'Prereqs'}{'perl'}{$phase} };
         }
     }
 
     $self->set_depth( $self->depth - 1 );
 
-    $conf_file->spew_utf8( encode_json($package) );
+    $spec_file->spew_utf8( encode_json($package) );
 }
 
 sub extract_archive {
