@@ -76,7 +76,7 @@ sub generate_env_vars {
 
     my @perl5lib = (
         $build_dir,
-        path( $prefix, qw<lib perl5> )->absolute->stringify,
+        $prefix->child( qw<lib perl5> )->absolute->stringify,
     );
 
     my %perl_opts = (
