@@ -36,11 +36,11 @@ sub retrieve_package_spec {
         croak("Cannot read spec properly: $err");
     };
 
-	return $config;
+    return $config;
 }
 
 sub store_package_spec {
-	my ( $self, $package ) = @_;
+    my ( $self, $package ) = @_;
 
     return $self->store_content(
         $package->full_name,

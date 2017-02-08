@@ -422,14 +422,14 @@ sub run_build {
         $log->debugf( '%s already packaged, unpacking...',
             $package->full_name, );
 
-	my $installer_cache = $self->installer_cache;
-	my $bootstrap_cache = {
+        my $installer_cache = $self->installer_cache;
+        my $bootstrap_cache = {
             %{ $self->installer_cache },
 
             # Phase 3 needs to avoid trying to install
             # the bare minimum toolchain (Phase 1)
             $prereq->category => { $package->name => $package->version },
-	};
+        };
 
         my $successfully_installed = $installer->try_to_install_package(
             $package,

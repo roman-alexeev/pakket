@@ -18,7 +18,7 @@ sub BUILD {
     my $self = shift;
 
     $self->register_type_check(
-		'Str' => sub { defined $_[0] && length $_[0] },
+        'Str' => sub { defined $_[0] && length $_[0] },
     );
 
     $self->register_type_action(
