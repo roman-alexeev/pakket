@@ -21,7 +21,7 @@ sub _build_pakket_config {
         'use_ext' => 1,
     });
 
-    return $cfg;
+    return +{ @{ $cfg } };
 }
 
 no Moose::Role;
