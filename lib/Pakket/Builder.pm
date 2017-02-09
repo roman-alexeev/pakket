@@ -30,6 +30,7 @@ with qw<
     Pakket::Role::HasParcelRepo
     Pakket::Role::HasSourceRepo
     Pakket::Role::HasSpecRepo
+    Pakket::Role::Perl::BootstrapModules
     Pakket::Role::RunCommand
 >;
 
@@ -169,21 +170,11 @@ sub _setup_build_dir {
 
 sub bootstrap_build {
     my ( $self, $category ) = @_;
-    my @dists;
 
-    # TODO: replace the below hard-coding of packages to bootstrap
-    #       with a relevant spec reading.
-    if ( $category eq 'perl' ) {
-        # hardcoded list of packages we have to build first
-        # using core modules to break cyclic dependencies.
-        # we have to maintain the order in order for packages to build
-        @dists = qw<
-            ExtUtils-MakeMaker
-            Module-Build
-            Module-Build-WithXSpp
-            Module-Install
-        >;
-    }
+    my @dists =
+        $category eq 'perl' ? @{ $self->perl_bootstrap_modules } :
+        # add more categories here
+        ();
 
     @dists or return;
 
