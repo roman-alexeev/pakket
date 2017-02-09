@@ -29,9 +29,7 @@ sub description { 'Build a package' }
 
 sub opt_spec {
     return (
-        [ 'category=s',     'build only this key the index' ],
         [ 'input-file=s',   'build stuff from this file' ],
-        [ 'skip=s',         'skip this index entry' ],
         [ 'build-dir=s',    'use an existing build directory' ],
         [ 'keep-build-dir', 'do not delete the build directory' ],
         [
