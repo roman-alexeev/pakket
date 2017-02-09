@@ -19,59 +19,19 @@ use Pakket::Requirement;
 use Pakket::Builder::NodeJS;
 use Pakket::Builder::Perl;
 use Pakket::Builder::Native;
-use Pakket::Repository::Spec;
-use Pakket::Repository::Parcel;
-use Pakket::Repository::Source;
 
-use Pakket::Utils       qw< generate_env_vars >;
+use Pakket::Utils qw< generate_env_vars >;
 
 use constant {
     'BUILD_DIR_TEMPLATE' => 'BUILD-XXXXXX',
 };
 
-with 'Pakket::Role::RunCommand';
-
-has 'parcel_dir' => (
-    'is'       => 'ro',
-    'isa'      => Path,
-    'coerce'   => 1,
-    'required' => 1,
-);
-
-has 'parcel_repo' => (
-    'is'      => 'ro',
-    'isa'     => 'Pakket::Repository::Parcel',
-    'lazy'    => 1,
-    'builder' => '_build_parcel_repo',
-);
-
-has 'source_repo' => (
-    'is'      => 'ro',
-    'isa'     => 'Pakket::Repository::Source',
-    'lazy'    => 1,
-    'builder' => '_build_source_repo',
-);
-
-has 'spec_repo' => (
-    'is'      => 'ro',
-    'isa'     => 'Pakket::Repository::Spec',
-    'lazy'    => 1,
-    'builder' => '_build_spec_repo',
-);
-
-has 'spec_dir' => (
-    'is'       => 'ro',
-    'isa'      => Path,
-    'coerce'   => 1,
-    'required' => 1,
-);
-
-has 'source_dir' => (
-    'is'       => 'ro',
-    'isa'      => Path,
-    'coerce'   => 1,
-    'required' => 1,
-);
+with qw<
+    Pakket::Role::HasParcelRepo
+    Pakket::Role::HasSourceRepo
+    Pakket::Role::HasSpecRepo
+    Pakket::Role::RunCommand
+>;
 
 has 'build_dir' => (
     'is'      => 'ro',
@@ -161,39 +121,6 @@ has 'bootstrapping' => (
     'isa'     => 'Bool',
     'default' => 1,
 );
-
-# We're starting with a local repo
-# # but in the future this will be dictated from a configuration
-sub _build_parcel_repo {
-    my $self = shift;
-
-    # Use default for now, but use the directory we want at least
-    return Pakket::Repository::Parcel->new(
-        'directory' => $self->parcel_dir,
-    );
-}
-
-# We're starting with a local repo
-# # but in the future this will be dictated from a configuration
-sub _build_spec_repo {
-    my $self = shift;
-
-    # Use default for now, but use the directory we want at least
-    return Pakket::Repository::Spec->new(
-        'directory' => $self->spec_dir,
-    );
-}
-
-# We're starting with a local repo
-# # but in the future this will be dictated from a configuration
-sub _build_source_repo {
-    my $self = shift;
-
-    # Use default for now, but use the directory we want at least
-    return Pakket::Repository::Source->new(
-        'directory' => $self->source_dir,
-    );
-}
 
 sub _build_bundler {
     my $self = shift;
