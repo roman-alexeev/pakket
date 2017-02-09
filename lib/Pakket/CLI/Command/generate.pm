@@ -37,11 +37,6 @@ sub opt_spec {
             'additional_phase=s@',
             "additional phases to use ('develop' = author_requires, 'test' = test_requires). configure & runtime are done by default.",
         ],
-        [
-            'extract',
-            'extract downloaded source tarball',
-            { default => 0 },
-        ],
         [ 'verbose|v+',     'verbose output (can be provided multiple times)' ],
     );
 }

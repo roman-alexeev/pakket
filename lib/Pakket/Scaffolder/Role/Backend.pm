@@ -7,12 +7,6 @@ use HTTP::Tiny;
 
 requires 'run';
 
-has [qw< spec_dir source_dir >]=> (
-    is       => 'ro',
-    isa      => 'Str',
-    required => 1,
-);
-
 has extract => (
     is      => 'ro',
     isa     => 'Bool',

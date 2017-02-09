@@ -4,13 +4,14 @@ package Pakket::Scaffolder::Perl;
 use Moose;
 use MooseX::StrictConstructor;
 use version 0.77;
+use Carp ();
 use Archive::Any;
 use CPAN::Meta::Prereqs;
-use JSON::MaybeXS     qw< decode_json encode_json >;
-use Ref::Util         qw< is_arrayref is_hashref >;
-use Path::Tiny        qw< path    >;
-use Log::Any          qw< $log    >;
-use Carp ();
+use JSON::MaybeXS       qw< decode_json encode_json >;
+use Ref::Util           qw< is_arrayref is_hashref >;
+use Path::Tiny          qw< path >;
+use Types::Path::Tiny   qw< Path  >;
+use Log::Any            qw< $log >;
 
 use Pakket::Utils       qw< generate_json_conf >;
 use Pakket::Utils::Perl qw< should_skip_module >;
@@ -18,10 +19,13 @@ use Pakket::Scaffolder::Perl::Module;
 use Pakket::Scaffolder::Perl::CPANfile;
 
 with qw<
+    Pakket::Role::HasSourceRepo
+    Pakket::Role::HasSpecRepo
+    Pakket::Role::Perl::BootstrapModules
+    Pakket::Scaffolder::Perl::Role::Borked
     Pakket::Scaffolder::Role::Backend
     Pakket::Scaffolder::Role::Config
     Pakket::Scaffolder::Role::Terminal
-    Pakket::Scaffolder::Perl::Role::Borked
 >;
 
 use constant {
@@ -58,6 +62,13 @@ has 'prereqs' => (
     'builder' => '_build_prereqs',
 );
 
+has 'download_dir' => (
+    'is'      => 'ro',
+    'isa'     => Path,
+    'lazy'    => 1,
+    'builder' => '_build_download_dir',
+);
+
 sub _build_metacpan_api {
     my $self = shift;
     return $ENV{'PAKKET_METACPAN_API'}
@@ -68,6 +79,11 @@ sub _build_metacpan_api {
 sub _build_prereqs {
     my $self = shift;
     return CPAN::Meta::Prereqs->new( $self->modules );
+}
+
+sub _build_download_dir {
+    my $self = shift;
+    return Path::Tiny->tempdir( 'CLEANUP' => 1 );
 }
 
 sub BUILDARGS {
@@ -110,6 +126,22 @@ sub run {
     my $self = shift;
     my %failed;
 
+    # Bootstrap toolchain
+    for my $dist ( @{ $self->perl_bootstrap_modules } ) {
+        ### TODO: check & skip if already exists
+
+        $log->debugf( 'bootstrapping config: %s', $dist );
+        my $requirements = $self->prereqs->requirements_for(qw< configure requires >);
+        eval {
+            $self->create_spec_for( dist => $dist, $requirements );
+            1;
+        } or do {
+            my $err = $@ || 'zombie error';
+            Carp::croak("Cannot bootstrap toolchain distribution: $dist ($err)\n");
+        };
+    }
+
+    # the rest
     for my $phase ( @{ $self->phases } ) {
         $log->debugf( 'phase: %s', $phase );
         for my $type ( qw< requires recommends suggests > ) {
@@ -117,13 +149,13 @@ sub run {
 
             my $requirements = $self->prereqs->requirements_for( $phase, $type );
 
-            for ( sort keys %{ $self->modules->{ $phase }{ $type } } ) {
+            for my $module ( sort keys %{ $self->modules->{ $phase }{ $type } } ) {
                 eval {
-                    $self->create_spec_for( module => $_, $requirements );
+                    $self->create_spec_for( module => $module, $requirements );
                     1;
                 } or do {
                     my $err = $@ || 'zombie error';
-                    $failed{$_} = $err;
+                    $failed{$module} = $err;
                 };
             }
         }
@@ -162,50 +194,49 @@ sub create_spec_for {
 
     my $dist_name    = $release->{'distribution'};
     my $rel_version  = $release->{'version'};
-    my $download_url = $self->rewrite_download_url( $release->{'download_url'} );
-    $log->infof( '%s-> Working on %s (%s)', $self->spaces, $dist_name, $rel_version );
-    $self->set_depth( $self->depth + 1 );
 
-    my $spec_path = path( ( $self->spec_dir // '.' ), 'perl', $dist_name );
-    $spec_path->mkpath;
-    my $spec_file = path( $spec_path, "$rel_version.json" );
-
-    # download source if dir provided and file doesn't already exist
-    if ( $self->source_dir ) {
-        if ( $download_url ) {
-            my $source_file = path( $self->source_dir, ( $download_url =~ s{^.+/}{}r ) );
-            if ( !$source_file->exists ) {
-                $source_file->parent->mkpath;
-                $self->ua->mirror( $download_url, $source_file );
-            }
-            if ( $self->extract ) {
-                $self->extract_archive( $dist_name, $rel_version, $source_file );
-            }
-        }
-        else {
-            $log->errorf( "--- can't find download_url for %s-%s", $dist_name, $rel_version );
-        }
-    }
-
-    if ( $spec_file->exists ) {
-        $self->set_depth( $self->depth - 1 );
-        return;
-    }
-
-    my $package = {
+    my $package_spec = {
         'Package' => {
             'category' => 'perl',
             'name'     => $dist_name,
             'version'  => $rel_version,
         },
     };
+    my $package  = Pakket::Package->new_from_spec($package_spec);
+
+    $log->infof( '%s-> Working on %s (%s)', $self->spaces, $dist_name, $rel_version );
+    $self->set_depth( $self->depth + 1 );
+
+    # Download if source doesn't exist already
+    if ( 1 ) {
+        if ( my $download_url = $self->rewrite_download_url( $release->{'download_url'} ) ) {
+
+            # TODO: remove with the addition of URL support below):
+            my $source_file = path(
+                $self->download_dir,
+                ( $download_url =~ s{^.+/}{}r )
+            );
+            $self->ua->mirror( $download_url, $source_file );
+
+            $self->source_repo->store_package_source(
+                # TODO: when there's URL support
+                # $package, $download_url
+                $package, $source_file
+            );
+        }
+        else {
+            $log->errorf( "--- can't find download_url for %s-%s", $dist_name, $rel_version );
+        }
+    }
+
+    # TODO: check the spec repository if there is an entry for this package --> return
 
     my $dep_modules = $release->{'prereqs'};
     my $dep_prereqs = CPAN::Meta::Prereqs->new( $dep_modules );
 
     # options: configure, develop, runtime, test
     for my $phase ( @{ $self->phases } ) {
-        my $prereq_data = $package->{'Prereqs'}{'perl'}{$phase} = +{};
+        my $prereq_data = $package_spec->{'Prereqs'}{'perl'}{$phase} = +{};
 
         for my $dep_type (qw< requires recommends suggests >) {
             next unless is_hashref( $dep_modules->{ $phase }{ $dep_type } );
@@ -225,45 +256,14 @@ sub create_spec_for {
 
             # recurse through those as well
             $self->create_spec_for( 'dist' => $_, $dep_requirements )
-                for keys %{ $package->{'Prereqs'}{'perl'}{$phase} };
+                for keys %{ $package_spec->{'Prereqs'}{'perl'}{$phase} };
         }
     }
 
+    my $filename = $self->spec_repo->store_package_spec($package);
+    $log->infof( 'Stored %s as %s', $package->full_name, $filename);
+
     $self->set_depth( $self->depth - 1 );
-
-    $spec_file->spew_utf8( encode_json($package) );
-}
-
-sub extract_archive {
-    my ( $self, $dist_name, $rel_version, $source_file ) = @_;
-
-    my $archive_path = Path::Tiny->tempdir(
-        'TEMPLATE' => ARCHIVE_DIR_TEMPLATE(),
-        'DIR'      => $self->source_dir,
-        'CLEANUP'  => 1,
-    );
-    my $archive = Archive::Any->new( $source_file );
-    $archive->extract( $archive_path );
-    my @children = $archive_path->children();
-    my $final_name = $dist_name . '-' . $rel_version;
-    if (@children == 0) {
-        $log->infof( 'Archive %s is empty, skipping', $source_file->stringify);
-    }
-    elsif (@children == 1 &&
-           $children[0]->is_dir()) {
-        my $child = $children[0];
-        my $dir_name = $child->basename;
-        $log->debugf( 'Archive %s contains single directory [%s], using as [%s]', $source_file->stringify, $dir_name, $final_name);
-        my $target = path( $self->source_dir, $final_name);
-        $child->move( $target );
-    }
-    else {
-        $log->debugf( 'Archive %s contains multiple entries, will put inside directory called [%s]', $source_file->stringify, $final_name);
-        my $target = path( $self->source_dir, $final_name);
-        $archive_path->move( $target );
-    }
-
-    $source_file->remove;
 }
 
 sub get_dist_name {
@@ -350,13 +350,18 @@ sub get_release_info {
         Carp::croak("Can't find any release for $dist_name") if $res->{'status'} != 200;
         my $res_body = decode_json $res->{'content'};
 
+        is_arrayref( $res_body->{'hits'}{'hits'} )
+            or Carp::croak("Can't find any release for $dist_name");
+
         %all_dist_releases =
-            map +(
-                $_->{'fields'}{'version'}[0] => {
+            map {
+                my $v = $_->{'fields'}{'version'};
+                ( is_arrayref($v) ? $v->[0] : $v ) => {
                     'prereqs'      => $_->{'_source'}{'metadata'}{'prereqs'},
                     'download_url' => $_->{'_source'}{'download_url'},
                 },
-            ), @{ $res_body->{'hits'}{'hits'} };
+            }
+            @{ $res_body->{'hits'}{'hits'} };
     }
 
     # get the matching version according to the spec
