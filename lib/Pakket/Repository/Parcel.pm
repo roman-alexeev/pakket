@@ -54,6 +54,8 @@ sub store_package_parcel {
     elsif ( $parcel_path->is_dir ) {
         # We were given a directory, so we pack it up into a tar file.
         my $arch = Archive::Tar::Wrapper->new();
+        $log->debug("Adding $parcel_path to file");
+
         $parcel_path->visit(
             sub {
                 my ( $path, $stash ) = @_;
