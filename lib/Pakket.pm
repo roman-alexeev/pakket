@@ -122,7 +122,7 @@ can have a range of allowed versions for a package, for example.
 =head3 Spec files
 
 Similar to RPM spec files, Pakket has spec files. You can create them
-yourself or you can use the L<Pakket::CLI::Command::scaffold|scaffold>
+yourself or you can use the L<scaffold|Pakket::CLI::Command::scaffold>
 command to create them for you.
 
 The basic spec file in Pakket contain a package's C<category>,
