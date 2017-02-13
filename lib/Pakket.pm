@@ -135,17 +135,34 @@ At the moment Pakket keeps its specs in JSON files.
 
 An example of a spec in Pakket:
 
-    # perl/HTML-Tidy/1.56.json:
-    [Package]
-    category = "perl"
-    name = "HTML-Tidy"
-    version = "1.56"
-    [Prereqs.native.configure.tidyp]
-    version = "1.04"
-    [Prereqs.perl.configure.ExtUtils-MakeMaker]
-    version = "7.24"
-    [Prereqs.perl.runtime.Test-Simple]
-    version = "1.302031"
+    {
+       "Package" : {
+          "category" : "perl",
+          "name" : "HTML-Tidy",
+          "version" : "1.56"
+       },
+       "Prereqs" : {
+          "native" : {
+             "configure" : {
+                "tidyp" : {
+                   "version" : "1.04"
+                }
+             }
+          },
+          "perl" : {
+             "configure" : {
+                "ExtUtils-MakeMaker" : {
+                   "version" : "7.24"
+                }
+             },
+             "runtime" : {
+                "Test-Simple" : {
+                   "version" : "1.302031"
+                }
+             }
+          }
+       }
+    }
 
 The package details are in the C<Package> section. The prereqs are
 in the C<Prereqs> section, under the C<native> or C<perl> categories,
