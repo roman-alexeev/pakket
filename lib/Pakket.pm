@@ -122,7 +122,7 @@ can have a range of allowed versions for a package, for example.
 =head3 Spec files
 
 Similar to RPM spec files, Pakket has spec files. You can create them
-yourself or you can use the L<scaffold|Pakket::CLI::Command::scaffold>
+yourself or you can use the L<generate|Pakket::CLI::Command::generate>
 command to create them for you.
 
 The basic spec file in Pakket contain a package's C<category>,
@@ -185,4 +185,3 @@ While other packaging systems usually have I<development packages> (or
 I<devel> or I<dev>), Pakket doesn't differentiate between those.
 Instead, a Pakket package contains everything created at build time,
 including the headers and the compiled results.
-

@@ -114,7 +114,7 @@ can have a range of allowed versions for a package, for example.
 ### Spec files
 
 Similar to RPM spec files, Pakket has spec files. You can create them
-yourself or you can use the [scaffold](https://metacpan.org/pod/Pakket::CLI::Command::scaffold)
+yourself or you can use the [generate](https://metacpan.org/pod/Pakket::CLI::Command::generate)
 command to create them for you.
 
 The basic spec file in Pakket contain a package's `category`,
