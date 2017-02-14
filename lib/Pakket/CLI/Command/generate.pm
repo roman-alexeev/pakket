@@ -49,6 +49,16 @@ sub validate_args {
 
     @{ $args } and $self->usage_error("No extra arguments are allowed.\n");
 
+    my $spec_dir   = $opt->{'spec_dir'};
+    $spec_dir and path( $spec_dir )->exists
+        or $self->usage_error( "spec-dir: $spec_dir doesn't exist\n" );
+
+    my $source_dir = $opt->{'source_dir'};
+    if ( $source_dir ) {
+        path( $source_dir )->exists
+            or $self->usage_error( "source-dir: $source_dir doesn't exist\n" );
+    }
+
     my $category;
     my $name;
     my $type;
@@ -72,8 +82,8 @@ sub validate_args {
         name       => $name,
         category   => $category,
         type       => $type,
-        spec_dir   => $opt->{'spec_dir'},
-        source_dir => $opt->{'source_dir'},
+        spec_dir   => $spec_dir,
+        source_dir => $source_dir,
         extract    => $opt->{'extract'},
     };
 }
