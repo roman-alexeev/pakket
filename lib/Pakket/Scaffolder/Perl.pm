@@ -13,7 +13,6 @@ use Path::Tiny          qw< path >;
 use Types::Path::Tiny   qw< Path  >;
 use Log::Any            qw< $log >;
 
-use Pakket::Utils       qw< generate_json_conf >;
 use Pakket::Utils::Perl qw< should_skip_module >;
 use Pakket::Scaffolder::Perl::Module;
 use Pakket::Scaffolder::Perl::CPANfile;

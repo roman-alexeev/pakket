@@ -5,13 +5,11 @@ use strict;
 use warnings;
 use version 0.77;
 
-use Exporter   qw< import >;
-use Path::Tiny qw< path   >;
+use Exporter qw< import >;
 use JSON::MaybeXS;
 
 our @EXPORT_OK = qw<
     is_writeable
-    generate_json_conf
     generate_env_vars
     canonical_package_name
     encode_json_pretty
@@ -26,47 +24,6 @@ sub is_writeable {
     }
 
     return -w $path;
-}
-
-sub generate_json_conf {
-    my $output_file = shift;
-    my $spec_dir    = shift;
-    my $index       = {};
-
-    my $output = path( $output_file );
-    $output->exists and $index = decode_json( $output->slurp_utf8 );
-
-    my $category_iter = path( $spec_dir )->iterator;
-    while ( my $category = $category_iter->() ) {
-        $category->is_dir and "$category" ne '.'
-            or return;
-
-        my $category_name = $category->basename;
-        my $dist_iter     = $category->iterator;
-        while ( my $dist = $dist_iter->() ) {
-            my @versions = map s{.+/([^/]+)\.json$}{$1}r,
-                           grep $_->basename ne 'versioning.json',
-                           $dist->children(qr/\.json$/);
-
-            my $latest_version;
-            if ( $category_name eq 'perl' ) {
-                ($latest_version)
-                    = sort { version->parse($b) <=> version->parse($a) }
-                        @versions;
-            } else {
-                ($latest_version) = sort { $b cmp $a } @versions;
-            }
-
-            $index->{$category_name}{ $dist->basename } = {
-                'latest'   => $latest_version,
-                'versions' =>
-                    { map +( $_ => $dist->basename . "-$_" ), @versions, },
-            };
-
-        }
-    }
-
-    $output->spew_utf8( encode_json_pretty($index) );
 }
 
 sub generate_env_vars {
