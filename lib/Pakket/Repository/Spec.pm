@@ -5,7 +5,8 @@ use Moose;
 use MooseX::StrictConstructor;
 use Types::Path::Tiny qw< Path >;
 use Carp              qw< croak >;
-use JSON::MaybeXS     qw< encode_json decode_json >;
+use JSON::MaybeXS     qw< decode_json >;
+use Pakket::Utils     qw< encode_json_canonical >;
 
 extends qw< Pakket::Repository >;
 with    qw< Pakket::Role::HasDirectory >;
@@ -44,7 +45,7 @@ sub store_package_spec {
 
     return $self->store_content(
         $package->full_name,
-        encode_json( $package->spec ),
+        encode_json_canonical( $package->spec ),
     );
 }
 

@@ -7,11 +7,12 @@ use Moose;
 use MooseX::StrictConstructor;
 
 use URI::Escape       qw< uri_escape >;
-use JSON::MaybeXS     qw< encode_json decode_json >;
+use JSON::MaybeXS     qw< decode_json >;
 use Path::Tiny        qw< path >;
 use Log::Any          qw< $log >;
 use Types::Path::Tiny qw< Path >;
 use HTTP::Tiny;
+use Pakket::Utils     qw< encode_json_canonical >;
 
 with qw<
     Pakket::Role::Repository::Backend
@@ -97,7 +98,7 @@ sub store_content {
 
     my $response = $self->http_client->post(
         $full_url => {
-            'content' => encode_json( { 'data' => $content, 'id' => $id, } ),
+            'content' => encode_json_canonical( { 'data' => $content, 'id' => $id, } ),
             'headers' => {
                 'Content-Type' => 'application/json',
             },

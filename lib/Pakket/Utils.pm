@@ -12,6 +12,7 @@ our @EXPORT_OK = qw<
     is_writeable
     generate_env_vars
     canonical_package_name
+    encode_json_canonical
     encode_json_pretty
 >;
 
@@ -85,6 +86,11 @@ sub canonical_package_name {
         and return sprintf( '%s/%s=%s', $category, $package, $version );
 
     return sprintf( '%s/%s', $category, $package );
+}
+
+sub encode_json_canonical {
+    my $content = shift;
+    return JSON::MaybeXS->new->canonical->encode($content);
 }
 
 sub encode_json_pretty {

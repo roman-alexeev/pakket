@@ -4,12 +4,12 @@ package Pakket::Repository::Backend::File;
 use Moose;
 use MooseX::StrictConstructor;
 
-use JSON::MaybeXS     qw< encode_json decode_json >;
+use JSON::MaybeXS     qw< decode_json >;
 use Path::Tiny        qw< path >;
 use Log::Any          qw< $log >;
 use Types::Path::Tiny qw< Path >;
 use Digest::SHA       qw< sha1_hex >;
-use Pakket::Utils     qw< encode_json_pretty >;
+use Pakket::Utils     qw< encode_json_canonical encode_json_pretty >;
 
 with qw<
     Pakket::Role::HasDirectory
@@ -81,7 +81,7 @@ sub _save_index {
     my $content
         = $self->pretty_json
         ? encode_json_pretty( $self->repo_index )
-        : encode_json( $self->repo_index );
+        : encode_json_canonical( $self->repo_index );
 
     $self->index_file->spew_utf8($content);
 }
