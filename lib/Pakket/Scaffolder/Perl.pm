@@ -125,9 +125,21 @@ sub run {
     my $self = shift;
     my %failed;
 
+    # get current index for skipping existing distributions
+    #
+    # TODO: use in recursive dependency run (if needed) to
+    #       skip existing satisfying dependencies.
+    my $spec_index = $self->spec_repo->all_object_ids;
+    my %spec_index =
+        map { m{^.*?/(.*)=(.*?)$}; $1 => $2 } @{ $spec_index };
+
     # Bootstrap toolchain
     for my $dist ( @{ $self->perl_bootstrap_modules } ) {
-        ### TODO: check & skip if already exists
+        if ( exists $spec_index{$dist} ) {
+            $log->debugf( 'skipping %s (already have version: %s)',
+                          $dist, $spec_index{$dist} );
+            next;
+        }
 
         $log->debugf( 'bootstrapping config: %s', $dist );
         my $requirements = $self->prereqs->requirements_for(qw< configure requires >);
