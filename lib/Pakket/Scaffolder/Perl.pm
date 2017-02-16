@@ -54,6 +54,13 @@ has 'modules' => (
     'isa' => 'HashRef',
 );
 
+has 'spec_index' => (
+    'is'      => 'ro',
+    'isa'     => 'HashRef',
+    'lazy'    => 1,
+    'builder' => '_build_spec_index',
+);
+
 has 'prereqs' => (
     'is'      => 'ro',
     'isa'     => 'CPAN::Meta::Prereqs',
@@ -83,6 +90,17 @@ sub _build_prereqs {
 sub _build_download_dir {
     my $self = shift;
     return Path::Tiny->tempdir( 'CLEANUP' => 1 );
+}
+
+sub _build_spec_index {
+    my $self = shift;
+    my $spec_index = $self->spec_repo->all_object_ids;
+    my %spec_index;
+    for ( @{ $spec_index } ) {
+        m{^.*?/(.*)=(.*?)$};
+        $spec_index{$1}{$2} = 1;
+    }
+    return \%spec_index;
 }
 
 sub BUILDARGS {
@@ -125,19 +143,12 @@ sub run {
     my $self = shift;
     my %failed;
 
-    # get current index for skipping existing distributions
-    #
-    # TODO: use in recursive dependency run (if needed) to
-    #       skip existing satisfying dependencies.
-    my $spec_index = $self->spec_repo->all_object_ids;
-    my %spec_index =
-        map { m{^.*?/(.*)=(.*?)$}; $1 => $2 } @{ $spec_index };
-
     # Bootstrap toolchain
     for my $dist ( @{ $self->perl_bootstrap_modules } ) {
-        if ( exists $spec_index{$dist} ) {
+        # TODO: check versions
+        if ( exists $self->spec_index->{$dist} ) {
             $log->debugf( 'skipping %s (already have version: %s)',
-                          $dist, $spec_index{$dist} );
+                          $dist, $self->spec_index->{$dist} );
             next;
         }
 
@@ -206,6 +217,19 @@ sub create_spec_for {
     my $dist_name    = $release->{'distribution'};
     my $rel_version  = $release->{'version'};
 
+    if ( exists $self->spec_index->{ $name } ) {
+        if ( exists $self->spec_index->{ $name }{ $rel_version } ) {
+            $log->debugf( 'Skipping %s-%s (already exists in repo)', $name, $rel_version );
+            return;
+        }
+        else {
+            $log->debugf( 'We have the following versions for %s:', $name );
+            $log->debugf( '- %s', $rel_version )
+                for keys %{ $self->spec_index->{ $name } };
+            $log->debugf( 'Adding %s version %s', $name, $rel_version );
+        }
+    }
+
     my $package_spec = {
         'Package' => {
             'category' => 'perl',
@@ -272,7 +296,7 @@ sub create_spec_for {
     }
 
     my $filename = $self->spec_repo->store_package_spec($package);
-    $log->infof( 'Stored %s as %s', $package->full_name, $filename);
+#    $log->debugf( 'Stored %s as %s', $package->full_name, $filename);
 
     $self->set_depth( $self->depth - 1 );
 }
