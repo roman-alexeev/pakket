@@ -217,15 +217,17 @@ sub create_spec_for {
     my $dist_name    = $release->{'distribution'};
     my $rel_version  = $release->{'version'};
 
-    if ( exists $self->spec_index->{ $name } ) {
-        if ( exists $self->spec_index->{ $name }{ $rel_version } ) {
+    my $index = $self->spec_index;
+
+    if ( exists $index->{ $name } ) {
+        if ( exists $index->{ $name }{ $rel_version } ) {
             $log->debugf( 'Skipping %s-%s (already exists in repo)', $name, $rel_version );
             return;
         }
         else {
             $log->debugf( 'We have the following versions for %s:', $name );
-            $log->debugf( '- %s', $rel_version )
-                for keys %{ $self->spec_index->{ $name } };
+            $log->debugf( '- %s', $_ )
+                for keys %{ $index->{ $name } };
             $log->debugf( 'Adding %s version %s', $name, $rel_version );
         }
     }
