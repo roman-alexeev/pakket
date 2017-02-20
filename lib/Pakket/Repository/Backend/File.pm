@@ -134,7 +134,7 @@ sub store_content {
 sub retrieve_content {
     my ( $self, $id ) = @_;
     return $self->retrieve_location($id)
-                ->slurp( { 'binmode' => ':raw' } );
+                ->slurp_utf8( { 'binmode' => ':raw' } );
 }
 
 sub remove_content {
