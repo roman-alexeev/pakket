@@ -10,16 +10,21 @@ use constant {
     'PARCEL_FILES_DIR'     => 'files',
     'PARCEL_METADATA_FILE' => 'meta.json',
 
-    # CATEGORY/PACKAGE         == latest version
-    # CATEGORY/PACKAGE=VERSION == Exact version
+    # CATEGORY/PACKAGE                 == latest version, latest release
+    # CATEGORY/PACKAGE=VERSION         == Exact version, latest release
+    # CATEGORY/PACKAGE=VERSION:RELEASE == Exact version and release
     'PAKKET_PACKAGE_SPEC'  => qr{
         ^
-        ([^/]+)     # category
+        ( [^/]+ )       # category
         /
-        ([^=]+)    # name
+        ( [^=]+ )       # name
         (?:
             =
-            (.+) # optional version
+            ( [^:]+ )   # optional version
+            (?:
+                :
+                (.*)    # optional release
+            )?
         )?
         $
     }xms,
