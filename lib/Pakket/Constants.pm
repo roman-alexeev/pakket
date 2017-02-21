@@ -25,6 +25,8 @@ use constant {
     }xms,
 
     'PAKKET_LATEST_VERSION' => 'LATEST',
+
+    'PAKKET_INFO_FILE'      => 'info.json',
 };
 
 our @EXPORT_OK = qw<
@@ -33,6 +35,7 @@ our @EXPORT_OK = qw<
     PARCEL_METADATA_FILE
     PAKKET_PACKAGE_SPEC
     PAKKET_LATEST_VERSION
+    PAKKET_INFO_FILE
 >;
 
 1;
