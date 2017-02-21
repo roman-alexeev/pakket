@@ -15,11 +15,12 @@ use English               qw< -no_match_vars >;
 use Pakket::Repository::Parcel;
 use Pakket::Requirement;
 use Pakket::Package;
-use Pakket::Utils         qw< is_writeable >;
+use Pakket::Utils         qw< is_writeable encode_json_pretty >;
 use Pakket::Constants qw<
     PARCEL_METADATA_FILE
     PARCEL_FILES_DIR
     PAKKET_PACKAGE_SPEC
+    PAKKET_INFO_FILE
 >;
 
 with 'Pakket::Role::RunCommand';
@@ -321,7 +322,10 @@ sub install_package {
                 'version'  => $prereq_version,
             );
 
-            $self->install_package( $prereq, $dir, $opts );
+            $self->install_package(
+                $prereq, $dir,
+                { %{$opts}, 'as_prereq' => 1 },
+            );
         }
     }
 
@@ -335,9 +339,56 @@ sub install_package {
         dircopy( $item, $target_dir );
     }
 
+    $self->_update_info_file( $parcel_dir, $dir, $full_package, $opts );
+
     $log->infof( 'Delivered parcel %s', $full_package->full_name );
 
     return;
+}
+
+sub _update_info_file {
+    my ( $self, $parcel_dir, $dir, $package, $opts ) = @_;
+
+    my $prereqs      = $package->prereqs;
+    my $info_file    = $dir->child( PAKKET_INFO_FILE() );
+    my $install_data = $info_file->exists
+        ? decode_json( $info_file->slurp_utf8 )
+        : {};
+
+    my $files = {};
+
+    # get list of files
+    $parcel_dir->visit(
+        sub {
+            my ( $path, $state ) = @_;
+
+            $path->is_file
+                or return;
+
+            my $filename = $path->relative($parcel_dir);
+            $files->{$filename} = {
+                'category' => $package->category,
+                'name'     => $package->name,
+                'version'  => $package->version,
+            };
+        },
+        { 'recurse' => 1 },
+    );
+
+    $install_data->{'installed_packages'} = {
+        $package->category => {
+            $package->name => {
+                'version'   => $package->version,
+                'files'     => [ keys %{$files} ],
+                'as_prereq' => $opts->{'as_prereq'} ? 1 : 0,
+                'prereqs'   => $package->prereqs,
+            },
+        },
+    };
+
+    $install_data->{'installed_files'} = $files;
+
+    $info_file->spew_utf8( encode_json_pretty($install_data) );
 }
 
 __PACKAGE__->meta->make_immutable;
