@@ -296,36 +296,16 @@ sub install_package {
         exit 1;
     }
 
-    my $parcel_file
+    my $parcel_dir
         = $self->parcel_repo->retrieve_package_parcel($package);
 
-    $parcel_file->copy($dir);
-
-    my $parcel_basename = $parcel_file->basename;
-
-    $log->debug("Unpacking $parcel_basename into $dir");
-
-    # Create a place for pkt files to be extracted
-    $dir->sibling('extracted')->mkpath;
-
-    # Unpack into a separate directory
-    my $tmp_extraction_dir = Path::Tiny->tempdir(
-        'CLEANUP' => 1,
-        'DIR'     => $dir->sibling("extracted")->stringify,
-    );
-
-    my $archive = Archive::Any->new($parcel_file);
-    $archive->extract($tmp_extraction_dir);
-
-    my $full_parcel_dir = $tmp_extraction_dir->child( PARCEL_FILES_DIR() );
+    my $full_parcel_dir = $parcel_dir->child( PARCEL_FILES_DIR() );
 
     # Get the spec and create a new Package object
     # This one will have the dependencies as well
     my $spec_file    = $full_parcel_dir->child( PARCEL_METADATA_FILE() );
     my $spec         = decode_json $spec_file->slurp_utf8;
     my $full_package = Pakket::Package->new_from_spec($spec);
-
-    $dir->child($parcel_basename)->remove;
 
     my $prereqs = $full_package->prereqs;
     foreach my $prereq_category ( keys %{$prereqs} ) {
