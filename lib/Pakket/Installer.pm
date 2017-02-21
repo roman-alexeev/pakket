@@ -335,7 +335,7 @@ sub install_package {
         dircopy( $item, $target_dir );
     }
 
-    $log->info( 'Delivered parcel %s', $full_package->full_name );
+    $log->infof( 'Delivered parcel %s', $full_package->full_name );
 
     return;
 }
