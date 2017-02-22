@@ -9,17 +9,6 @@ use Path::Tiny;
 use Archive::Tar::Wrapper;
 
 extends qw< Pakket::Repository >;
-with    qw< Pakket::Role::HasDirectory >;
-
-sub _build_backend {
-    my $self = shift;
-
-    return [
-        'File',
-        'directory'      => $self->directory,
-        'file_extension' => 'pkt',
-    ];
-}
 
 sub retrieve_package_parcel {
     my ( $self, $package ) = @_;

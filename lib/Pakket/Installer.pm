@@ -15,23 +15,18 @@ use English               qw< -no_match_vars >;
 use Pakket::Repository::Parcel;
 use Pakket::Requirement;
 use Pakket::Package;
-use Pakket::Utils         qw< is_writeable encode_json_pretty >;
+use Pakket::Types     qw< PakketRepositoryBackend >;
+use Pakket::Utils     qw< is_writeable encode_json_pretty >;
 use Pakket::Constants qw<
     PARCEL_METADATA_FILE
     PARCEL_FILES_DIR
     PAKKET_INFO_FILE
 >;
 
-with 'Pakket::Role::RunCommand';
-
-# Sample structure:
-# ~/.pakket/
-#        bin/
-#        etc/
-#        repos/
-#        libraries/
-#                  active ->
-#
+with qw<
+    Pakket::Role::HasConfig
+    Pakket::Role::RunCommand
+>;
 
 has 'pakket_libraries_dir' => (
     'is'      => 'ro',
@@ -47,19 +42,13 @@ has 'pakket_dir' => (
     'required' => 1,
 );
 
-has 'parcel_dir' => (
-    'is'       => 'ro',
-    'isa'      => Path,
-    'coerce'   => 1,
-    'required' => 1,
-);
-
 has 'keep_copies' => (
     'is'      => 'ro',
     'isa'     => 'Int',
     'default' => sub {1},
 );
 
+# FIXME: Move to HasParcelRepo
 has 'parcel_repo' => (
     'is'      => 'ro',
     'isa'     => 'Pakket::Repository::Parcel',
@@ -67,14 +56,23 @@ has 'parcel_repo' => (
     'builder' => '_build_parcel_repo',
 );
 
-# We're starting with a local repo
-# # but in the future this will be dictated from a configuration
-sub _build_parcel_repo {
-    my $self   = shift;
+# FIXME: Move to HasParcelRepo
+has 'parcel_repo_backend' => (
+    'is'      => 'ro',
+    'isa'     => 'PakketRepositoryBackend',
+    'lazy'    => 1,
+    'coerce'  => 1,
+    'default' => sub {
+        my $self = shift;
+        return $self->config->{'repositories'}{'parcel'};
+    },
+);
 
-    # Use default for now, but use the directory we want at least
+sub _build_parcel_repo {
+    my $self = shift;
+
     return Pakket::Repository::Parcel->new(
-        'directory' => $self->parcel_dir,
+        'backend' => $self->parcel_repo_backend,
     );
 }
 
