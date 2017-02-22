@@ -27,7 +27,11 @@ sub opt_spec {
             { 'required' => 1 },
         ],
         [ 'input-file=s', 'install eveything listed in this file' ],
-        [ 'verbose|v+',   'verbose output (can be provided multiple times)', { 'default' => 1 } ],
+        [
+            'verbose|v+',
+            'verbose output (can be provided multiple times)',
+            { 'default' => 1 },
+        ],
     );
 }
 
