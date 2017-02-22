@@ -58,6 +58,26 @@ sub _prepare_statement {
     return $stmt;
 }
 
+sub has_object {
+    my ( $self, $id ) = @_;
+    my $sql  = q{ SELECT id FROM data WHERE id = ? };
+    my $stmt = $self->_prepare_statement($sql);
+
+    $stmt->bind_param( 1, $id, SQL_VARCHAR );
+    if ( !$stmt->execute() ) {
+        $log->criticalf(
+            'Could not retrieve content for id %d: %s',
+            $id,
+            $DBI::errstr,
+        );
+
+        exit 1;
+    }
+
+    my $results = $stmt->fetchall_arrayref();
+    return @{$results} == 1;
+}
+
 sub store_location {
     my ( $self, $id, $file_to_store ) = @_;
     my $content = path($file_to_store)->slurp( { 'binmode' => ':raw' } );

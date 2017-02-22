@@ -39,6 +39,16 @@ sub setup {
         my $prefix = lc $repository_type;
 
         prefix "/$prefix" => sub {
+            get '/has_object' => with_types [
+                [ 'query', 'id', 'Str', 'MissingID' ],
+            ] => sub {
+                my $id = query_parameters->get('id');
+
+                return encode_json({
+                    'has_object' => $repo->has_object($id),
+                });
+            };
+
             get '/all_object_ids' => sub {
                 return encode_json({
                     'object_ids' => $repo->all_object_ids,

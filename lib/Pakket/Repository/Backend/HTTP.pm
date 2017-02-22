@@ -72,6 +72,22 @@ sub all_object_ids {
     return $content->{'data'};
 }
 
+sub has_object {
+    my ( $self, $id ) = @_;
+    my $response = $self->http_client->get(
+        $self->base_url . '/has_object?id=' . uri_escape($id),
+    );
+
+    if ( !$response->{'success'} ) {
+        $log->criticalf( 'Could not get remote has_object: %d -- %s',
+            $response->{'status'}, $response->{'reason'} );
+        exit 1;
+    }
+
+    my $content = decode_json( $response->{'content'} );
+    return $content->{'has_object'};
+}
+
 sub store_location {
     my ( $self, $id, $file_to_store ) = @_;
     my $content = {
