@@ -26,17 +26,7 @@ has 'dbh' => (
 sub all_object_ids {
     my $self = shift;
     my $sql  = q{SELECT id FROM data};
-    my $stmt = $self->dbh->prepare($sql);
-
-    if ( !$stmt ) {
-        $log->criticalf(
-            'Could not prepare statement [%s] => %s',
-            $sql,
-            $DBI::errstr,
-        );
-
-        exit 1;
-    }
+    my $stmt = $self->_prepare_statement($sql);
 
     if ( !$stmt->execute() ) {
         $log->criticalf(
@@ -49,6 +39,23 @@ sub all_object_ids {
 
     my @all_object_ids = map +( $_->[0] ), @{ $stmt->fetchall_arrayref() };
     return \@all_object_ids;
+}
+
+sub _prepare_statement {
+    my ( $self, $sql ) = @_;
+    my $stmt = $self->dbh->prepare($sql);
+
+    if ( !$stmt ) {
+        $log->criticalf(
+            'Could not prepare statement [%s] => %s',
+            $sql,
+            $DBI::errstr,
+        );
+
+        exit 1;
+    }
+
+    return $stmt;
 }
 
 sub store_location {
@@ -69,16 +76,7 @@ sub store_content {
     my ( $self, $id, $content ) = @_;
     {
         my $sql  = q{DELETE FROM data WHERE id = ?};
-        my $stmt = $self->dbh->prepare($sql);
-        if ( !$stmt ) {
-            $log->criticalf(
-                'Could not prepare statement [%s] => %s',
-                $sql,
-                $DBI::errstr,
-            );
-
-            exit 1;
-        }
+        my $stmt = $self->_prepare_statement($sql);
 
         $stmt->bind_param( 1, $id, SQL_VARCHAR );
         if ( !$stmt->execute() ) {
@@ -93,16 +91,7 @@ sub store_content {
     }
     {
         my $sql  = q{INSERT INTO data (id, content) VALUES (?, ?)};
-        my $stmt = $self->dbh->prepare($sql);
-        if ( !$stmt ) {
-            $log->criticalf(
-                'Could not prepare statement [%s] => %s',
-                $sql,
-                $DBI::errstr,
-            );
-
-            exit 1;
-        }
+        my $stmt = $self->_prepare_statement($sql);
 
         $stmt->bind_param( 1, $id,      SQL_VARCHAR );
         $stmt->bind_param( 2, $content, SQL_BLOB );
@@ -121,17 +110,7 @@ sub store_content {
 sub retrieve_content {
     my ( $self, $id ) = @_;
     my $sql  = q{SELECT content FROM data WHERE id = ?};
-    my $stmt = $self->dbh->prepare($sql);
-
-    if ( !$stmt ) {
-        $log->criticalf(
-            'Could not prepare statement [%s] => %s',
-            $sql,
-            $DBI::errstr,
-        );
-
-        exit 1;
-    }
+    my $stmt = $self->_prepare_statement($sql);
 
     $stmt->bind_param(1, $id, SQL_VARCHAR);
     if ( !$stmt->execute() ) {
