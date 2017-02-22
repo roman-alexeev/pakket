@@ -192,7 +192,6 @@ sub bootstrap_build {
 
     my %dists;
     my @spec_object_ids   = @{ $self->spec_repo->all_object_ids() };
-    my @parcel_object_ids = @{ $self->parcel_repo->all_object_ids() };
 
     for my $dist (@dists) {
         # Right now everything is pinned so there is only
@@ -207,14 +206,20 @@ sub bootstrap_build {
 
     foreach my $dist_name ( keys %dists ) {
         my $dist_version = $dists{$dist_name};
-        my ($has_parcel) = grep
-            m{^ \Q$category\E / \Q$dist_name\E = \Q$dist_version\E $}xms,
-            @parcel_object_ids;
+        my $requirement  = Pakket::Requirement->new(
+            'category' => $category,
+            'name'     => $dist_name,
+            'version'  => $dist_version,
+        );
 
-        $has_parcel or next;
+        $self->parcel_repo->has_object($requirement)
+            or next;
 
-        $log->noticef( 'Skipping: parcel %s=%s already exists',
-                       $dist_name, $dist_version );
+        $log->noticef(
+            'Skipping: parcel %s already exists',
+            $requirement->full_name,
+        );
+
         @dists = grep +( $_ ne $dist_name ), @dists;
     }
 
