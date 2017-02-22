@@ -23,6 +23,12 @@ has 'version' => (
     'coerce'   => 1,
 );
 
+has 'is_bootstrap' => (
+    'is'      => 'ro',
+    'isa'     => 'Bool',
+    'default' => sub {0},
+);
+
 sub new_from_string {
     my ( $class, $req_str ) = @_;
 

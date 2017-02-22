@@ -15,11 +15,12 @@ use English               qw< -no_match_vars >;
 use Pakket::Repository::Parcel;
 use Pakket::Requirement;
 use Pakket::Package;
-use Pakket::Utils         qw< is_writeable >;
+use Pakket::Utils         qw< is_writeable encode_json_pretty >;
 use Pakket::Constants qw<
     PARCEL_METADATA_FILE
     PARCEL_FILES_DIR
     PAKKET_PACKAGE_SPEC
+    PAKKET_INFO_FILE
 >;
 
 with 'Pakket::Role::RunCommand';
@@ -296,36 +297,16 @@ sub install_package {
         exit 1;
     }
 
-    my $parcel_file
+    my $parcel_dir
         = $self->parcel_repo->retrieve_package_parcel($package);
 
-    $parcel_file->copy($dir);
-
-    my $parcel_basename = $parcel_file->basename;
-
-    $log->debug("Unpacking $parcel_basename into $dir");
-
-    # Create a place for pkt files to be extracted
-    $dir->sibling('extracted')->mkpath;
-
-    # Unpack into a separate directory
-    my $tmp_extraction_dir = Path::Tiny->tempdir(
-        'CLEANUP' => 1,
-        'DIR'     => $dir->sibling("extracted")->stringify,
-    );
-
-    my $archive = Archive::Any->new($parcel_file);
-    $archive->extract($tmp_extraction_dir);
-
-    my $full_parcel_dir = $tmp_extraction_dir->child( PARCEL_FILES_DIR() );
+    my $full_parcel_dir = $parcel_dir->child( PARCEL_FILES_DIR() );
 
     # Get the spec and create a new Package object
     # This one will have the dependencies as well
     my $spec_file    = $full_parcel_dir->child( PARCEL_METADATA_FILE() );
     my $spec         = decode_json $spec_file->slurp_utf8;
     my $full_package = Pakket::Package->new_from_spec($spec);
-
-    $dir->child($parcel_basename)->remove;
 
     my $prereqs = $full_package->prereqs;
     foreach my $prereq_category ( keys %{$prereqs} ) {
@@ -341,7 +322,10 @@ sub install_package {
                 'version'  => $prereq_version,
             );
 
-            $self->install_package( $prereq, $dir, $opts );
+            $self->install_package(
+                $prereq, $dir,
+                { %{$opts}, 'as_prereq' => 1 },
+            );
         }
     }
 
@@ -355,9 +339,56 @@ sub install_package {
         dircopy( $item, $target_dir );
     }
 
-    $log->info( 'Delivered parcel %s', $full_package->full_name );
+    $self->_update_info_file( $parcel_dir, $dir, $full_package, $opts );
+
+    $log->infof( 'Delivered parcel %s', $full_package->full_name );
 
     return;
+}
+
+sub _update_info_file {
+    my ( $self, $parcel_dir, $dir, $package, $opts ) = @_;
+
+    my $prereqs      = $package->prereqs;
+    my $info_file    = $dir->child( PAKKET_INFO_FILE() );
+    my $install_data = $info_file->exists
+        ? decode_json( $info_file->slurp_utf8 )
+        : {};
+
+    my %files;
+
+    # get list of files
+    $parcel_dir->visit(
+        sub {
+            my ( $path, $state ) = @_;
+
+            $path->is_file
+                or return;
+
+            my $filename = $path->relative($parcel_dir);
+            $files{$filename} = {
+                'category' => $package->category,
+                'name'     => $package->name,
+                'version'  => $package->version,
+            };
+        },
+        { 'recurse' => 1 },
+    );
+
+    $install_data->{'installed_packages'} = {
+        $package->category => {
+            $package->name => {
+                'version'   => $package->version,
+                'files'     => [ keys %files ],
+                'as_prereq' => $opts->{'as_prereq'} ? 1 : 0,
+                'prereqs'   => $package->prereqs,
+            },
+        },
+    };
+
+    $install_data->{'installed_files'} = \%files;
+
+    $info_file->spew_utf8( encode_json_pretty($install_data) );
 }
 
 __PACKAGE__->meta->make_immutable;
