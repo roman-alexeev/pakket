@@ -16,6 +16,11 @@ sub full_name {
     );
 }
 
+sub id {
+    my $self = shift;
+    return $self->full_name;
+}
+
 no Moose::Role;
 
 1;
