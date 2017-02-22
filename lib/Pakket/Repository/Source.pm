@@ -65,7 +65,7 @@ sub store_package_source {
     }
 
     $log->debug("Storing $file");
-    $self->store_location( $package->full_name, $file );
+    $self->store_location( $package->id, $file );
 }
 
 sub remove_package_source {

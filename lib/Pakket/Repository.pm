@@ -39,7 +39,7 @@ sub BUILD {
 
 sub retrieve_package_file {
     my ( $self, $type, $package ) = @_;
-    my $file = $self->retrieve_location( $package->full_name );
+    my $file = $self->retrieve_location( $package->id );
 
     if ( !$file ) {
         $log->criticalf(
@@ -59,7 +59,7 @@ sub retrieve_package_file {
 
 sub remove_package_file {
     my ( $self, $type, $package ) = @_;
-    my $file = $self->retrieve_location( $package->full_name );
+    my $file = $self->retrieve_location( $package->id );
 
     if ( !$file ) {
         $log->criticalf(
@@ -71,7 +71,7 @@ sub remove_package_file {
     }
 
     $log->debug("Removing $type package");
-    $self->remove_location( $package->full_name );
+    $self->remove_location( $package->id );
 }
 
 __PACKAGE__->meta->make_immutable;
