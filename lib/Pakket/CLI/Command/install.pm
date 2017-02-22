@@ -6,6 +6,8 @@ use warnings;
 use Pakket::CLI '-command';
 use Pakket::Installer;
 use Pakket::Log;
+use Pakket::Package;
+use Pakket::Constants qw< PAKKET_PACKAGE_SPEC >;
 use Log::Any::Adapter;
 use Path::Tiny      qw< path >;
 
@@ -38,17 +40,31 @@ sub validate_args {
     $self->{'installer'}{'pakket_dir'} = $opt->{'to'};
     $self->{'installer'}{'parcel_dir'} = $opt->{'from'};
 
-    if ( defined $opt->{'input_file'} ) {
-        $self->{'installer'}{'input_file'} = $opt->{'input_file'};
-        $self->{'parcels'} = [];
-    } else {
-        @{$args} == 0
-            and $self->usage_error('Must provide parcels to install');
+    my @package_strs
+        = defined $opt->{'input_file'}
+        ? path( $opt->{'input_file'} )->lines_utf8( { 'chomp' => 1 } )
+        : @{$args};
 
-        my @parcels = @{$args};
+    my @packages;
+    foreach my $package_str (@package_strs) {
+        my ( $pkg_cat, $pkg_name, $pkg_version ) =
+            $package_str =~ PAKKET_PACKAGE_SPEC();
 
-        $self->{'parcels'} = \@parcels;
+        if ( !defined $pkg_version ) {
+            $self->usage_error(
+                'Currently you must provide a version to install: '
+                .  $package_str,
+            );
+        }
+
+        push @packages, Pakket::Package->new(
+            'category' => $pkg_cat,
+            'name'     => $pkg_name,
+            'version'  => $pkg_version,
+        );
     }
+
+    $self->{'packages'} = \@packages;
 }
 
 sub execute {
@@ -58,10 +74,10 @@ sub execute {
             defined $self->{'installer'}{$_}
                 ? ( $_ => $self->{'installer'}{$_} )
                 : ()
-        ), qw< pakket_dir parcel_dir input_file > ),
+        ), qw< pakket_dir parcel_dir > ),
     );
 
-    return $installer->install( @{ $self->{'parcels'} } );
+    return $installer->install( @{ $self->{'packages'} } );
 }
 
 1;
