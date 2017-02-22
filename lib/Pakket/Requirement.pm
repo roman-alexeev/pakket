@@ -8,7 +8,7 @@ use Log::Any          qw< $log >;
 use Pakket::Constants qw< PAKKET_PACKAGE_SPEC >;
 use Pakket::Types;
 
-with qw< Pakket::Role::PrintableNames >;
+with qw< Pakket::Role::BasicPackageAttrs >;
 
 has [qw< category name >] => (
     'is'       => 'ro',

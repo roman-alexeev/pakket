@@ -25,7 +25,7 @@ sub retrieve_package_spec {
     my ( $self, $package ) = @_;
 
     my $spec_str = $self->retrieve_content(
-        $package->full_name,
+        $package->id,
     );
 
     my $config;
@@ -44,7 +44,7 @@ sub store_package_spec {
     my ( $self, $package ) = @_;
 
     return $self->store_content(
-        $package->full_name,
+        $package->id,
         encode_json_canonical( $package->spec ),
     );
 }

@@ -3,41 +3,79 @@ package Pakket::Repository::Backend::DBI;
 
 # FIXME: Add methods: remove_location, remove_content
 
-use DBI qw(:sql_types);
-
 use Moose;
 use MooseX::StrictConstructor;
 
-use Path::Tiny        qw< path >;
-use Log::Any          qw< $log >;
+use DBI        qw< :sql_types >;
 use Types::DBI;
+use Path::Tiny qw< path >;
+use Log::Any   qw< $log >;
 
 with qw<
     Pakket::Role::Repository::Backend
 >;
 
-has dbh => (
-   is       => 'ro',
-   isa      => Dbh,
-   required => 1,
-   coerce   => 1,
+has 'dbh' => (
+   'is'       => 'ro',
+   'isa'      => Dbh,
+   'required' => 1,
+   'coerce'   => 1,
 );
 
+## no critic qw(Variables::ProhibitPackageVars)
 sub all_object_ids {
     my $self = shift;
-    my $sql = qq{SELECT id FROM data};
-    my $stmt;
-    if (!($stmt = $self->dbh->prepare($sql))) {
-        $log->criticalf('Could not prepare statement [%s] => %s', $sql, $DBI::errstr);
-        exit 1;
-    }
-    if (!$stmt->execute()) {
-        $log->criticalf('Could not get remote all_object_ids: %s', $DBI::errstr);
+    my $sql  = q{SELECT id FROM data};
+    my $stmt = $self->_prepare_statement($sql);
+
+    if ( !$stmt->execute() ) {
+        $log->criticalf(
+            'Could not get remote all_object_ids: %s',
+            $DBI::errstr,
+        );
+
         exit 1;
     }
 
     my @all_object_ids = map +( $_->[0] ), @{ $stmt->fetchall_arrayref() };
     return \@all_object_ids;
+}
+
+sub _prepare_statement {
+    my ( $self, $sql ) = @_;
+    my $stmt = $self->dbh->prepare($sql);
+
+    if ( !$stmt ) {
+        $log->criticalf(
+            'Could not prepare statement [%s] => %s',
+            $sql,
+            $DBI::errstr,
+        );
+
+        exit 1;
+    }
+
+    return $stmt;
+}
+
+sub has_object {
+    my ( $self, $id ) = @_;
+    my $sql  = q{ SELECT id FROM data WHERE id = ? };
+    my $stmt = $self->_prepare_statement($sql);
+
+    $stmt->bind_param( 1, $id, SQL_VARCHAR );
+    if ( !$stmt->execute() ) {
+        $log->criticalf(
+            'Could not retrieve content for id %d: %s',
+            $id,
+            $DBI::errstr,
+        );
+
+        exit 1;
+    }
+
+    my $results = $stmt->fetchall_arrayref();
+    return @{$results} == 1;
 }
 
 sub store_location {
@@ -57,29 +95,33 @@ sub retrieve_location {
 sub store_content {
     my ( $self, $id, $content ) = @_;
     {
-        my $sql = qq{DELETE FROM data WHERE id = ?};
-        my $stmt;
-        if (!($stmt = $self->dbh->prepare($sql))) {
-            $log->criticalf('Could not prepare statement [%s] => %s', $sql, $DBI::errstr);
-            exit 1;
-        }
-        $stmt->bind_param(1, $id, SQL_VARCHAR);
-        if (!$stmt->execute()) {
-            $log->criticalf('Could not delete content for id %d: %s', $id, $DBI::errstr);
+        my $sql  = q{DELETE FROM data WHERE id = ?};
+        my $stmt = $self->_prepare_statement($sql);
+
+        $stmt->bind_param( 1, $id, SQL_VARCHAR );
+        if ( !$stmt->execute() ) {
+            $log->criticalf(
+                'Could not delete content for id %d: %s',
+                $id,
+                $DBI::errstr,
+            );
+
             exit 1;
         }
     }
     {
-        my $sql = qq{INSERT INTO data (id, content) VALUES (?, ?)};
-        my $stmt;
-        if (!($stmt = $self->dbh->prepare($sql))) {
-            $log->criticalf('Could not prepare statement [%s] => %s', $sql, $DBI::errstr);
-            exit 1;
-        }
-        $stmt->bind_param(1, $id, SQL_VARCHAR);
-        $stmt->bind_param(2, $content, SQL_BLOB);
-        if (!$stmt->execute()) {
-            $log->criticalf('Could not insert content for id %d: %s', $id, $DBI::errstr);
+        my $sql  = q{INSERT INTO data (id, content) VALUES (?, ?)};
+        my $stmt = $self->_prepare_statement($sql);
+
+        $stmt->bind_param( 1, $id,      SQL_VARCHAR );
+        $stmt->bind_param( 2, $content, SQL_BLOB );
+        if ( !$stmt->execute() ) {
+            $log->criticalf(
+                'Could not insert content for id %d: %s',
+                $id,
+                $DBI::errstr,
+            );
+
             exit 1;
         }
     }
@@ -87,23 +129,30 @@ sub store_content {
 
 sub retrieve_content {
     my ( $self, $id ) = @_;
-    my $sql = qq{SELECT content FROM data WHERE id = ?};
-    my $stmt;
-    if (!($stmt = $self->dbh->prepare($sql))) {
-        $log->criticalf('Could not prepare statement [%s] => %s', $sql, $DBI::errstr);
-        exit 1;
-    }
+    my $sql  = q{SELECT content FROM data WHERE id = ?};
+    my $stmt = $self->_prepare_statement($sql);
+
     $stmt->bind_param(1, $id, SQL_VARCHAR);
-    if (!$stmt->execute()) {
-        $log->criticalf('Could not retrieve content for id %d: %s', $id, $DBI::errstr);
+    if ( !$stmt->execute() ) {
+        $log->criticalf(
+            'Could not retrieve content for id %d: %s',
+            $id,
+            $DBI::errstr,
+        );
+
         exit 1;
     }
 
     my $all_content = $stmt->fetchall_arrayref();
-    if (!$all_content || @$all_content != 1) {
-        $log->criticalf('Failed to retrieve exactly one row for id %d: %s', $id);
+    if ( !$all_content || @{$all_content} != 1 ) {
+        $log->criticalf(
+            'Failed to retrieve exactly one row for id %d: %s',
+            $id,
+        );
+
         exit 1;
     }
+
     return $all_content->[0];
 }
 

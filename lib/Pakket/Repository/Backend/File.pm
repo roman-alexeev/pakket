@@ -60,6 +60,11 @@ sub all_object_ids {
     return \@all_object_ids;
 }
 
+sub has_object {
+    my ( $self, $id ) = @_;
+    return exists $self->repo_index->{$id};
+}
+
 sub _store_in_index {
     my ( $self, $id ) = @_;
 

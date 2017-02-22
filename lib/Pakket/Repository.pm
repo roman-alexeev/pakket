@@ -4,6 +4,8 @@ package Pakket::Repository;
 use Moose;
 use MooseX::StrictConstructor;
 
+use Path::Tiny;
+use Archive::Any;
 use Log::Any      qw< $log >;
 use Pakket::Types qw< PakketRepositoryBackend >;
 
@@ -33,6 +35,43 @@ sub _build_backend {
 sub BUILD {
     my $self = shift;
     $self->backend();
+}
+
+sub retrieve_package_file {
+    my ( $self, $type, $package ) = @_;
+    my $file = $self->retrieve_location( $package->id );
+
+    if ( !$file ) {
+        $log->criticalf(
+            'We do not have the %s for package %s',
+            $type, $package->full_name,
+        );
+
+        exit 1;
+    }
+
+    my $dir = Path::Tiny->tempdir( 'CLEANUP' => 1 );
+    my $arch = Archive::Any->new( $file->stringify );
+    $arch->extract($dir);
+
+    return $dir;
+}
+
+sub remove_package_file {
+    my ( $self, $type, $package ) = @_;
+    my $file = $self->retrieve_location( $package->id );
+
+    if ( !$file ) {
+        $log->criticalf(
+            'We do not have the %s for package %s',
+            $type, $package->full_name,
+        );
+
+        exit 1;
+    }
+
+    $log->debug("Removing $type package");
+    $self->remove_location( $package->id );
 }
 
 __PACKAGE__->meta->make_immutable;

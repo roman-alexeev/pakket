@@ -6,7 +6,6 @@ use MooseX::StrictConstructor;
 
 use Log::Any qw< $log >;
 use Path::Tiny;
-use Archive::Any;
 use Archive::Tar::Wrapper;
 
 extends qw< Pakket::Repository >;
@@ -22,25 +21,9 @@ sub _build_backend {
     ];
 }
 
-# FIXME: This is duplicated in the Parcel repo
 sub retrieve_package_source {
     my ( $self, $package ) = @_;
-    my $file = $self->retrieve_location( $package->full_name );
-
-    if ( !$file ) {
-        $log->criticalf(
-            'We do not have the source for package %s',
-            $package->full_name,
-        );
-
-        exit 1;
-    }
-
-    my $dir  = Path::Tiny->tempdir( 'CLEANUP' => 1 );
-    my $arch = Archive::Any->new( $file->stringify );
-    $arch->extract($dir);
-
-    return $dir;
+    return $self->retrieve_package_file( 'source', $package );
 }
 
 sub store_package_source {
@@ -50,8 +33,7 @@ sub store_package_source {
     if ( $source_path->is_file ) {
         # We were given a file, which we assume is a valid tar file.
         $file = $source_path;
-    }
-    elsif ( $source_path->is_dir ) {
+    } elsif ( $source_path->is_dir ) {
         # We were given a directory, so we pack it up into a tar file.
         my $arch = Archive::Tar::Wrapper->new();
         $log->debug("Adding $source_path to file");
@@ -76,32 +58,19 @@ sub store_package_source {
         # Write and compress
         $log->debug("Writing archive as $file");
         $arch->write( $file->stringify, 1 );
-    }
-    else {
+    } else {
         $log->criticalf( "Don't know how to deal with '%s', not file or directory",
                          $source_path->stringify );
         exit 1;
     }
 
     $log->debug("Storing $file");
-    $self->store_location( $package->full_name, $file );
+    $self->store_location( $package->id, $file );
 }
 
 sub remove_package_source {
     my ( $self, $package ) = @_;
-    my $file = $self->retrieve_location( $package->full_name );
-
-    if ( !$file ) {
-        $log->criticalf(
-            'We do not have the source for package %s',
-            $package->full_name,
-        );
-
-        exit 1;
-    }
-
-    $log->debug("Removing package");
-    $self->remove_location( $package->full_name );
+    return $self->remove_package_file( 'source', $package );
 }
 
 no Moose;

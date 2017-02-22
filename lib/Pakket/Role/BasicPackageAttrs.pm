@@ -1,4 +1,4 @@
-package Pakket::Role::PrintableNames;
+package Pakket::Role::BasicPackageAttrs;
 # ABSTRACT: Some helpers to print names nicely
 
 use Moose::Role;
@@ -14,6 +14,11 @@ sub full_name {
     return canonical_package_name(
         $self->category, $self->name, $self->version,
     );
+}
+
+sub id {
+    my $self = shift;
+    return $self->full_name;
 }
 
 no Moose::Role;

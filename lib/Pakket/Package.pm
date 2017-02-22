@@ -4,21 +4,9 @@ package Pakket::Package;
 use Moose;
 use MooseX::StrictConstructor;
 
-with qw< Pakket::Role::PrintableNames >;
+with qw< Pakket::Role::BasicPackageAttrs >;
 
-has 'name' => (
-    'is'       => 'ro',
-    'isa'      => 'Str',
-    'required' => 1,
-);
-
-has 'category' => (
-    'is'       => 'ro',
-    'isa'      => 'Str',
-    'required' => 1,
-);
-
-has 'version' => (
+has [ qw< name category version > ] => (
     'is'       => 'ro',
     'isa'      => 'Str',
     'required' => 1,
