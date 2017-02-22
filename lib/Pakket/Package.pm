@@ -4,7 +4,7 @@ package Pakket::Package;
 use Moose;
 use MooseX::StrictConstructor;
 
-with qw< Pakket::Role::PrintableNames >;
+with qw< Pakket::Role::BasicPackageAttrs >;
 
 has [ qw< name category version > ] => (
     'is'       => 'ro',

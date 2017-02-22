@@ -1,4 +1,4 @@
-package Pakket::Role::PrintableNames;
+package Pakket::Role::BasicPackageAttrs;
 # ABSTRACT: Some helpers to print names nicely
 
 use Moose::Role;
