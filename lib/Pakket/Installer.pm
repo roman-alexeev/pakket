@@ -355,7 +355,7 @@ sub _update_info_file {
         ? decode_json( $info_file->slurp_utf8 )
         : {};
 
-    my $files = {};
+    my %files;
 
     # get list of files
     $parcel_dir->visit(
@@ -366,7 +366,7 @@ sub _update_info_file {
                 or return;
 
             my $filename = $path->relative($parcel_dir);
-            $files->{$filename} = {
+            $files{$filename} = {
                 'category' => $package->category,
                 'name'     => $package->name,
                 'version'  => $package->version,
@@ -379,14 +379,14 @@ sub _update_info_file {
         $package->category => {
             $package->name => {
                 'version'   => $package->version,
-                'files'     => [ keys %{$files} ],
+                'files'     => [ keys %files ],
                 'as_prereq' => $opts->{'as_prereq'} ? 1 : 0,
                 'prereqs'   => $package->prereqs,
             },
         },
     };
 
-    $install_data->{'installed_files'} = $files;
+    $install_data->{'installed_files'} = \%files;
 
     $info_file->spew_utf8( encode_json_pretty($install_data) );
 }
