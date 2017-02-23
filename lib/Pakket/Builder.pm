@@ -27,9 +27,7 @@ use constant {
 };
 
 with qw<
-    Pakket::Role::HasParcelRepo
-    Pakket::Role::HasSourceRepo
-    Pakket::Role::HasSpecRepo
+    Pakket::Role::HasConfig
     Pakket::Role::Perl::BootstrapModules
     Pakket::Role::RunCommand
 >;
@@ -84,12 +82,6 @@ has 'bundler' => (
     'builder' => '_build_bundler',
 );
 
-has 'bundler_args' => (
-    'is'      => 'ro',
-    'isa'     => 'HashRef',
-    'default' => sub { +{} },
-);
-
 has 'installer' => (
     'is'      => 'ro',
     'isa'     => 'Pakket::Installer',
@@ -97,16 +89,9 @@ has 'installer' => (
     'default' => sub {
         my $self = shift;
 
-        my $parcel_dir = $self->{'parcel_dir'};
-        if ( !$parcel_dir ) {
-            $log->critical("'bundler_args' do not contain 'bundle_dir'");
-            exit 1;
-        }
-
         return Pakket::Installer->new(
             'pakket_dir'  => $self->build_dir,
             'parcel_repo' => $self->parcel_repo,
-            'parcel_dir'  => $self->parcel_dir,
         );
     },
 );
@@ -123,11 +108,89 @@ has 'bootstrapping' => (
     'default' => 1,
 );
 
+# FIXME: Move to HasSpecRepo
+use Pakket::Repository::Spec;
+has 'spec_repo' => (
+    'is'      => 'ro',
+    'isa'     => 'Pakket::Repository::Spec',
+    'lazy'    => 1,
+    'default' => sub {
+        my $self = shift;
+
+        return Pakket::Repository::Spec->new(
+            'backend' => $self->spec_repo_backend,
+        );
+    },
+);
+
+has 'spec_repo_backend' => (
+    'is'      => 'ro',
+    'isa'     => 'PakketRepositoryBackend',
+    'lazy'    => 1,
+    'coerce'  => 1,
+    'default' => sub {
+        my $self = shift;
+        return $self->config->{'repositories'}{'spec'};
+    },
+);
+
+# FIXME: Move to HasSourceRepo
+use Pakket::Repository::Source;
+has 'source_repo' => (
+    'is'      => 'ro',
+    'isa'     => 'Pakket::Repository::Spec',
+    'lazy'    => 1,
+    'default' => sub {
+        my $self = shift;
+
+        return Pakket::Repository::Source->new(
+            'backend' => $self->source_repo_backend,
+        );
+    },
+);
+
+has 'source_repo_backend' => (
+    'is'      => 'ro',
+    'isa'     => 'PakketRepositoryBackend',
+    'lazy'    => 1,
+    'coerce'  => 1,
+    'default' => sub {
+        my $self = shift;
+        return $self->config->{'repositories'}{'source'};
+    },
+);
+
+# FIXME: Move to HasParcelRepo
+use Pakket::Repository::Parcel;
+has 'parcel_repo' => (
+    'is'      => 'ro',
+    'isa'     => 'Pakket::Repository::Spec',
+    'lazy'    => 1,
+    'default' => sub {
+        my $self = shift;
+
+        return Pakket::Repository::Parcel->new(
+            'backend' => $self->parcel_repo_backend,
+        );
+    },
+);
+
+has 'parcel_repo_backend' => (
+    'is'      => 'ro',
+    'isa'     => 'PakketRepositoryBackend',
+    'lazy'    => 1,
+    'coerce'  => 1,
+    'default' => sub {
+        my $self = shift;
+        return $self->config->{'repositories'}{'parcel'};
+    },
+);
+
+
 sub _build_bundler {
     my $self = shift;
 
     return Pakket::Bundler->new(
-        %{ $self->bundler_args },
         'parcel_repo' => $self->parcel_repo,
     );
 }
@@ -180,11 +243,10 @@ sub bootstrap_build {
 
     # XXX: Whoa!
     my $bootstrap_builder = ref($self)->new(
-        'parcel_dir'     => $self->parcel_dir,
-        'spec_dir'       => $self->spec_dir,
-        'source_dir'     => $self->source_dir,
+        'parcel_repo'    => $self->parcel_repo,
+        'spec_repo'      => $self->spec_repo,
+        'source_repo'    => $self->source_repo,
         'keep_build_dir' => $self->keep_build_dir,
-        'bundler_args'   => $self->bundler_args,
         'builders'       => $self->builders,
         'installer'      => $self->installer,
         'bootstrapping'  => 0,

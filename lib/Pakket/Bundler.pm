@@ -23,6 +23,7 @@ use constant {
     'BUNDLE_DIR_TEMPLATE' => 'BUNDLE-XXXXXX',
 };
 
+# FIXME: Move to HasParcelRepo
 has 'parcel_repo' => (
     'is'      => 'ro',
     'isa'     => 'Pakket::Repository::Parcel',
@@ -30,11 +31,16 @@ has 'parcel_repo' => (
     'builder' => '_build_parcel_repo',
 );
 
-has 'bundle_dir' => (
+# FIXME: Move to HasParcelRepo
+has 'parcel_repo_backend' => (
     'is'      => 'ro',
-    'isa'     => AbsPath,
+    'isa'     => 'PakketRepositoryBackend',
+    'lazy'    => 1,
     'coerce'  => 1,
-    'default' => sub { return path('output')->absolute },
+    'default' => sub {
+        my $self = shift;
+        return $self->config->{'repositories'}{'parcel'};
+    },
 );
 
 has 'files_manifest' => (
@@ -43,15 +49,24 @@ has 'files_manifest' => (
     'default' => sub { return +{} },
 );
 
-# We're starting with a local repo
-# but in the future this will be dictated from a configuration
 sub _build_parcel_repo {
     my $self = shift;
 
-    # Use default now for now, but use our directory at least
     return Pakket::Repository::Parcel->new(
-        'directory' => $self->bundle_dir,
+        'backend' => $self->parcel_repo_backend,
     );
+}
+
+# TODO
+# The reason behind this is to make sure we already inflate
+# the Parcel Repo before using it, because we might chdir
+# when we want to use it, and if the directory paths are
+# relative, it might not match anymore. This is why it was
+# AbsPath prior. We can try it and if it works remove this
+# chunk. -- SX.
+sub BUILD {
+    my $self = shift;
+    $self->parcel_repo;
 }
 
 sub bundle {
