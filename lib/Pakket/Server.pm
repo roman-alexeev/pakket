@@ -4,7 +4,7 @@ package Pakket::Server;
 use Moose;
 use MooseX::StrictConstructor;
 
-use Log::Any          qw< $log >;
+use Log::Any qw< $log >;
 use Plack::Runner;
 
 use Pakket::Server::App;
