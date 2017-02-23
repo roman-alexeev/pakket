@@ -9,17 +9,6 @@ use JSON::MaybeXS     qw< decode_json >;
 use Pakket::Utils     qw< encode_json_canonical >;
 
 extends qw< Pakket::Repository >;
-with    qw< Pakket::Role::HasDirectory >;
-
-sub _build_backend {
-    my $self = shift;
-
-    return [
-        'File',
-        'directory'      => $self->directory,
-        'file_extension' => 'ini',
-    ];
-}
 
 sub retrieve_package_spec {
     my ( $self, $package ) = @_;
