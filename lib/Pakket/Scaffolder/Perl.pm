@@ -24,7 +24,6 @@ with qw<
     Pakket::Role::Perl::BootstrapModules
     Pakket::Scaffolder::Perl::Role::Borked
     Pakket::Scaffolder::Role::Backend
-    Pakket::Scaffolder::Role::Config
     Pakket::Scaffolder::Role::Terminal
 >;
 
@@ -79,7 +78,7 @@ has 'download_dir' => (
 sub _build_metacpan_api {
     my $self = shift;
     return $ENV{'PAKKET_METACPAN_API'}
-        || $self->pakket_config->{'perl'}{'metacpan_api'}
+        || $self->config->{'perl'}{'metacpan_api'}
         || 'https://fastapi.metacpan.org';
 }
 
@@ -442,7 +441,7 @@ sub get_release_info {
 
 sub rewrite_download_url {
     my ( $self, $download_url ) = @_;
-    my $rewrite = $self->pakket_config->{'perl'}{'metacpan'}{'rewrite_download_url'};
+    my $rewrite = $self->config->{'perl'}{'metacpan'}{'rewrite_download_url'};
     return $download_url unless is_hashref($rewrite);
     my ( $from, $to ) = @{$rewrite}{qw< from to >};
     return ( $download_url =~ s/$from/$to/r );
