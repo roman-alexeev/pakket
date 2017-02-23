@@ -19,6 +19,8 @@ use Pakket::Scaffolder::Perl::CPANfile;
 
 with qw<
     Pakket::Role::HasConfig
+    Pakket::Role::HasSpecRepo
+    Pakket::Role::HasSourceRepo
     Pakket::Role::Perl::BootstrapModules
     Pakket::Scaffolder::Perl::Role::Borked
     Pakket::Scaffolder::Role::Backend
@@ -51,58 +53,6 @@ has 'processed_dists' => (
 has 'modules' => (
     'is'  => 'ro',
     'isa' => 'HashRef',
-);
-
-# FIXME: Move to HasSpecRepo
-use Pakket::Repository::Spec;
-has 'spec_repo' => (
-    'is'      => 'ro',
-    'isa'     => 'Pakket::Repository::Spec',
-    'lazy'    => 1,
-    'default' => sub {
-        my $self = shift;
-
-        return Pakket::Repository::Spec->new(
-            'backend' => $self->spec_repo_backend,
-        );
-    },
-);
-
-has 'spec_repo_backend' => (
-    'is'      => 'ro',
-    'isa'     => 'PakketRepositoryBackend',
-    'lazy'    => 1,
-    'coerce'  => 1,
-    'default' => sub {
-        my $self = shift;
-        return $self->config->{'repositories'}{'spec'};
-    },
-);
-
-# FIXME: Move to HasSourceRepo
-use Pakket::Repository::Source;
-has 'source_repo' => (
-    'is'      => 'ro',
-    'isa'     => 'Pakket::Repository::Source',
-    'lazy'    => 1,
-    'default' => sub {
-        my $self = shift;
-
-        return Pakket::Repository::Source->new(
-            'backend' => $self->source_repo_backend,
-        );
-    },
-);
-
-has 'source_repo_backend' => (
-    'is'      => 'ro',
-    'isa'     => 'PakketRepositoryBackend',
-    'lazy'    => 1,
-    'coerce'  => 1,
-    'default' => sub {
-        my $self = shift;
-        return $self->config->{'repositories'}{'source'};
-    },
 );
 
 has 'spec_index' => (

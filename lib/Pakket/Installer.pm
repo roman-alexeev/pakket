@@ -25,6 +25,7 @@ use Pakket::Constants qw<
 
 with qw<
     Pakket::Role::HasConfig
+    Pakket::Role::HasParcelRepo
     Pakket::Role::RunCommand
 >;
 
@@ -47,34 +48,6 @@ has 'keep_copies' => (
     'isa'     => 'Int',
     'default' => sub {1},
 );
-
-# FIXME: Move to HasParcelRepo
-has 'parcel_repo' => (
-    'is'      => 'ro',
-    'isa'     => 'Pakket::Repository::Parcel',
-    'lazy'    => 1,
-    'builder' => '_build_parcel_repo',
-);
-
-# FIXME: Move to HasParcelRepo
-has 'parcel_repo_backend' => (
-    'is'      => 'ro',
-    'isa'     => 'PakketRepositoryBackend',
-    'lazy'    => 1,
-    'coerce'  => 1,
-    'default' => sub {
-        my $self = shift;
-        return $self->config->{'repositories'}{'parcel'};
-    },
-);
-
-sub _build_parcel_repo {
-    my $self = shift;
-
-    return Pakket::Repository::Parcel->new(
-        'backend' => $self->parcel_repo_backend,
-    );
-}
 
 sub _build_pakket_libraries_dir {
     my $self = shift;

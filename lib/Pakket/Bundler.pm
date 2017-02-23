@@ -23,39 +23,16 @@ use constant {
     'BUNDLE_DIR_TEMPLATE' => 'BUNDLE-XXXXXX',
 };
 
-# FIXME: Move to HasParcelRepo
-has 'parcel_repo' => (
-    'is'      => 'ro',
-    'isa'     => 'Pakket::Repository::Parcel',
-    'lazy'    => 1,
-    'builder' => '_build_parcel_repo',
-);
-
-# FIXME: Move to HasParcelRepo
-has 'parcel_repo_backend' => (
-    'is'      => 'ro',
-    'isa'     => 'PakketRepositoryBackend',
-    'lazy'    => 1,
-    'coerce'  => 1,
-    'default' => sub {
-        my $self = shift;
-        return $self->config->{'repositories'}{'parcel'};
-    },
-);
+with qw<
+    Pakket::Role::HasConfig
+    Pakket::Role::HasParcelRepo
+>;
 
 has 'files_manifest' => (
     'is'      => 'ro',
     'isa'     => 'HashRef',
     'default' => sub { return +{} },
 );
-
-sub _build_parcel_repo {
-    my $self = shift;
-
-    return Pakket::Repository::Parcel->new(
-        'backend' => $self->parcel_repo_backend,
-    );
-}
 
 # TODO
 # The reason behind this is to make sure we already inflate

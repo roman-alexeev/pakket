@@ -28,6 +28,9 @@ use constant {
 
 with qw<
     Pakket::Role::HasConfig
+    Pakket::Role::HasSpecRepo
+    Pakket::Role::HasSourceRepo
+    Pakket::Role::HasParcelRepo
     Pakket::Role::Perl::BootstrapModules
     Pakket::Role::RunCommand
 >;
@@ -107,85 +110,6 @@ has 'bootstrapping' => (
     'isa'     => 'Bool',
     'default' => 1,
 );
-
-# FIXME: Move to HasSpecRepo
-use Pakket::Repository::Spec;
-has 'spec_repo' => (
-    'is'      => 'ro',
-    'isa'     => 'Pakket::Repository::Spec',
-    'lazy'    => 1,
-    'default' => sub {
-        my $self = shift;
-
-        return Pakket::Repository::Spec->new(
-            'backend' => $self->spec_repo_backend,
-        );
-    },
-);
-
-has 'spec_repo_backend' => (
-    'is'      => 'ro',
-    'isa'     => 'PakketRepositoryBackend',
-    'lazy'    => 1,
-    'coerce'  => 1,
-    'default' => sub {
-        my $self = shift;
-        return $self->config->{'repositories'}{'spec'};
-    },
-);
-
-# FIXME: Move to HasSourceRepo
-use Pakket::Repository::Source;
-has 'source_repo' => (
-    'is'      => 'ro',
-    'isa'     => 'Pakket::Repository::Spec',
-    'lazy'    => 1,
-    'default' => sub {
-        my $self = shift;
-
-        return Pakket::Repository::Source->new(
-            'backend' => $self->source_repo_backend,
-        );
-    },
-);
-
-has 'source_repo_backend' => (
-    'is'      => 'ro',
-    'isa'     => 'PakketRepositoryBackend',
-    'lazy'    => 1,
-    'coerce'  => 1,
-    'default' => sub {
-        my $self = shift;
-        return $self->config->{'repositories'}{'source'};
-    },
-);
-
-# FIXME: Move to HasParcelRepo
-use Pakket::Repository::Parcel;
-has 'parcel_repo' => (
-    'is'      => 'ro',
-    'isa'     => 'Pakket::Repository::Spec',
-    'lazy'    => 1,
-    'default' => sub {
-        my $self = shift;
-
-        return Pakket::Repository::Parcel->new(
-            'backend' => $self->parcel_repo_backend,
-        );
-    },
-);
-
-has 'parcel_repo_backend' => (
-    'is'      => 'ro',
-    'isa'     => 'PakketRepositoryBackend',
-    'lazy'    => 1,
-    'coerce'  => 1,
-    'default' => sub {
-        my $self = shift;
-        return $self->config->{'repositories'}{'parcel'};
-    },
-);
-
 
 sub _build_bundler {
     my $self = shift;
