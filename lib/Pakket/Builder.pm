@@ -27,9 +27,10 @@ use constant {
 };
 
 with qw<
-    Pakket::Role::HasParcelRepo
-    Pakket::Role::HasSourceRepo
+    Pakket::Role::HasConfig
     Pakket::Role::HasSpecRepo
+    Pakket::Role::HasSourceRepo
+    Pakket::Role::HasParcelRepo
     Pakket::Role::Perl::BootstrapModules
     Pakket::Role::RunCommand
 >;
@@ -84,12 +85,6 @@ has 'bundler' => (
     'builder' => '_build_bundler',
 );
 
-has 'bundler_args' => (
-    'is'      => 'ro',
-    'isa'     => 'HashRef',
-    'default' => sub { +{} },
-);
-
 has 'installer' => (
     'is'      => 'ro',
     'isa'     => 'Pakket::Installer',
@@ -97,16 +92,9 @@ has 'installer' => (
     'default' => sub {
         my $self = shift;
 
-        my $parcel_dir = $self->{'parcel_dir'};
-        if ( !$parcel_dir ) {
-            $log->critical("'bundler_args' do not contain 'bundle_dir'");
-            exit 1;
-        }
-
         return Pakket::Installer->new(
             'pakket_dir'  => $self->build_dir,
             'parcel_repo' => $self->parcel_repo,
-            'parcel_dir'  => $self->parcel_dir,
         );
     },
 );
@@ -127,7 +115,6 @@ sub _build_bundler {
     my $self = shift;
 
     return Pakket::Bundler->new(
-        %{ $self->bundler_args },
         'parcel_repo' => $self->parcel_repo,
     );
 }
@@ -180,11 +167,10 @@ sub bootstrap_build {
 
     # XXX: Whoa!
     my $bootstrap_builder = ref($self)->new(
-        'parcel_dir'     => $self->parcel_dir,
-        'spec_dir'       => $self->spec_dir,
-        'source_dir'     => $self->source_dir,
+        'parcel_repo'    => $self->parcel_repo,
+        'spec_repo'      => $self->spec_repo,
+        'source_repo'    => $self->source_repo,
         'keep_build_dir' => $self->keep_build_dir,
-        'bundler_args'   => $self->bundler_args,
         'builders'       => $self->builders,
         'installer'      => $self->installer,
         'bootstrapping'  => 0,

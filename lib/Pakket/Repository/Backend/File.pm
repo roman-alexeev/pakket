@@ -7,14 +7,20 @@ use MooseX::StrictConstructor;
 use JSON::MaybeXS     qw< decode_json >;
 use Path::Tiny        qw< path >;
 use Log::Any          qw< $log >;
-use Types::Path::Tiny qw< Path >;
+use Types::Path::Tiny qw< Path AbsPath >;
 use Digest::SHA       qw< sha1_hex >;
 use Pakket::Utils     qw< encode_json_canonical encode_json_pretty >;
 
 with qw<
-    Pakket::Role::HasDirectory
     Pakket::Role::Repository::Backend
 >;
+
+has 'directory' => (
+    'is'       => 'ro',
+    'isa'      => AbsPath,
+    'coerce'   => 1,
+    'required' => 1,
+);
 
 has 'file_extension' => (
     'is'      => 'ro',

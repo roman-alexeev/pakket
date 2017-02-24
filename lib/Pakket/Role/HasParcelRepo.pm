@@ -2,35 +2,32 @@ package Pakket::Role::HasParcelRepo;
 # ABSTRACT: Provide parcel repo support
 
 use Moose::Role;
-use Types::Path::Tiny qw< Path >;
-
 use Pakket::Repository::Parcel;
-
-has 'parcel_dir' => (
-    'is'       => 'ro',
-    'isa'      => Path,
-    'coerce'   => 1,
-    'required' => 1,
-);
 
 has 'parcel_repo' => (
     'is'      => 'ro',
     'isa'     => 'Pakket::Repository::Parcel',
     'lazy'    => 1,
-    'builder' => '_build_parcel_repo',
+    'default' => sub {
+        my $self = shift;
+
+        return Pakket::Repository::Parcel->new(
+            'backend' => $self->parcel_repo_backend,
+        );
+    },
 );
 
-# We're starting with a local repo
-# # but in the future this will be dictated from a configuration
-sub _build_parcel_repo {
-    my $self = shift;
+has 'parcel_repo_backend' => (
+    'is'      => 'ro',
+    'isa'     => 'PakketRepositoryBackend',
+    'lazy'    => 1,
+    'coerce'  => 1,
+    'default' => sub {
+        my $self = shift;
+        return $self->config->{'repositories'}{'parcel'};
+    },
+);
 
-    # Use default for now, but use the directory we want at least
-    return Pakket::Repository::Parcel->new(
-        'directory' => $self->parcel_dir,
-    );
-}
-
-1;
 no Moose::Role;
+1;
 __END__

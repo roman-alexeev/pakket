@@ -7,7 +7,7 @@ use Pakket::CLI '-command';
 use Pakket::Runner;
 use Pakket::Log;
 use Log::Any::Adapter;
-use Path::Tiny      qw< path >;
+use Path::Tiny qw< path >;
 
 sub abstract    { 'Run commands using pakket' }
 sub description { 'Run commands using pakket' }
@@ -16,8 +16,8 @@ sub opt_spec {
     return (
         [
             'from=s',
-            'defines pakket active directory to use. (mandatory, unless set in PAKKET_ACTIVE_PATH)',
-            { 'required' => 1 },
+            'defines pakket active directory to use. '
+                . '(mandatory, unless set in PAKKET_ACTIVE_PATH)',
         ],
     );
 }
@@ -36,18 +36,17 @@ sub validate_args {
     $active_path
         or $self->usage_error('No active path provided');
 
-    $self->{'runner'}{'args'}        = $args;
-    $self->{'runner'}{'active_path'} = $active_path;
+    $opt->{'active_path'} = $active_path;
 }
 
 sub execute {
-    my $self = shift;
+    my ( $self, $opt, $args ) = @_;
 
     my $runner = Pakket::Runner->new(
-        'active_path' => $self->{'runner'}{'active_path'},
+        'active_path' => $opt->{'active_path'},
     );
 
-    exit $runner->run( @{ $self->{'runner'}{'args'} } );
+    exit $runner->run( @{$args} );
 }
 
 1;

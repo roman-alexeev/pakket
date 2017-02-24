@@ -9,6 +9,7 @@ use List::Util qw< first >;
 
 use Pakket::CLI '-command';
 use Pakket::Log;
+use Pakket::Config;
 use Pakket::Scaffolder::Perl;
 
 sub abstract    { 'Scaffold a project' }
@@ -27,7 +28,6 @@ sub opt_spec {
         [
             'spec-dir=s',
             'directory to write the spec to (JSON files)',
-            { required => 1 },
         ],
         [
             'source-dir=s',
@@ -37,8 +37,46 @@ sub opt_spec {
             'additional_phase=s@',
             "additional phases to use ('develop' = author_requires, 'test' = test_requires). configure & runtime are done by default.",
         ],
+        [ 'config|c=s',     'configuration file' ],
         [ 'verbose|v+',     'verbose output (can be provided multiple times)' ],
     );
+}
+
+sub _determine_config {
+    my ( $self, $opt ) = @_;
+
+    my $config_file   = $opt->{'config'};
+    my $config_reader = Pakket::Config->new(
+        $config_file ? ( 'files' => [$config_file] ) : (),
+    );
+
+    my $config = $config_reader->read_config;
+
+    my %map = (
+        'spec'   => 'spec_dir',
+        'source' => 'source_dir',
+    );
+
+    foreach my $type ( keys %map ) {
+        my $opt_key   = $map{$type};
+        my $directory = $opt->{$opt_key};
+
+        if ($directory) {
+            $config->{'repositories'}{$type} = [
+                'File', 'directory' => $directory,
+            ];
+
+            my $path = path($directory);
+            $path->exists && $path->is_dir
+                or $self->usage_error("Bad directory for $type repo: $path");
+        }
+
+        if ( !$config->{'repositories'}{$type} ) {
+            $self->usage_error("Missing configuration for $type repository");
+        }
+    }
+
+    return $config;
 }
 
 sub validate_args {
@@ -51,15 +89,7 @@ sub validate_args {
 
     @{ $args } and $self->usage_error("No extra arguments are allowed.\n");
 
-    my $spec_dir   = $opt->{'spec_dir'};
-    $spec_dir and path( $spec_dir )->exists
-        or $self->usage_error( "spec-dir: $spec_dir doesn't exist\n" );
-
-    my $source_dir = $opt->{'source_dir'};
-    if ( $source_dir ) {
-        path( $source_dir )->exists
-            or $self->usage_error( "source-dir: $source_dir doesn't exist\n" );
-    }
+    $opt->{'config'} = $self->_determine_config($opt);
 
     my $category;
     my $name;
@@ -80,38 +110,29 @@ sub validate_args {
         $self->usage_error( "Must provide 'name' or 'cpanfile'\n" ); # future: others
     }
 
-    $self->{'config'} = +{
-        name       => $name,
-        category   => $category,
-        type       => $type,
-        spec_dir   => $spec_dir,
-        source_dir => $source_dir,
-        extract    => $opt->{'extract'},
-    };
+    @{$opt}{ qw< name category type > } = ( $name, $category, $type );
 }
 
 sub execute {
-    my $self = shift;
-    my $scaffolder = $self->_get_scaffolder();
+    my ( $self, $opt ) = @_;
+    my $scaffolder = $self->_get_scaffolder($opt);
     $scaffolder->run;
 }
 
 sub _get_scaffolder {
-    my $self = shift;
-    $self->{'config'}{'category'} eq 'perl'
-        and return $self->gen_scaffolder_perl();
+    my ( $self, $opt ) = @_;
+    $opt->{'category'} eq 'perl'
+        and return $self->gen_scaffolder_perl($opt);
     die "failed to create a scaffolder\n";
 }
 
 sub gen_scaffolder_perl {
-    my $self   = shift;
-    my $config = $self->{'config'};
+    my ( $self, $opt ) = @_;
 
     return Pakket::Scaffolder::Perl->new(
-        spec_dir          => $config->{'spec_dir'},
-        source_dir        => $config->{'source_dir'},
-        extract           => $config->{'extract'},
-        $config->{'type'} => $config->{'name'},
+        'config'       => $opt->{'config'},
+        'extract'      => $opt->{'extract'},
+        $opt->{'type'} => $opt->{'name'},
     );
 }
 

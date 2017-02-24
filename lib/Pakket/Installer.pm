@@ -15,24 +15,19 @@ use English               qw< -no_match_vars >;
 use Pakket::Repository::Parcel;
 use Pakket::Requirement;
 use Pakket::Package;
-use Pakket::Utils         qw< is_writeable encode_json_pretty >;
+use Pakket::Types     qw< PakketRepositoryBackend >;
+use Pakket::Utils     qw< is_writeable encode_json_pretty >;
 use Pakket::Constants qw<
     PARCEL_METADATA_FILE
     PARCEL_FILES_DIR
-    PAKKET_PACKAGE_SPEC
     PAKKET_INFO_FILE
 >;
 
-with 'Pakket::Role::RunCommand';
-
-# Sample structure:
-# ~/.pakket/
-#        bin/
-#        etc/
-#        repos/
-#        libraries/
-#                  active ->
-#
+with qw<
+    Pakket::Role::HasConfig
+    Pakket::Role::HasParcelRepo
+    Pakket::Role::RunCommand
+>;
 
 has 'pakket_libraries_dir' => (
     'is'      => 'ro',
@@ -48,82 +43,19 @@ has 'pakket_dir' => (
     'required' => 1,
 );
 
-has 'parcel_dir' => (
-    'is'       => 'ro',
-    'isa'      => Path,
-    'coerce'   => 1,
-    'required' => 1,
-);
-
 has 'keep_copies' => (
     'is'      => 'ro',
     'isa'     => 'Int',
     'default' => sub {1},
 );
 
-has 'input_file' => (
-    'is'        => 'ro',
-    'isa'       => Path,
-    'coerce'    => 1,
-    'predicate' => '_has_input_file',
-);
-
-has 'parcel_repo' => (
-    'is'      => 'ro',
-    'isa'     => 'Pakket::Repository::Parcel',
-    'lazy'    => 1,
-    'builder' => '_build_parcel_repo',
-);
-
-# We're starting with a local repo
-# # but in the future this will be dictated from a configuration
-sub _build_parcel_repo {
-    my $self   = shift;
-
-    # Use default for now, but use the directory we want at least
-    return Pakket::Repository::Parcel->new(
-        'directory' => $self->parcel_dir,
-    );
-}
-
 sub _build_pakket_libraries_dir {
     my $self = shift;
     return $self->pakket_dir->child('libraries');
 }
 
-sub _clean_packages {
-    my ( $self, $packages ) = @_;
-    my @clean_packages;
-
-    foreach my $package_str ( @{$packages} ) {
-        my ( $pkg_cat, $pkg_name, $pkg_version ) =
-            $package_str =~ PAKKET_PACKAGE_SPEC();
-
-        if ( !defined $pkg_version ) {
-            $log->critical(
-                'Currently you must provide a version to install',
-            );
-
-            exit 1;
-        }
-
-        push @clean_packages, Pakket::Package->new(
-            'category' => $pkg_cat,
-            'name'     => $pkg_name,
-            'version'  => $pkg_version,
-        );
-    }
-
-    @{ $packages } = @clean_packages;
-}
-
 sub install {
     my ( $self, @packages ) = @_;
-
-    $self->_has_input_file and
-        push @packages, $self->input_file->lines_utf8( { 'chomp' => 1 } );
-
-    $self->_clean_packages(\@packages);
 
     if ( !@packages ) {
         $log->notice('Did not receive any parcels to deliver');

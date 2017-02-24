@@ -6,23 +6,14 @@ use warnings;
 
 use Pakket::CLI '-command';
 use Pakket::Constants qw< PAKKET_PACKAGE_SPEC PAKKET_LATEST_VERSION >;
+use Pakket::Config;
 use Pakket::Builder;
 use Pakket::Requirement;
-use Pakket::Log;           # predefined loggers
+use Pakket::Log;
 
 use Path::Tiny qw< path >;
-use Log::Any   qw< $log >; # to log
-use Log::Any::Adapter;     # to set the logger
-
-# TODO:
-# - move all hardcoded values (confs) to constants
-# - add make process log (and add it with -v -v)
-# - check all operations (chdir, mkpath, etc.) (move() already checked)
-# - should we detect a file change during BUILD and die/warn?
-# - stop calling system(), use a proper Open module instead so we can
-#   easily check the success/fail and protect against possible injects
-
-# FIXME: pass on the "output-dir" to the bundler
+use Log::Any   qw< $log >;
+use Log::Any::Adapter;
 
 sub abstract    { 'Build a package' }
 sub description { 'Build a package' }
@@ -35,16 +26,53 @@ sub opt_spec {
         [
             'spec-dir=s',
             'directory holding the specs',
-            { 'required' => 1 },
         ],
         [
             'source-dir=s',
             'directory holding the sources',
-            { 'required' => 1 },
         ],
         [ 'output-dir=s', 'output directory (default: .)' ],
+        [ 'config|c=s',   'configuration file' ],
         [ 'verbose|v+',   'verbose output (can be provided multiple times)' ],
     );
+}
+
+sub _determine_config {
+    my ( $self, $opt ) = @_;
+
+    my $config_file = $opt->{'config'};
+    my $config_reader = Pakket::Config->new(
+        $config_file ? ( 'files' => [$config_file] ) : (),
+    );
+
+    my $config = $config_reader->read_config;
+
+    # Setup default repos
+    my %map = (
+        'spec'   => 'spec_dir',
+        'source' => 'source_dir',
+        'parcel' => 'output_dir',
+    );
+
+    foreach my $type ( keys %map ) {
+        my $opt_key   = $map{$type};
+        my $directory = $opt->{$opt_key};
+        if ($directory) {
+            $config->{'repositories'}{$type} = [
+                'File', 'directory' => $directory,
+            ];
+
+            my $path = path($directory);
+            $path->exists && $path->is_dir
+                or $self->usage_error("Bad directory for $type repo: $path");
+        }
+
+        if ( !$config->{'repositories'}{$type} ) {
+            $self->usage_error("Missing configuration for $type repository");
+        }
+    }
+
+    return $config;
 }
 
 sub validate_args {
@@ -55,17 +83,7 @@ sub validate_args {
         'dispatcher' => Pakket::Log->build_logger( $opt->{'verbose'} ),
     );
 
-    # Check that the directory for specs exists
-    # (How do we get it from the CLI?)
-    my $spec_dir = path( $opt->{'spec_dir'} );
-    $spec_dir->exists && $spec_dir->is_dir
-        or $self->usage_error("Incorrect spec directory specified: '$spec_dir'");
-    $self->{'builder'}{'spec_dir'} = $spec_dir;
-
-    if ( defined ( my $output_dir = $opt->{'output_dir'} ) ) {
-        $self->{'bundler'}{'bundle_dir'} = path($output_dir)->absolute;
-        $self->{'builder'}{'parcel_dir'} = $output_dir;
-    }
+    $opt->{'config'} = $self->_determine_config($opt);
 
     my @specs;
     if ( defined ( my $file = $opt->{'input_file'} ) ) {
@@ -94,44 +112,30 @@ sub validate_args {
             );
         };
 
-        push @{ $self->{'to_build'} }, $req;
+        push @{ $opt->{'prereqs'} }, $req;
     }
 
     if ( $opt->{'build_dir'} ) {
-        -d $opt->{'build_dir'}
+        path( $opt->{'build_dir'} )->is_dir
             or die "You asked to use a build dir that does not exist.\n";
-
-        $self->{'builder'}{'build_dir'} = $opt->{'build_dir'};
     }
-
-    $self->{'builder'}{'keep_build_dir'} = $opt->{'keep_build_dir'};
-
-    # XXX These will get removed eventually
-    $self->{'builder'}{'spec_dir'}   = $opt->{'spec_dir'};
-    $self->{'builder'}{'source_dir'} = $opt->{'source_dir'};
 }
 
 sub execute {
-    my $self    = shift;
-    my $builder = Pakket::Builder->new(
-        # default main object
-        map( +(
-            defined $self->{'builder'}{$_}
-                ? ( $_ => $self->{'builder'}{$_} )
-                : ()
-        ), qw< parcel_dir spec_dir source_dir build_dir keep_build_dir > ),
+    my ( $self, $opt ) = @_;
 
-        # bundler args
-        'bundler_args' => {
-            map( +(
-                defined $self->{'bundler'}{$_}
-                    ? ( $_ => $self->{'bundler'}{$_} )
-                    : ()
-            ), qw< bundle_dir > ),
-        },
+    my $builder = Pakket::Builder->new(
+        'config' => $opt->{'config'},
+
+        # Maybe we have it, maybe we don't
+        map( +(
+            defined $opt->{$_}
+                ? ( $_ => $opt->{$_} )
+                : ()
+        ), qw< build_dir keep_build_dir > ),
     );
 
-    foreach my $prereq ( @{ $self->{'to_build'} } ) {
+    foreach my $prereq ( @{ $opt->{'prereqs'} } ) {
         $builder->build($prereq);
     }
 }

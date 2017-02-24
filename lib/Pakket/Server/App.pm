@@ -5,6 +5,7 @@ use Dancer2;
 use Dancer2::Plugin::Pakket::ParamTypes;
 
 use Log::Any qw< $log >;
+use Pakket::Config;
 use Pakket::Repository::Spec;
 use Pakket::Repository::Parcel;
 use Pakket::Repository::Source;
@@ -28,8 +29,13 @@ set 'repositories' => {
 
 sub setup {
     my $class = shift;
+    my $config_reader = Pakket::Config->new();
+    my %config        = (
+        %{ $config_reader->read_config },
+        %{ config() },
+    );
 
-    my $repositories_data = config()->{'repositories'};
+    my $repositories_data = $config{'repositories'};
     foreach my $repository_type ( keys %{$repositories_data} ) {
         my $repo_class = "Pakket::Repository::$repository_type";
         my $repo       = $repo_class->new(

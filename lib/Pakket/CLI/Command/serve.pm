@@ -22,21 +22,19 @@ sub opt_spec {
 }
 
 sub validate_args {
-    my ( $self, $opt, $args ) = @_;
-
-    $self->{'server'}{$_} = $opt->{$_} for qw< port >;
+    my ( $self, $opt ) = @_;
 
     Log::Any::Adapter->set( 'Dispatch',
         'dispatcher' => Pakket::Log->build_logger( $opt->{'verbose'} ) );
 }
 
 sub execute {
-    my $self   = shift;
+    my ( $self, $opt ) = @_;
     my $server = Pakket::Server->new(
         # default main object
         map( +(
-            defined $self->{'server'}{$_}
-                ? ( $_ => $self->{'server'}{$_} )
+            defined $opt->{$_}
+                ? ( $_ => $opt->{$_} )
                 : ()
         ), qw< port > ),
     );

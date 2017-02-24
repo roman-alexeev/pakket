@@ -5,12 +5,74 @@ use strict;
 use warnings;
 use Pakket::CLI '-command';
 use Pakket::Installer;
+use Pakket::Config;
 use Pakket::Log;
+use Pakket::Package;
+use Pakket::Constants qw< PAKKET_PACKAGE_SPEC >;
 use Log::Any::Adapter;
 use Path::Tiny      qw< path >;
 
 sub abstract    { 'Install a package' }
 sub description { 'Install a package' }
+
+sub _determine_config {
+    my ( $self, $opt ) = @_;
+
+    # Read configuration
+    my $config_file   = $opt->{'config'};
+    my $config_reader = Pakket::Config->new(
+        $config_file ? ( 'files' => [$config_file] ) : (),
+    );
+
+    my $config = $config_reader->read_config;
+
+    # Default File backend
+    if ( $opt->{'from'} ) {
+        $config->{'repositories'}{'parcel'} = [
+            'File', 'directory' => $opt->{'from'},
+        ];
+    }
+
+    # Double check
+    if ( !$config->{'repositories'}{'parcel'} ) {
+        $self->usage_error(
+            "Missing where to install\n"
+          . '(Create a configuration or use --from)',
+        );
+    }
+
+    return $config;
+}
+
+sub _determine_packages {
+    my ( $self, $opt, $args ) = @_;
+
+    my @package_strs
+        = defined $opt->{'input_file'}
+        ? path( $opt->{'input_file'} )->lines_utf8( { 'chomp' => 1 } )
+        : @{$args};
+
+    my @packages;
+    foreach my $package_str (@package_strs) {
+        my ( $pkg_cat, $pkg_name, $pkg_version ) =
+            $package_str =~ PAKKET_PACKAGE_SPEC();
+
+        if ( !defined $pkg_version ) {
+            $self->usage_error(
+                'Currently you must provide a version to install: '
+                .  $package_str,
+            );
+        }
+
+        push @packages, Pakket::Package->new(
+            'category' => $pkg_cat,
+            'name'     => $pkg_name,
+            'version'  => $pkg_version,
+        );
+    }
+
+    return \@packages;
+}
 
 sub opt_spec {
     return (
@@ -22,10 +84,14 @@ sub opt_spec {
         [
             'from=s',
             'directory to install the packages from',
-            { 'required' => 1 },
         ],
         [ 'input-file=s', 'install eveything listed in this file' ],
-        [ 'verbose|v+',   'verbose output (can be provided multiple times)', { 'default' => 1 } ],
+        [ 'config|c=s',   'configuration file' ],
+        [
+            'verbose|v+',
+            'verbose output (can be provided multiple times)',
+            { 'default' => 1 },
+        ],
     );
 }
 
@@ -35,33 +101,20 @@ sub validate_args {
     Log::Any::Adapter->set( 'Dispatch',
         'dispatcher' => Pakket::Log->build_logger( $opt->{'verbose'} ) );
 
-    $self->{'installer'}{'pakket_dir'} = $opt->{'to'};
-    $self->{'installer'}{'parcel_dir'} = $opt->{'from'};
-
-    if ( defined $opt->{'input_file'} ) {
-        $self->{'installer'}{'input_file'} = $opt->{'input_file'};
-        $self->{'parcels'} = [];
-    } else {
-        @{$args} == 0
-            and $self->usage_error('Must provide parcels to install');
-
-        my @parcels = @{$args};
-
-        $self->{'parcels'} = \@parcels;
-    }
+    $opt->{'pakket_dir'} = $opt->{'to'};
+    $opt->{'config'}     = $self->_determine_config($opt);
+    $opt->{'packages'}   = $self->_determine_packages( $opt, $args );
 }
 
 sub execute {
-    my $self      = shift;
+    my ( $self, $opt ) = @_;
+
     my $installer = Pakket::Installer->new(
-        map( +(
-            defined $self->{'installer'}{$_}
-                ? ( $_ => $self->{'installer'}{$_} )
-                : ()
-        ), qw< pakket_dir parcel_dir input_file > ),
+        'config'     => $opt->{'config'},
+        'pakket_dir' => $opt->{'pakket_dir'},
     );
 
-    return $installer->install( @{ $self->{'parcels'} } );
+    return $installer->install( @{ $opt->{'packages'} } );
 }
 
 1;
