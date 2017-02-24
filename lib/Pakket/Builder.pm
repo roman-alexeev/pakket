@@ -176,19 +176,9 @@ sub bootstrap_build {
         'bootstrapping'  => 0,
     );
 
-    my %dists;
-    my @spec_object_ids   = @{ $self->spec_repo->all_object_ids() };
-
-    for my $dist (@dists) {
-        # Right now everything is pinned so there is only
-        # One result. Once the version ranges feature is introduced,
-        # we will be able to get the latest version.
-        my ($pkg_str) = grep m{^ \Q$category\E / \Q$dist\E =}xms, @spec_object_ids;
-
-        # Create a requirement
-        my $req = Pakket::Requirement->new_from_string($pkg_str);
-        $dists{ $req->name } = $req->version;
-    }
+    my %dists = map +(
+        $_ => $self->spec_repo->latest_version( $category, $_ ),
+    ), @dists;
 
     foreach my $dist_name ( keys %dists ) {
         my $dist_version = $dists{$dist_name};
@@ -455,13 +445,15 @@ sub _recursive_build_phase {
     my @prereqs = keys %{ $package->prereqs->{$category}{$phase} };
 
     foreach my $prereq_name (@prereqs) {
-        # Right now everything is pinned so there is only
-        # One result. Once the version ranges feature is introduced,
-        # we will be able to get the latest version.
-        my ($pkg_str) = grep m{^ \Q$category\E / \Q$prereq_name\E =}xms,
-            @{ $self->spec_repo->all_object_ids() };
+        my $version = $self->spec_repo->latest_version(
+            $category, $prereq_name,
+        );
 
-        my $req = Pakket::Requirement->new_from_string($pkg_str);
+        my $req = Pakket::Requirement->new(
+            'category' => $category,
+            'name'     => $prereq_name,
+            'version'  => $version,
+        );
 
         $self->run_build( $req, { 'level' => $level } );
     }

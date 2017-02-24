@@ -74,6 +74,14 @@ sub remove_package_file {
     $self->remove_location( $package->id );
 }
 
+sub latest_version {
+    my ( $self, $category, $name ) = @_;
+
+    # TODO: This is where the version comparison goes...
+    my @all = grep m{^ \Q$category\E / \Q$name\E =}xms, $self->all_object_ids;
+    return $all[0];
+}
+
 __PACKAGE__->meta->make_immutable;
 no Moose;
 
