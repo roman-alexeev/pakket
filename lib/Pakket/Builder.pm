@@ -301,13 +301,13 @@ sub run_build {
     # Create a Package instance from the spec
     # using the information we have on it
     my $package_spec = $self->spec_repo->retrieve_package_spec($prereq);
-    my $package      = Pakket::Package->new_from_spec({
+    my $package      = Pakket::Package->new_from_spec( +{
         %{$package_spec},
 
         # We are dealing with a version which should not be installed
         # outside of a bootstrap phase, so we're "marking" this package
         'is_bootstrap' => !!$skip_prereqs,
-    });
+    } );
 
     my $top_build_dir  = $self->build_dir;
     my $main_build_dir = $top_build_dir->child('main');
