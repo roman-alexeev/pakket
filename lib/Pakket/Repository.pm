@@ -8,6 +8,7 @@ use Path::Tiny;
 use Archive::Any;
 use Log::Any      qw< $log >;
 use Pakket::Types qw< PakketRepositoryBackend >;
+use Pakket::Constants qw< PAKKET_PACKAGE_SPEC >;
 
 has 'backend' => (
     'is'      => 'ro',
@@ -79,7 +80,18 @@ sub latest_version {
 
     # TODO: This is where the version comparison goes...
     my @all = grep m{^ \Q$category\E / \Q$name\E =}xms, $self->all_object_ids;
-    return $all[0];
+
+    # I don't like this, but okay...
+    if ( $all[0] =~ PAKKET_PACKAGE_SPEC() ) {
+        return $3;
+    }
+
+    $log->criticalf(
+        'Could not analyze %s to find latest version',
+        $all[0],
+    );
+
+    exit 1;
 }
 
 __PACKAGE__->meta->make_immutable;
