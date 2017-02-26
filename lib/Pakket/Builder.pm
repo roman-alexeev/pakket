@@ -176,13 +176,19 @@ sub bootstrap_build {
         'bootstrapping'  => 0,
     );
 
-    my %dist_reqs = map +(
-        $_ => Pakket::Requirement->new(
-            'name'     => $_,
+    ## no critic qw(BuiltinFunctions::ProhibitComplexMappings Lax::ProhibitComplexMappings::LinesNotStatements)
+    my %dist_reqs = map {;
+        my $name    = $_;
+        my $ver_rel = $self->spec_repo->latest_version( $category, $name );
+        my ( $version, $release ) = @{$ver_rel};
+
+        $name => Pakket::Requirement->new(
+            'name'     => $name,
             'category' => $category,
-            'version'  => $self->spec_repo->latest_version( $category, $_ ),
-        ),
-    ), @dists;
+            'version'  => $version,
+            'release'  => $release,
+        );
+    } @dists;
 
     foreach my $dist_name ( keys %dist_reqs ) {
         my $dist_req = $dist_reqs{$dist_name};
@@ -262,13 +268,25 @@ sub run_build {
     }
 
     if ( ! $bootstrap_prereqs and defined $self->is_built->{$short_name} ) {
-        my $built_version = $self->is_built->{$short_name};
+        my $ver_rel = $self->is_built->{$short_name};
+        my ( $built_version, $built_release ) = @{$ver_rel};
 
+        # Check the versions mismatch
         if ( $built_version ne $prereq->version ) {
             die $log->criticalf(
                 'Asked to build %s when %s=%s already built',
                 $prereq->full_name, $short_name, $built_version,
             );
+        }
+
+        # Check the releases mismatch
+        if ( $built_release ne $prereq->release ) {
+            $log->criticalf(
+                'Asked to build %s when %s=%s:%s already built',
+                $prereq->full_name, $short_name, $built_version, $built_release,
+            );
+
+            exit 1;
         }
 
         $log->debug(
@@ -277,7 +295,10 @@ sub run_build {
 
         return;
     } else {
-        $self->is_built->{$short_name} = $prereq->version;
+        $self->is_built->{$short_name} = [
+            $prereq->version,
+            $prereq->releasae,
+        ];
     }
 
     $log->noticef( '%sWorking on %s', '|...' x $level, $prereq->full_name );
@@ -432,14 +453,17 @@ sub _recursive_build_phase {
     my @prereqs = keys %{ $package->prereqs->{$category}{$phase} };
 
     foreach my $prereq_name (@prereqs) {
-        my $version = $self->spec_repo->latest_version(
+        my $ver_rel = $self->spec_repo->latest_version(
             $category, $prereq_name,
         );
+
+        my ( $version, $release ) = @{$ver_rel};
 
         my $req = Pakket::Requirement->new(
             'category' => $category,
             'name'     => $prereq_name,
             'version'  => $version,
+            'release'  => $release,
         );
 
         $self->run_build( $req, { 'level' => $level } );

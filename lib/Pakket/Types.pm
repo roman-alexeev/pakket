@@ -45,7 +45,7 @@ coerce 'PakketVersion', from 'Undef',
 
 # PakketRelease
 
-subtype 'PakketRelease', as 'Str';
+subtype 'PakketRelease', as 'Int';
 
 coerce 'PakketRelease', from 'Undef',
     via { return PAKKET_DEFAULT_RELEASE() };

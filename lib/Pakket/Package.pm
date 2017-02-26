@@ -3,10 +3,12 @@ package Pakket::Package;
 
 use Moose;
 use MooseX::StrictConstructor;
+use Pakket::Types;
+use Pakket::Constants qw< PAKKET_DEFAULT_RELEASE >;
 
 with qw< Pakket::Role::BasicPackageAttrs >;
 
-has [ qw< name category version > ] => (
+has [ qw< name category version release > ] => (
     'is'       => 'ro',
     'isa'      => 'Str',
     'required' => 1,
@@ -85,7 +87,7 @@ sub spec {
             # if not required -- SX
             ( 'is_bootstrap' => 1 )x!! $self->is_bootstrap,
 
-            map +( $_ => $self->$_ ), qw<category name version>,
+            map +( $_ => $self->$_ ), qw<category name version release>,
         },
 
         'Prereqs' => $self->prereqs,

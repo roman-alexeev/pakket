@@ -54,12 +54,12 @@ sub _determine_packages {
 
     my @packages;
     foreach my $package_str (@package_strs) {
-        my ( $pkg_cat, $pkg_name, $pkg_version ) =
+        my ( $pkg_cat, $pkg_name, $pkg_version, $pkg_release ) =
             $package_str =~ PAKKET_PACKAGE_SPEC();
 
-        if ( !defined $pkg_version ) {
+        if ( !defined $pkg_version || !defined $pkg_release ) {
             $self->usage_error(
-                'Currently you must provide a version to install: '
+                'Currently you must provide a version and release to install: '
                 .  $package_str,
             );
         }
@@ -68,6 +68,7 @@ sub _determine_packages {
             'category' => $pkg_cat,
             'name'     => $pkg_name,
             'version'  => $pkg_version,
+            'release'  => $pkg_release,
         );
     }
 

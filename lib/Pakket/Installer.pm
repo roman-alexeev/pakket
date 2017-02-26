@@ -200,8 +200,10 @@ sub install_package {
     $log->debugf( "About to install %s (into $dir)", $package->full_name );
 
     if ( defined $installer_cache->{$pkg_cat}{$pkg_name} ) {
-        my $version = $installer_cache->{$pkg_cat}{$pkg_name};
+        my $ver_rel = $installer_cache->{$pkg_cat}{$pkg_name};
+        my ( $version, $release ) = @{$ver_rel};
 
+        # Check version
         if ( $version ne $package->version ) {
             die $log->criticalf(
                 "%s=$version already installed. "
@@ -211,11 +213,26 @@ sub install_package {
             );
         }
 
+        # Check release
+        if ( $release ne $package->release ) {
+            $log->criticalf(
+                '%s=%s:%s already installed. '
+              . 'Cannot install new version: %s:%s',
+                $package->short_name,
+                $version, $release,
+                $package->release,
+            );
+
+            exit 1;
+        }
+
         $log->debugf( '%s already installed.', $package->full_name );
 
         return;
     } else {
-        $installer_cache->{$pkg_cat}{$pkg_name} = $package->version;
+        $installer_cache->{$pkg_cat}{$pkg_name} = [
+            $package->version, $package->release,
+        ];
     }
 
     if ( !is_writeable($dir) ) {
@@ -242,6 +259,7 @@ sub install_package {
         foreach my $prereq_name ( keys %{$runtime_prereqs} ) {
             my $prereq_data    = $runtime_prereqs->{$prereq_name};
             my $prereq_version = $prereq_data->{'version'};
+            my $prereq_release = $prereq_data->{'release'};
 
             # FIXME: This should be removed when we introduce version ranges
             # This forces us to install the latest version we have of
@@ -255,6 +273,7 @@ sub install_package {
                 'category' => $prereq_category,
                 'name'     => $prereq_name,
                 'version'  => $prereq_version,
+                'release'  => $prereq_release,
             );
 
             $self->install_package(
@@ -305,6 +324,7 @@ sub _update_info_file {
                 'category' => $package->category,
                 'name'     => $package->name,
                 'version'  => $package->version,
+                'release'  => $package->release,
             };
         },
         { 'recurse' => 1 },
@@ -314,6 +334,7 @@ sub _update_info_file {
         $package->category => {
             $package->name => {
                 'version'   => $package->version,
+                'release'   => $package->release,
                 'files'     => [ keys %files ],
                 'as_prereq' => $opts->{'as_prereq'} ? 1 : 0,
                 'prereqs'   => $package->prereqs,
