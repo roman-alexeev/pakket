@@ -176,85 +176,71 @@ sub bootstrap_build {
         'bootstrapping'  => 0,
     );
 
-    my %dists = map +(
-        $_ => $self->spec_repo->latest_version( $category, $_ ),
+    my %dist_reqs = map +(
+        $_ => Pakket::Requirement->new(
+            'name'     => $_,
+            'category' => $category,
+            'version'  => $self->spec_repo->latest_version( $category, $_ ),
+        ),
     ), @dists;
 
-    foreach my $dist_name ( keys %dists ) {
-        my $dist_version = $dists{$dist_name};
-        my $requirement  = Pakket::Requirement->new(
-            'category' => $category,
-            'name'     => $dist_name,
-            'version'  => $dist_version,
-        );
+    foreach my $dist_name ( keys %dist_reqs ) {
+        my $dist_req = $dist_reqs{$dist_name};
 
-        $self->parcel_repo->has_object($requirement)
+        $self->parcel_repo->has_object($dist_req)
             or next;
 
         $log->noticef(
             'Skipping: parcel %s already exists',
-            $requirement->full_name,
+            $dist_req->full_name,
         );
 
-        @dists = grep +( $_ ne $dist_name ), @dists;
+        delete $dist_reqs{$dist_name};
     }
 
     # Pass I: bootstrap toolchain - build w/o dependencies
-    for my $dist_name (@dists) {
-        my $dist_version = $dists{$dist_name};
+    for my $dist_name ( keys %dist_reqs ) {
+        my $dist_req = $dist_reqs{$dist_name};
 
-        $log->noticef( 'Bootstrapping: phase I: %s=%s (%s)',
-                       $dist_name, $dist_version, 'no-deps' );
+        $log->noticef( 'Bootstrapping: phase I: %s (%s)',
+                       $dist_req->full_name, 'no-deps' );
 
-        # Create a requirement
-        my $req = Pakket::Requirement->new(
-            'category' => $category,
-            'name'     => $dist_name,
-            'version'  => $dist_version,
+        $self->run_build(
+            $dist_req,
+            { 'bootstrapping_1_skip_prereqs' => 1 },
         );
-
-        $self->run_build( $req, { 'bootstrapping_1_skip_prereqs' => 1 } );
     }
 
     # Pass II: bootstrap toolchain - build dependencies only
-    for my $dist_name (@dists) {
-        my $dist_version = $dists{$dist_name};
-
-        my $req = Pakket::Requirement->new(
-            'category' => $category,
-            'name'     => $dist_name,
-            'version'  => $dist_version,
-        );
+    for my $dist_name ( keys %dist_reqs ) {
+        my $dist_req = $dist_reqs{$dist_name};
 
         $log->noticef( 'Bootstrapping: phase II: %s (%s)',
-                       $req->full_name, 'deps-only' );
+                       $dist_req->full_name, 'deps-only' );
 
-        $self->run_build( $req, { 'bootstrapping_2_deps_only' => 1 } );
+        $self->run_build(
+            $dist_req,
+            { 'bootstrapping_2_deps_only' => 1 },
+        );
     }
 
     # Pass III: bootstrap toolchain - rebuild w/ dependencies
-    for my $dist_name (@dists) {
-        my $dist_version = $dists{$dist_name};
+    for my $dist_name ( keys %dist_reqs ) {
+        my $dist_req = $dist_reqs{$dist_name};
 
         # remove the temp (no-deps) parcel
-        $log->noticef( 'Removing %s=%s (no-deps parcel)',
-                       $dist_name, $dist_version );
+        $log->noticef( 'Removing %s (no-deps parcel)',
+                       $dist_req->full_name );
 
-        my $req = Pakket::Requirement->new(
-            'category' => $category,
-            'name'     => $dist_name,
-            'version'  => $dist_version,
-        );
-
-        $self->parcel_repo->remove_package_parcel($req);
+        $self->parcel_repo->remove_package_parcel($dist_req);
 
         # build again with dependencies
 
-        $log->noticef( 'Bootstrapping: phase III: %s=%s (%s)',
-                       $dist_name, $dist_version, 'full deps' );
+        $log->noticef( 'Bootstrapping: phase III: %s (%s)',
+                       $dist_req->full_name, 'full deps' );
 
-        delete $bootstrap_builder->is_built->{ $req->short_name };
-        $bootstrap_builder->build($req);
+        delete $bootstrap_builder->is_built->{ $dist_req->short_name };
+        $bootstrap_builder->build($dist_req);
     }
 
     $log->notice('Finished Bootstrapping!');
