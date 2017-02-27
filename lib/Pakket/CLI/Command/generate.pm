@@ -121,7 +121,7 @@ sub validate_args {
         $self->usage_error( "Must provide a single package id or 'cpanfile'\n" );
     }
 
-    @{$opt}{ qw< name category type > } = ( $name, $category, $type );
+    @{$opt}{ qw< name category version type > } = ( $name, $category, $version, $type );
 }
 
 sub execute {
@@ -147,6 +147,7 @@ sub gen_scaffolder_perl {
         'config'       => $opt->{'config'},
         'extract'      => $opt->{'extract'},
         $opt->{'type'} => $opt->{'name'},
+        'version'      => '=='.$opt->{'version'}, # hack to pass exact version in prereq syntax
         @from_dir,
     );
 }
