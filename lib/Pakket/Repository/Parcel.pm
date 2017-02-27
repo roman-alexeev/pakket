@@ -18,29 +18,40 @@ sub retrieve_package_parcel {
 sub store_package_parcel {
     my ( $self, $package, $parcel_path ) = @_;
 
-    my $arch = Archive::Tar::Wrapper->new();
-    $log->debug("Adding $parcel_path to file");
+    my $file;
+    if ( $parcel_path->is_file ) {
+        # We were given a file, which we assume is a valid tar file.
+        $file = $parcel_path;
+    } elsif ( $parcel_path->is_dir ) {
+        # We were given a directory, so we pack it up into a tar file.
+        my $arch = Archive::Tar::Wrapper->new();
+        $log->debug("Adding $parcel_path to file");
 
-    $parcel_path->visit(
-        sub {
-            my ( $path, $stash ) = @_;
+        $parcel_path->visit(
+            sub {
+                my ( $path, $stash ) = @_;
 
-            $path->is_file
-                or return;
+                $path->is_file
+                    or return;
 
-            $arch->add(
-                $path->relative($parcel_path)->stringify,
-                $path->stringify,
-            );
-        },
-        { 'recurse' => 1 },
-    );
+                $arch->add(
+                    $path->relative($parcel_path)->stringify,
+                    $path->stringify,
+                );
+            },
+            { 'recurse' => 1 },
+        );
 
-    my $file = Path::Tiny->tempfile();
+        $file = Path::Tiny->tempfile();
 
-    # Write and compress
-    $log->debug("Writing archive as $file");
-    $arch->write( $file->stringify, 1 );
+        # Write and compress
+        $log->debug("Writing archive as $file");
+        $arch->write( $file->stringify, 1 );
+    } else {
+        $log->criticalf( "Don't know how to deal with '%s', not file or directory",
+                         $parcel_path->stringify );
+        exit 1;
+    }
 
     $log->debug("Storing $file");
     $self->store_location( $package->id, $file );
