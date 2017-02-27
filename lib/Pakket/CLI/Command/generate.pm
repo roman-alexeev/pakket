@@ -34,6 +34,10 @@ sub opt_spec {
             'directory to write the sources to (downloads if provided)',
         ],
         [
+            'from-dir=s',
+            'directory to get sources from (optional)',
+        ],
+        [
             'additional_phase=s@',
             "additional phases to use ('develop' = author_requires, 'test' = test_requires). configure & runtime are done by default.",
         ],
@@ -91,6 +95,12 @@ sub validate_args {
 
     $opt->{'config'} = $self->_determine_config($opt);
 
+    my $from_dir = $opt->{'from_dir'};
+    if ( $from_dir ) {
+        path( $from_dir )->exists
+            or $self->usage_error( "from-dir: $from_dir doesn't exist\n" );
+    }
+
     my $category;
     my $name;
     my $type;
@@ -129,10 +139,14 @@ sub _get_scaffolder {
 sub gen_scaffolder_perl {
     my ( $self, $opt ) = @_;
 
+    my $from_dir = $opt->{'config'}{'from_dir'};
+    my @from_dir = $from_dir ? ( from_dir => $from_dir ) : ();
+
     return Pakket::Scaffolder::Perl->new(
         'config'       => $opt->{'config'},
         'extract'      => $opt->{'extract'},
         $opt->{'type'} => $opt->{'name'},
+        @from_dir,
     );
 }
 

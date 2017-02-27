@@ -75,6 +75,13 @@ has 'download_dir' => (
     'builder' => '_build_download_dir',
 );
 
+has 'from_dir' => (
+    'is'        => 'ro',
+    'isa'       => Path,
+    'coerce'    => 1,
+    'predicate' => '_has_from_dir',
+);
+
 sub _build_metacpan_api {
     my $self = shift;
     return $ENV{'PAKKET_METACPAN_API'}
@@ -245,28 +252,51 @@ sub create_spec_for {
     $self->set_depth( $self->depth + 1 );
 
     # Download if source doesn't exist already
-    if ( 1 ) {
-        if ( my $download_url = $self->rewrite_download_url( $release->{'download_url'} ) ) {
+    if ( ! $self->source_repo->retrieve_location( $package->full_name ) ) {
+        my $download = 1;
 
-            # TODO: remove with the addition of URL support below):
-            my $source_file = path(
-                $self->download_dir,
-                ( $download_url =~ s{^.+/}{}r )
-            );
-            $self->ua->mirror( $download_url, $source_file );
+        if ( $self->_has_from_dir ) {
+            my $from_name = $dist_name . '-' . $rel_version . '.tar.gz';
+            my $from_file = path( $self->from_dir, $from_name );
 
-            $self->source_repo->store_package_source(
-                # TODO: when there's URL support
-                # $package, $download_url
-                $package, $source_file
-            );
+            if ( $from_file->exists ) {
+                $log->debugf(
+                    'Found source for %s [%s]',
+                    $package->full_name, $from_file->stringify
+                );
+
+                $self->source_repo->store_package_source(
+                    $package, $from_file
+                );
+
+                $download = 0;
+            }
         }
-        else {
-            $log->errorf( "--- can't find download_url for %s-%s", $dist_name, $rel_version );
+
+        if ( $download ) {
+            if ( my $download_url = $self->rewrite_download_url( $release->{'download_url'} ) ) {
+
+                # TODO: remove with the addition of URL support below:
+                my $source_file = path(
+                    $self->download_dir,
+                    ( $download_url =~ s{^.+/}{}r )
+                );
+                $self->ua->mirror( $download_url, $source_file );
+
+                $self->source_repo->store_package_source(
+                    # TODO: when there's URL support
+                    # $package, $download_url
+                    $package, $source_file
+                );
+            }
+            else {
+                $log->errorf( "--- can't find download_url for %s-%s", $dist_name, $rel_version );
+            }
         }
     }
 
-    # TODO: check the spec repository if there is an entry for this package --> return
+    $self->spec_repo->retrieve_location( $package->full_name )
+        and return;
 
     my $dep_modules = $release->{'prereqs'};
     my $dep_prereqs = CPAN::Meta::Prereqs->new( $dep_modules );
