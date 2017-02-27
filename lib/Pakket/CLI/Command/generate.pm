@@ -11,16 +11,13 @@ use Pakket::CLI '-command';
 use Pakket::Log;
 use Pakket::Config;
 use Pakket::Scaffolder::Perl;
+use Pakket::Constants qw< PAKKET_PACKAGE_SPEC >;
 
 sub abstract    { 'Scaffold a project' }
 sub description { 'Scaffold a project' }
 
 sub opt_spec {
     return (
-        [
-            'name=s',
-            'category/module name (e.g. "perl/Moose")',
-        ],
         [
             'cpanfile=s',
             'cpanfile to configure from',
@@ -91,8 +88,6 @@ sub validate_args {
         'dispatcher' => Pakket::Log->build_logger( $opt->{'verbose'} ),
     );
 
-    @{ $args } and $self->usage_error("No extra arguments are allowed.\n");
-
     $opt->{'config'} = $self->_determine_config($opt);
 
     my $from_dir = $opt->{'from_dir'};
@@ -101,14 +96,20 @@ sub validate_args {
             or $self->usage_error( "from-dir: $from_dir doesn't exist\n" );
     }
 
-    my $category;
-    my $name;
+    my ( $category, $name, $version );
     my $type;
 
-    if ( $opt->{'name'} ) {
-        ( $category, $name ) = split /\//xms => $opt->{'name'};
+    my @specs = @{$args};
+
+    if ( @specs == 1 ) {
+        my $spec_str = shift @specs;
+
+        ( $category, $name, $version ) = $spec_str =~ PAKKET_PACKAGE_SPEC()
+            or $self->usage_error("Provide category/name[=version], not '$spec_str'");
+
         first { $_ eq $category } qw< perl > # add supported categories
             or $self->usage_error( "Wrong 'name' format\n" );
+
         $type = 'module';
     }
     elsif ( $opt->{'cpanfile'} ) {
@@ -117,7 +118,7 @@ sub validate_args {
         $type     = 'cpanfile';
     }
     else {
-        $self->usage_error( "Must provide 'name' or 'cpanfile'\n" ); # future: others
+        $self->usage_error( "Must provide a single package id or 'cpanfile'\n" );
     }
 
     @{$opt}{ qw< name category type > } = ( $name, $category, $type );
