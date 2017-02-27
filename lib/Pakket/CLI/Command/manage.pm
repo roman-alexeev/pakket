@@ -1,5 +1,5 @@
-package Pakket::CLI::Command::generate;
-# ABSTRACT: The pakket install command
+package Pakket::CLI::Command::manage;
+# ABSTRACT: The pakket manage command
 
 use strict;
 use warnings;
