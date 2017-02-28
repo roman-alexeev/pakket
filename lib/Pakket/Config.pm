@@ -41,12 +41,19 @@ has 'files' => (
 sub read_config {
     my $self   = shift;
     my $config = Config::Any->load_files({
-        'files'           => $self->files,
-        'use_ext'         => 1,
-        'flatten_to_hash' => 1,
+        'files'   => $self->files,
+        'use_ext' => 1,
     });
 
-    return $config;
+    my %cfg;
+    foreach my $config_chunk ( @{$config} ) {
+        foreach my $filename ( keys %{$config_chunk} ) {
+            my %config_part = %{ $config_chunk->{$filename} };
+            @cfg{ keys(%config_part) } = values %config_part;
+        }
+    }
+
+    return \%cfg;
 }
 
 no Moose;
