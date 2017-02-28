@@ -102,7 +102,9 @@ sub _determine_config {
 sub _validate_arg_command {
     my ( $self, $args ) = @_;
 
-    my $command = shift @{$args};
+    my $command = shift @{$args}
+        or $self->usage_error("Must pick action (add/remove/replace)");
+
     grep { $command eq $_ } qw< add remove replace >
         or $self->usage_error( "Wrong command (add/remove/replace)\n" );
 
