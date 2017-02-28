@@ -29,9 +29,8 @@ sub build_package {
     } elsif ( -f $build_dir->child('Configure') ) {
         $configurator = './Configure';
     } else {
-        $log->critical( "Don't know how to configure $package"
+        die $log->critical( "Don't know how to configure $package"
                 . " (Cannot find executale 'configure' or 'config')" );
-        exit 1;
     }
 
     my @seq = (
@@ -56,8 +55,7 @@ sub build_package {
     my $success = $self->run_command_sequence(@seq);
 
     if ( !$success ) {
-        $log->critical("Failed to build $package");
-        exit 1;
+        die $log->critical("Failed to build $package");
     }
 
     $log->info("Done preparing $package");

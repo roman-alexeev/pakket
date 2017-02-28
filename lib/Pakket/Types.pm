@@ -16,8 +16,7 @@ sub _coerce_backend_from_arrayref {
     my $class = "Pakket::Repository::Backend::$subclass";
 
     eval { require_module($class); 1; } or do {
-        $log->critical("Failed to load backend '$class': $@");
-        exit 1;
+        die $log->critical("Failed to load backend '$class': $@");
     };
 
     return $class->new(@args);

@@ -33,8 +33,7 @@ sub new_from_string {
     my ( $class, $req_str ) = @_;
 
     if ( $req_str !~ PAKKET_PACKAGE_SPEC() ) {
-        $log->critical("Cannot parse $req_str");
-        exit 1;
+        die $log->critical("Cannot parse $req_str");
     } else {
         # This shuts up Perl::Critic
         return $class->new(

@@ -48,9 +48,8 @@ sub store_package_parcel {
         $log->debug("Writing archive as $file");
         $arch->write( $file->stringify, 1 );
     } else {
-        $log->criticalf( "Don't know how to deal with '%s', not file or directory",
+        die $log->criticalf( "Don't know how to deal with '%s', not file or directory",
                          $parcel_path->stringify );
-        exit 1;
     }
 
     $log->debug("Storing $file");

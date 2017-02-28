@@ -38,8 +38,7 @@ sub build_package {
         $opts );
 
     if ( !$success ) {
-        $log->critical("Failed to build $package");
-        exit 1;
+        die $log->critical("Failed to build $package");
     }
 
     $log->info("Done preparing $package");

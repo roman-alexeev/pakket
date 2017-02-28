@@ -70,11 +70,9 @@ sub install {
     my $work_dir = $pakket_libraries_dir->child( time() );
 
     if ( $work_dir->exists ) {
-        $log->critical(
+        die $log->critical(
             "Internal installation directory exists ($work_dir), exiting",
         );
-
-        exit 1;
     }
 
     $work_dir->mkpath();
@@ -97,8 +95,7 @@ sub install {
     # we copy any previous installation
     if ( $active_link->exists ) {
         my $orig_work_dir = eval { my $link = readlink $active_link } or do {
-            $log->critical("$active_link is not a symlink");
-            exit 1;
+            die $log->critical("$active_link is not a symlink");
         };
 
         dircopy( $pakket_libraries_dir->child($orig_work_dir), $work_dir );
@@ -116,19 +113,16 @@ sub install {
         # Huh? why does this temporary pathname exist? Try to delete it...
         $log->debug('Deleting existing temporary active object');
         if ( ! $active_temp->remove ) {
-            $log->error('Could not activate new installation (temporary symlink remove failed)');
-            exit 1;
+            die $log->error('Could not activate new installation (temporary symlink remove failed)');
         }
     }
 
     $log->debug('Setting temporary active symlink to new work directory');
     if ( ! symlink $work_dir->basename, $active_temp ) {
-        $log->error('Could not activate new installation (temporary symlink create failed)');
-        exit 1;
+        die $log->error('Could not activate new installation (temporary symlink create failed)');
     }
     if ( ! $active_temp->move($active_link) ) {
-        $log->error('Could not atomically activate new installation (symlink rename failed)');
-        exit 1;
+        die $log->error('Could not atomically activate new installation (symlink rename failed)');
     }
 
     $log->infof(
@@ -185,13 +179,11 @@ sub install_package {
     # Are we in a regular (non-bootstrap) mode?
     # Are we using a bootstrap version of a package?
     if ( ! $opts->{'skip_prereqs'} && $package->is_bootstrap ) {
-        $log->critical(
+        die $log->critical(
             'You are trying to install a bootstrap version of %s.'
           . ' Please rebuild this package from scratch.',
             $package->full_name,
         );
-
-        exit 1;
     }
 
     # Extracted to use more easily in the install cache below
@@ -204,14 +196,12 @@ sub install_package {
         my $version = $installer_cache->{$pkg_cat}{$pkg_name};
 
         if ( $version ne $package->version ) {
-            $log->criticalf(
+            die $log->criticalf(
                 "%s=$version already installed. "
               . "Cannot install new version: %s",
               $package->short_name,
               $package->version,
             );
-
-            exit 1;
         }
 
         $log->debugf( '%s already installed.', $package->full_name );
@@ -222,11 +212,9 @@ sub install_package {
     }
 
     if ( !is_writeable($dir) ) {
-        $log->critical(
+        die $log->critical(
             "Can't write to your installation directory ($dir)",
         );
-
-        exit 1;
     }
 
     my $parcel_dir

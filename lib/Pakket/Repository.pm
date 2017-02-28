@@ -25,12 +25,10 @@ has 'backend' => (
 
 sub _build_backend {
     my $self = shift;
-    $log->critical(
+    die $log->critical(
         'You did not specify a backend '
       . '(using parameter or builder)',
     );
-
-    exit 1;
 }
 
 sub BUILD {
@@ -43,12 +41,10 @@ sub retrieve_package_file {
     my $file = $self->retrieve_location( $package->id );
 
     if ( !$file ) {
-        $log->criticalf(
+        die $log->criticalf(
             'We do not have the %s for package %s',
             $type, $package->full_name,
         );
-
-        exit 1;
     }
 
     my $dir = Path::Tiny->tempdir( 'CLEANUP' => 1 );
@@ -63,12 +59,10 @@ sub remove_package_file {
     my $file = $self->retrieve_location( $package->id );
 
     if ( !$file ) {
-        $log->criticalf(
+        die $log->criticalf(
             'We do not have the %s for package %s',
             $type, $package->full_name,
         );
-
-        exit 1;
     }
 
     $log->debug("Removing $type package");
@@ -87,12 +81,10 @@ sub latest_version {
         return $3;
     }
 
-    $log->criticalf(
+    die $log->criticalf(
         'Could not analyze %s to find latest version',
         $all[0],
     );
-
-    exit 1;
 }
 
 __PACKAGE__->meta->make_immutable;

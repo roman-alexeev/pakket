@@ -18,8 +18,8 @@ sub build_package {
         my $builder = Pakket::Builder::Native::Makefile->new();
         $builder->build_package( $package, $build_dir, $prefix, $flags );
     } else {
-        $log->critical("I cannot build this native package. No 'configure'.");
-        exit 1;
+        die $log->critical(
+            "I cannot build this native package. No 'configure'.");
     }
 
     return;

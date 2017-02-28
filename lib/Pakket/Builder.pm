@@ -279,12 +279,10 @@ sub run_build {
         my $built_version = $self->is_built->{$short_name};
 
         if ( $built_version ne $prereq->version ) {
-            $log->criticalf(
+            die $log->criticalf(
                 'Asked to build %s when %s=%s already built',
                 $prereq->full_name, $short_name, $built_version,
             );
-
-            exit 1;
         }
 
         $log->debug(
@@ -419,11 +417,10 @@ sub run_build {
             $configure_flags,
         );
     } else {
-        $log->criticalf(
+        die $log->criticalf(
             'I do not have a builder for category %s.',
             $package->category,
         );
-        exit 1;
     }
 
     my $package_files = $self->snapshot_build_dir(
@@ -479,14 +476,12 @@ sub snapshot_build_dir {
     my $package_files = $self->retrieve_new_files($main_build_dir);
 
     if ($error_out) {
-        keys %{$package_files} or do {
-            $log->criticalf(
+        keys %{$package_files}
+            or die $log->criticalf(
                 'This is odd. %s build did not generate new files. '
                     . 'Cannot package.',
                 $package->full_name,
             );
-            exit 1;
-        };
     }
 
     # store per all packages to get the diff
@@ -517,8 +512,9 @@ sub _scan_directory {
         # save the symlink path in order to symlink them
         if ( -l $node ) {
             path( $state->{ $node->absolute } = readlink $node )->is_absolute
-                and $log->critical(
-                "Error. Absolute path symlinks aren't supported."), exit 1;
+                and die $log->critical(
+                    "Error. Absolute path symlinks aren't supported."
+                );
         } else {
             $state->{ $node->absolute } = '';
         }
@@ -542,9 +538,8 @@ sub _diff_nodes_list {
         $new_nodes,
         'added'   => sub { $nodes_diff{ $_[0] } = $_[1] },
         'deleted' => sub {
-            $log->critical(
+            die $log->critical(
                 "Last build deleted previously existing file: $_[0]");
-            exit 1;
         },
     );
 

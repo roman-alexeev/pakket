@@ -63,9 +63,8 @@ sub all_object_ids {
     my $response = $self->http_client->get($full_url);
 
     if ( !$response->{'success'} ) {
-        $log->criticalf( 'Could not get remote all_object_ids: %d -- %s',
+        die $log->criticalf( 'Could not get remote all_object_ids: %d -- %s',
             $response->{'status'}, $response->{'reason'} );
-        exit 1;
     }
 
     my $content = decode_json( $response->{'content'} );
@@ -79,9 +78,8 @@ sub has_object {
     );
 
     if ( !$response->{'success'} ) {
-        $log->criticalf( 'Could not get remote has_object: %d -- %s',
+        die $log->criticalf( 'Could not get remote has_object: %d -- %s',
             $response->{'status'}, $response->{'reason'} );
-        exit 1;
     }
 
     my $content = decode_json( $response->{'content'} );
@@ -122,8 +120,7 @@ sub store_content {
     );
 
     if ( !$response->{'success'} ) {
-        $log->criticalf( 'Could not store content for id %s', $id );
-        exit 1;
+        die $log->criticalf( 'Could not store content for id %s', $id );
     }
 }
 
@@ -134,8 +131,7 @@ sub retrieve_content {
     my $response = $self->http_client->get($full_url);
 
     if ( !$response->{'success'} ) {
-        $log->criticalf( 'Could not retrieve content for id %s', $id );
-        exit 1;
+        die $log->criticalf( 'Could not retrieve content for id %s', $id );
     }
 
     return $response->{'content'};

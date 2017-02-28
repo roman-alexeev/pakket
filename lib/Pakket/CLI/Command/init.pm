@@ -37,9 +37,8 @@ sub validate_args {
         && -d $ENV{'PAKKET_REPO'}
         && !$opt->{'force'} )
     {
-        $log->critical(
+        die $log->critical(
             "Pakket is already globally initialized at $ENV{'PAKKET_REPO'}");
-        exit 1;
     }
 
     $self->{'repo'} = path(
@@ -57,8 +56,7 @@ sub execute {
     my $repo_dir = $self->{'repo'};
 
     if ( !is_writeable($repo_dir) ) {
-        $log->critical("No permissions to write to $repo_dir.");
-        exit 1;
+        die $log->critical("No permissions to write to $repo_dir.");
     }
 
     $repo_dir->is_dir
