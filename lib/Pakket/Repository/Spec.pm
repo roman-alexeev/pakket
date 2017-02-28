@@ -38,6 +38,11 @@ sub store_package_spec {
     );
 }
 
+sub remove_package_spec {
+    my ( $self, $package ) = @_;
+    return $self->remove_package_file( 'spec', $package );
+}
+
 no Moose;
 __PACKAGE__->meta->make_immutable;
 

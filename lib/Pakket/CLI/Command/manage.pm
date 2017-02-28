@@ -13,6 +13,9 @@ use Pakket::Config;
 use Pakket::Scaffolder::Perl;
 use Pakket::Constants qw< PAKKET_PACKAGE_SPEC >;
 
+use Log::Any   qw< $log >; # to log
+use Log::Any::Adapter;     # to set the logger
+
 sub abstract    { 'Scaffold a project' }
 sub description { 'Scaffold a project' }
 
@@ -55,7 +58,17 @@ sub execute {
     if ( $self->{'command'} eq 'add' ) {
         $self->_get_scaffolder->run;
     } elsif ( $self->{'command'} eq 'remove' ) {
-        # TODO
+        my $package = Pakket::Package->new(
+            'category' => $self->{'category'},
+            'name'     => $self->{'module'}{'name'},
+            'version'  => $self->{'module'}{'version'},
+            'release'  => $self->{'module'}{'release'},
+        );
+
+        # TODO: check we are allowed to remove package (dependencies)
+
+        $self->remove_package_spec($package);
+        $self->remove_package_source($package);
     }
 }
 
@@ -154,8 +167,8 @@ sub _validate_args_remove {
 sub _read_arg_package {
     my ( $self, $spec_str ) = @_;
 
-    my ( $category, $name, $version ) = $spec_str =~ PAKKET_PACKAGE_SPEC()
-        or $self->usage_error("Provide category/name[=version], not '$spec_str'");
+    my ( $category, $name, $version, $release ) = $spec_str =~ PAKKET_PACKAGE_SPEC()
+        or $self->usage_error("Provide category/name[=version:release], not '$spec_str'");
 
     first { $_ eq $category } qw< perl > # add supported categories
         or $self->usage_error( "Wrong 'name' format\n" );
@@ -164,6 +177,7 @@ sub _read_arg_package {
     $self->{'module'}   = +{
         name    => $name,
         version => $version,
+        release => $release || 1,
     };
 }
 
@@ -182,12 +196,18 @@ sub _gen_scaffolder_perl {
     my @params = ( 'config' => $self->{'config'} );
 
     if ( $self->{'cpanfile'} ) {
-        push @params => ( 'cpanfile' => $self->{'cpanfile'} );
+        push @params =>
+            ( 'cpanfile' => $self->{'cpanfile'} );
+
     } else {
+        my $version = $self->{'module'}{'version'}
+            # hack to pass exact version in prereq syntax
+            ? '=='.$self->{'module'}{'version'}
+            : undef;
+
         push @params => (
             'module'  => $self->{'module'}{'name'},
-             # hack to pass exact version in prereq syntax
-            'version' => '=='.$self->{'module'}{'version'},
+            'version' => $version,
         );
     }
 
@@ -195,6 +215,24 @@ sub _gen_scaffolder_perl {
     $from_dir and push @params => ( 'from_dir' => $from_dir );
 
     return Pakket::Scaffolder::Perl->new(@params);
+}
+
+sub remove_package_source {
+    my ( $self, $package ) = @_;
+    my $source_repo = Pakket::Repository::Source->new(
+        'backend' => $self->{'config'}{'repositories'}{'source'},
+    );
+    $source_repo->remove_package_source( $package );
+    $log->info( sprintf("Removed %s from the source repo.", $package->id ) );
+}
+
+sub remove_package_spec {
+    my ( $self, $package ) = @_;
+    my $spec_repo = Pakket::Repository::Spec->new(
+        'backend' => $self->{'config'}{'repositories'}{'spec'},
+    );
+    $spec_repo->remove_package_spec( $package );
+    $log->info( sprintf("Removed %s from the spec repo.", $package->id ) );
 }
 
 1;
