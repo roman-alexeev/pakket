@@ -315,12 +315,6 @@ sub run_build {
     my $installer = $self->installer;
 
     if ( !$skip_prereqs && !$bootstrap_prereqs ) {
-
-        # Use the installer to recursively install all packages
-        # that are already available
-        $log->debugf( '%s already packaged, unpacking...',
-            $package->full_name, );
-
         my $installer_cache = $self->installer_cache;
         my $bootstrap_cache = {
             %{ $self->installer_cache },
