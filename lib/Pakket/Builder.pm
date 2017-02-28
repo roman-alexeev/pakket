@@ -314,7 +314,7 @@ sub run_build {
 
     my $installer = $self->installer;
 
-    if ( !$bootstrap_prereqs ) {
+    if ( !$skip_prereqs && !$bootstrap_prereqs ) {
 
         # Use the installer to recursively install all packages
         # that are already available
