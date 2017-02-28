@@ -49,17 +49,19 @@ sub _determine_config {
 
     # Setup default repos
     my %map = (
-        'spec'   => 'spec_dir',
-        'source' => 'source_dir',
-        'parcel' => 'output_dir',
+        'spec'   => [ 'spec_dir',   'ini'  ],
+        'source' => [ 'source_dir', 'spkt' ],
+        'parcel' => [ 'output_dir', 'pkt'  ],
     );
 
     foreach my $type ( keys %map ) {
-        my $opt_key   = $map{$type};
+        my ( $opt_key, $opt_ext ) = @{ $map{$type} };
         my $directory = $opt->{$opt_key};
         if ($directory) {
             $config->{'repositories'}{$type} = [
-                'File', 'directory' => $directory,
+                'File',
+                'directory'      => $directory,
+                'file_extension' => $opt_ext,
             ];
 
             my $path = path($directory);

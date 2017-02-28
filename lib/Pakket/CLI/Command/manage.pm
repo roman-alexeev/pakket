@@ -71,17 +71,19 @@ sub _determine_config {
     my $config = $config_reader->read_config;
 
     my %map = (
-        'spec'   => 'spec_dir',
-        'source' => 'source_dir',
+        'spec'   => [ 'spec_dir',   'ini' ],
+        'source' => [ 'source_dir', 'spkt' ],
     );
 
     foreach my $type ( keys %map ) {
-        my $opt_key   = $map{$type};
+        my ( $opt_key, $opt_ext ) = @{ $map{$type} };
         my $directory = $opt->{$opt_key};
 
         if ($directory) {
             $config->{'repositories'}{$type} = [
-                'File', 'directory' => $directory,
+                'File',
+                'directory'      => $directory,
+                'file_extension' => $opt_ext,
             ];
 
             my $path = path($directory);
