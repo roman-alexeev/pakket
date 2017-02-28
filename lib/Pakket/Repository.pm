@@ -79,7 +79,8 @@ sub latest_version {
     my ( $self, $category, $name ) = @_;
 
     # TODO: This is where the version comparison goes...
-    my @all = grep m{^ \Q$category\E / \Q$name\E =}xms, $self->all_object_ids;
+    my @all = grep m{^ \Q$category\E / \Q$name\E =}xms,
+              @{ $self->all_object_ids };
 
     # I don't like this, but okay...
     if ( $all[0] =~ PAKKET_PACKAGE_SPEC() ) {
