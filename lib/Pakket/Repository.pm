@@ -17,7 +17,7 @@ has 'backend' => (
     'lazy'    => 1,
     'builder' => '_build_backend',
     'handles' => [ qw<
-        all_object_ids
+        all_object_ids has_object
         store_content  retrieve_content  remove_content
         store_location retrieve_location remove_location
     > ],
