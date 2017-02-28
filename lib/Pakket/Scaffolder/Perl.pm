@@ -13,6 +13,7 @@ use Path::Tiny          qw< path >;
 use Types::Path::Tiny   qw< Path  >;
 use Log::Any            qw< $log >;
 
+use Pakket::Package;
 use Pakket::Utils::Perl qw< should_skip_module >;
 use Pakket::Scaffolder::Perl::Module;
 use Pakket::Scaffolder::Perl::CPANfile;
@@ -246,6 +247,7 @@ sub create_spec_for {
             'version'  => $rel_version,
         },
     };
+
     my $package  = Pakket::Package->new_from_spec($package_spec);
 
     $log->infof( '%s-> Working on %s (%s)', $self->spaces, $dist_name, $rel_version );
@@ -326,6 +328,11 @@ sub create_spec_for {
                 for keys %{ $package_spec->{'Prereqs'}{'perl'}{$phase} };
         }
     }
+
+    # We had a partial Package object
+    # So now we have to recreate that package object
+    # based on the full specs (including prereqs)
+    $package = Pakket::Package->new_from_spec($package_spec);
 
     my $filename = $self->spec_repo->store_package_spec($package);
 #    $log->debugf( 'Stored %s as %s', $package->full_name, $filename);
