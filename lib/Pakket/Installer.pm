@@ -243,6 +243,14 @@ sub install_package {
             my $prereq_data    = $runtime_prereqs->{$prereq_name};
             my $prereq_version = $prereq_data->{'version'};
 
+            # FIXME: This should be removed when we introduce version ranges
+            # This forces us to install the latest version we have of
+            # something, instead of finding the latest, based on the
+            # version range, which "$prereq_version" contains. -- SX
+            $prereq_version = $self->parcel_repo->latest_version(
+                $prereq_category, $prereq_name,
+            );
+
             my $prereq = Pakket::Requirement->new(
                 'category' => $prereq_category,
                 'name'     => $prereq_name,
