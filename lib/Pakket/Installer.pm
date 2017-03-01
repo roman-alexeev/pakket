@@ -328,19 +328,18 @@ sub _update_info_file {
         { 'recurse' => 1 },
     );
 
-    $install_data->{'installed_packages'} = {
-        $package->category => {
-            $package->name => {
-                'version'   => $package->version,
-                'release'   => $package->release,
-                'files'     => [ keys %files ],
-                'as_prereq' => $opts->{'as_prereq'} ? 1 : 0,
-                'prereqs'   => $package->prereqs,
-            },
-        },
+    my ( $cat, $name ) = ( $package->category, $package->name );
+    $install_data->{'installed_packages'}{$cat}{$name} = {
+        'version'   => $package->version,
+        'release'   => $package->release,
+        'files'     => [ keys %files ],
+        'as_prereq' => $opts->{'as_prereq'} ? 1 : 0,
+        'prereqs'   => $package->prereqs,
     };
 
-    $install_data->{'installed_files'} = \%files;
+    foreach my $file ( keys %files ) {
+        $install_data->{'installed_files'}{$file} = $files{$file};
+    }
 
     $info_file->spew_utf8( encode_json_pretty($install_data) );
 }
