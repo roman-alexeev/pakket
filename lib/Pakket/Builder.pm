@@ -297,7 +297,7 @@ sub run_build {
     } else {
         $self->is_built->{$short_name} = [
             $prereq->version,
-            $prereq->releasae,
+            $prereq->release,
         ];
     }
 
