@@ -101,8 +101,14 @@ sub validate_args {
     }
 
     foreach my $spec_str (@specs) {
-        my ( $cat, $name, $version ) = $spec_str =~ PAKKET_PACKAGE_SPEC()
-            or $self->usage_error("Provide category/name, not '$spec_str'");
+        my ( $cat, $name, $version, $release ) =
+            $spec_str =~ PAKKET_PACKAGE_SPEC();
+
+        if ( ! ( $cat && $name && $version && $release ) ) {
+            $self->usage_error(
+                "Provide category/name=version:release, not '$spec_str'",
+            );
+        }
 
         my $req;
         eval { $req = Pakket::Requirement->new_from_string($spec_str); 1; }

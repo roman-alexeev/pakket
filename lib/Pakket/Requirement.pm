@@ -5,7 +5,10 @@ use Moose;
 use MooseX::StrictConstructor;
 
 use Log::Any          qw< $log >;
-use Pakket::Constants qw< PAKKET_PACKAGE_SPEC >;
+use Pakket::Constants qw<
+    PAKKET_PACKAGE_SPEC
+    PAKKET_DEFAULT_RELEASE
+>;
 use Pakket::Types;
 
 with qw< Pakket::Role::BasicPackageAttrs >;
@@ -19,8 +22,15 @@ has [qw< category name >] => (
 has 'version' => (
     'is'       => 'ro',
     'isa'      => 'PakketVersion',
-    'required' => 1,
     'coerce'   => 1,
+    'required' => 1,
+);
+
+has 'release' => (
+    'is'      => 'ro',
+    'isa'     => 'PakketRelease',
+    'coerce'  => 1,
+    'default' => sub { PAKKET_DEFAULT_RELEASE() },
 );
 
 has 'is_bootstrap' => (

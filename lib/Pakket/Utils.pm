@@ -80,10 +80,11 @@ sub generate_bin_path {
 }
 
 sub canonical_package_name {
-    my ( $category, $package, $version ) = @_;
+    my ( $category, $package, $version, $release ) = @_;
 
-    $version
-        and return sprintf( '%s/%s=%s', $category, $package, $version );
+    if ( $version && $release ) {
+        return sprintf '%s/%s=%s:%s', $category, $package, $version, $release;
+    }
 
     return sprintf( '%s/%s', $category, $package );
 }

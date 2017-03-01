@@ -69,7 +69,7 @@ sub remove_package_file {
     $self->remove_location( $package->id );
 }
 
-sub latest_version {
+sub latest_version_release {
     my ( $self, $category, $name ) = @_;
 
     # TODO: This is where the version comparison goes...
@@ -78,7 +78,10 @@ sub latest_version {
 
     # I don't like this, but okay...
     if ( $all[0] =~ PAKKET_PACKAGE_SPEC() ) {
-        return $3;
+        my ( $version, $release ) = ( $3, $4 );
+
+        defined $version && defined $release
+            and return [ $version, $release ];
     }
 
     die $log->criticalf(

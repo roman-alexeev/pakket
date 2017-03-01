@@ -242,9 +242,11 @@ sub create_spec_for {
 
     my $package_spec = {
         'Package' => {
+            'release'  => 1,
             'category' => 'perl',
             'name'     => $dist_name,
             'version'  => $rel_version,
+            'release'  => 1,
         },
     };
 

@@ -10,21 +10,27 @@ use constant {
     'PARCEL_FILES_DIR'     => 'files',
     'PARCEL_METADATA_FILE' => 'meta.json',
 
-    # CATEGORY/PACKAGE         == latest version
-    # CATEGORY/PACKAGE=VERSION == Exact version
+    # CATEGORY/PACKAGE                 == latest version, latest release
+    # CATEGORY/PACKAGE=VERSION         == Exact version, latest release
+    # CATEGORY/PACKAGE=VERSION:RELEASE == Exact version and release
     'PAKKET_PACKAGE_SPEC'  => qr{
         ^
-        ([^/]+)     # category
+        ( [^/]+ )       # category
         /
-        ([^=]+)    # name
+        ( [^=]+ )       # name
         (?:
             =
-            (.+) # optional version
+            ( [^:]+ )   # optional version
+            (?:
+                :
+                (.*)    # optional release
+            )?
         )?
         $
     }xms,
 
     'PAKKET_LATEST_VERSION' => 'LATEST',
+    'PAKKET_DEFAULT_RELEASE' => 1,
 
     'PAKKET_INFO_FILE'      => 'info.json',
 };
@@ -35,6 +41,7 @@ our @EXPORT_OK = qw<
     PARCEL_METADATA_FILE
     PAKKET_PACKAGE_SPEC
     PAKKET_LATEST_VERSION
+    PAKKET_DEFAULT_RELEASE
     PAKKET_INFO_FILE
 >;
 

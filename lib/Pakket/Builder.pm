@@ -176,85 +176,79 @@ sub bootstrap_build {
         'bootstrapping'  => 0,
     );
 
-    my %dists = map +(
-        $_ => $self->spec_repo->latest_version( $category, $_ ),
-    ), @dists;
-
-    foreach my $dist_name ( keys %dists ) {
-        my $dist_version = $dists{$dist_name};
-        my $requirement  = Pakket::Requirement->new(
-            'category' => $category,
-            'name'     => $dist_name,
-            'version'  => $dist_version,
+    ## no critic qw(BuiltinFunctions::ProhibitComplexMappings Lax::ProhibitComplexMappings::LinesNotStatements)
+    my %dist_reqs = map {;
+        my $name    = $_;
+        my $ver_rel = $self->spec_repo->latest_version_release(
+            $category, $name,
         );
+        my ( $version, $release ) = @{$ver_rel};
 
-        $self->parcel_repo->has_object($requirement)
+        $name => Pakket::Requirement->new(
+            'name'     => $name,
+            'category' => $category,
+            'version'  => $version,
+            'release'  => $release,
+        );
+    } @dists;
+
+    foreach my $dist_name ( keys %dist_reqs ) {
+        my $dist_req = $dist_reqs{$dist_name};
+
+        $self->parcel_repo->has_object($dist_req)
             or next;
 
         $log->noticef(
             'Skipping: parcel %s already exists',
-            $requirement->full_name,
+            $dist_req->full_name,
         );
 
-        @dists = grep +( $_ ne $dist_name ), @dists;
+        delete $dist_reqs{$dist_name};
     }
 
     # Pass I: bootstrap toolchain - build w/o dependencies
-    for my $dist_name (@dists) {
-        my $dist_version = $dists{$dist_name};
+    for my $dist_name ( keys %dist_reqs ) {
+        my $dist_req = $dist_reqs{$dist_name};
 
-        $log->noticef( 'Bootstrapping: phase I: %s=%s (%s)',
-                       $dist_name, $dist_version, 'no-deps' );
+        $log->noticef( 'Bootstrapping: phase I: %s (%s)',
+                       $dist_req->full_name, 'no-deps' );
 
-        # Create a requirement
-        my $req = Pakket::Requirement->new(
-            'category' => $category,
-            'name'     => $dist_name,
-            'version'  => $dist_version,
+        $self->run_build(
+            $dist_req,
+            { 'bootstrapping_1_skip_prereqs' => 1 },
         );
-
-        $self->run_build( $req, { 'bootstrapping_1_skip_prereqs' => 1 } );
     }
 
     # Pass II: bootstrap toolchain - build dependencies only
-    for my $dist_name (@dists) {
-        my $dist_version = $dists{$dist_name};
-
-        my $req = Pakket::Requirement->new(
-            'category' => $category,
-            'name'     => $dist_name,
-            'version'  => $dist_version,
-        );
+    for my $dist_name ( keys %dist_reqs ) {
+        my $dist_req = $dist_reqs{$dist_name};
 
         $log->noticef( 'Bootstrapping: phase II: %s (%s)',
-                       $req->full_name, 'deps-only' );
+                       $dist_req->full_name, 'deps-only' );
 
-        $self->run_build( $req, { 'bootstrapping_2_deps_only' => 1 } );
+        $self->run_build(
+            $dist_req,
+            { 'bootstrapping_2_deps_only' => 1 },
+        );
     }
 
     # Pass III: bootstrap toolchain - rebuild w/ dependencies
-    for my $dist_name (@dists) {
-        my $dist_version = $dists{$dist_name};
+    for my $dist_name ( keys %dist_reqs ) {
+        my $dist_req = $dist_reqs{$dist_name};
 
         # remove the temp (no-deps) parcel
-        $log->noticef( 'Removing %s=%s (no-deps parcel)',
-                       $dist_name, $dist_version );
+        $log->noticef( 'Removing %s (no-deps parcel)',
+                       $dist_req->full_name );
 
-        my $req = Pakket::Requirement->new(
-            'category' => $category,
-            'name'     => $dist_name,
-            'version'  => $dist_version,
-        );
-
-        $self->parcel_repo->remove_package_parcel($req);
+        $self->parcel_repo->remove_package_parcel($dist_req);
 
         # build again with dependencies
 
-        $log->noticef( 'Bootstrapping: phase III: %s=%s (%s)',
-                       $dist_name, $dist_version, 'full deps' );
+        $log->noticef( 'Bootstrapping: phase III: %s (%s)',
+                       $dist_req->full_name, 'full deps' );
 
-        delete $bootstrap_builder->is_built->{ $req->short_name };
-        $bootstrap_builder->build($req);
+        delete $bootstrap_builder->is_built->{ $dist_req->short_name };
+        $bootstrap_builder->build($dist_req);
     }
 
     $log->notice('Finished Bootstrapping!');
@@ -276,12 +270,22 @@ sub run_build {
     }
 
     if ( ! $bootstrap_prereqs and defined $self->is_built->{$short_name} ) {
-        my $built_version = $self->is_built->{$short_name};
+        my $ver_rel = $self->is_built->{$short_name};
+        my ( $built_version, $built_release ) = @{$ver_rel};
 
+        # Check the versions mismatch
         if ( $built_version ne $prereq->version ) {
             die $log->criticalf(
                 'Asked to build %s when %s=%s already built',
                 $prereq->full_name, $short_name, $built_version,
+            );
+        }
+
+        # Check the releases mismatch
+        if ( $built_release ne $prereq->release ) {
+            die $log->criticalf(
+                'Asked to build %s when %s=%s:%s already built',
+                $prereq->full_name, $short_name, $built_version, $built_release,
             );
         }
 
@@ -291,7 +295,10 @@ sub run_build {
 
         return;
     } else {
-        $self->is_built->{$short_name} = $prereq->version;
+        $self->is_built->{$short_name} = [
+            $prereq->version,
+            $prereq->release,
+        ];
     }
 
     $log->noticef( '%sWorking on %s', '|...' x $level, $prereq->full_name );
@@ -446,14 +453,17 @@ sub _recursive_build_phase {
     my @prereqs = keys %{ $package->prereqs->{$category}{$phase} };
 
     foreach my $prereq_name (@prereqs) {
-        my $version = $self->spec_repo->latest_version(
+        my $ver_rel = $self->spec_repo->latest_version_release(
             $category, $prereq_name,
         );
+
+        my ( $version, $release ) = @{$ver_rel};
 
         my $req = Pakket::Requirement->new(
             'category' => $category,
             'name'     => $prereq_name,
             'version'  => $version,
+            'release'  => $release,
         );
 
         $self->run_build( $req, { 'level' => $level } );

@@ -12,7 +12,7 @@ sub short_name {
 sub full_name {
     my $self = shift;
     return canonical_package_name(
-        $self->category, $self->name, $self->version,
+        $self->category, $self->name, $self->version, $self->release,
     );
 }
 
