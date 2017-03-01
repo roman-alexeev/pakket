@@ -86,7 +86,11 @@ sub canonical_package_name {
         return sprintf '%s/%s=%s:%s', $category, $package, $version, $release;
     }
 
-    return sprintf( '%s/%s', $category, $package );
+    if ($version) {
+        return sprintf '%s/%s=%s', $category, $package, $version;
+    }
+
+    return sprintf '%s/%s', $category, $package;
 }
 
 sub encode_json_canonical {
