@@ -215,15 +215,13 @@ sub install_package {
 
         # Check release
         if ( $release ne $package->release ) {
-            $log->criticalf(
+            die $log->criticalf(
                 '%s=%s:%s already installed. '
               . 'Cannot install new version: %s:%s',
                 $package->short_name,
                 $version, $release,
                 $package->release,
             );
-
-            exit 1;
         }
 
         $log->debugf( '%s already installed.', $package->full_name );
@@ -257,17 +255,17 @@ sub install_package {
         my $runtime_prereqs = $prereqs->{$prereq_category}{'runtime'};
 
         foreach my $prereq_name ( keys %{$runtime_prereqs} ) {
-            my $prereq_data    = $runtime_prereqs->{$prereq_name};
-            my $prereq_version = $prereq_data->{'version'};
-            my $prereq_release = $prereq_data->{'release'};
+            my $prereq_data = $runtime_prereqs->{$prereq_name};
 
             # FIXME: This should be removed when we introduce version ranges
             # This forces us to install the latest version we have of
             # something, instead of finding the latest, based on the
             # version range, which "$prereq_version" contains. -- SX
-            $prereq_version = $self->parcel_repo->latest_version(
+            my $ver_rel = $self->parcel_repo->latest_version_release(
                 $prereq_category, $prereq_name,
             );
+
+            my ( $prereq_version, $prereq_release ) = @{$ver_rel};
 
             my $prereq = Pakket::Requirement->new(
                 'category' => $prereq_category,

@@ -179,7 +179,9 @@ sub bootstrap_build {
     ## no critic qw(BuiltinFunctions::ProhibitComplexMappings Lax::ProhibitComplexMappings::LinesNotStatements)
     my %dist_reqs = map {;
         my $name    = $_;
-        my $ver_rel = $self->spec_repo->latest_version( $category, $name );
+        my $ver_rel = $self->spec_repo->latest_version_release(
+            $category, $name,
+        );
         my ( $version, $release ) = @{$ver_rel};
 
         $name => Pakket::Requirement->new(
@@ -281,12 +283,10 @@ sub run_build {
 
         # Check the releases mismatch
         if ( $built_release ne $prereq->release ) {
-            $log->criticalf(
+            die $log->criticalf(
                 'Asked to build %s when %s=%s:%s already built',
                 $prereq->full_name, $short_name, $built_version, $built_release,
             );
-
-            exit 1;
         }
 
         $log->debug(
@@ -453,7 +453,7 @@ sub _recursive_build_phase {
     my @prereqs = keys %{ $package->prereqs->{$category}{$phase} };
 
     foreach my $prereq_name (@prereqs) {
-        my $ver_rel = $self->spec_repo->latest_version(
+        my $ver_rel = $self->spec_repo->latest_version_release(
             $category, $prereq_name,
         );
 
