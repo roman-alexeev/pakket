@@ -161,6 +161,13 @@ sub try_to_install_package {
 
     $log->debugf( 'Trying to install %s', $package->full_name );
 
+    # First we check whether a package exists, because if not
+    # we wil throw a silly critical warning about it
+    # This can also speed stuff up, but maybe should be put into
+    # "has_package" wrapper function... -- SX
+    $self->parcel_repo->has_object( $package->id )
+        or return;
+
     eval {
         $self->install_package( $package, $dir, $opts );
         1;
