@@ -3,18 +3,17 @@ package Pakket::CLI::Command::manage;
 
 use strict;
 use warnings;
-use Log::Any::Adapter;
+
 use Path::Tiny qw< path  >;
 use List::Util qw< first >;
+use Log::Any   qw< $log >; # to log
+use Log::Any::Adapter;     # to set the logger
 
 use Pakket::CLI '-command';
 use Pakket::Log;
 use Pakket::Config;
 use Pakket::Scaffolder::Perl;
 use Pakket::Constants qw< PAKKET_PACKAGE_SPEC >;
-
-use Log::Any   qw< $log >; # to log
-use Log::Any::Adapter;     # to set the logger
 
 sub abstract    { 'Scaffold a project' }
 sub description { 'Scaffold a project' }
