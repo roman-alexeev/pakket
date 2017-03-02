@@ -298,6 +298,30 @@ sub install_package {
     return;
 }
 
+sub uninstall {
+    my ( $self, @packages ) = @_;
+
+    if ( !@packages ) {
+        $log->notice('Did not receive any parcels to uninstall');
+        return;
+    }
+
+    my $work_dir       = $self->pakket_libraries_dir->child('active');
+    my $packages_count = 0;
+    my $info_file      = $work_dir->child( PAKKET_INFO_FILE() );
+    my $info           = decode_json( $info_file->slurp_utf8 );
+    use DDP; p $info;
+    foreach my $package (@packages) {
+    }
+
+    $log->infof(
+        'Finished installing %d packages into %s',
+        $packages_count, $self->pakket_libraries_dir,
+    );
+
+    return;
+}
+
 sub _update_info_file {
     my ( $self, $parcel_dir, $dir, $package, $opts ) = @_;
 
