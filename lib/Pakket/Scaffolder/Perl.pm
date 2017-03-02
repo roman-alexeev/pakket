@@ -280,16 +280,14 @@ sub create_spec_for {
         if ( $download ) {
             if ( my $download_url = $self->rewrite_download_url( $release->{'download_url'} ) ) {
 
-                # TODO: remove with the addition of URL support below:
                 my $source_file = path(
                     $self->download_dir,
                     ( $download_url =~ s{^.+/}{}r )
                 );
+
                 $self->ua->mirror( $download_url, $source_file );
 
                 $self->source_repo->store_package_source(
-                    # TODO: when there's URL support
-                    # $package, $download_url
                     $package, $source_file
                 );
             }
