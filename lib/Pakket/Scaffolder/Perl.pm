@@ -242,60 +242,69 @@ sub create_spec_for {
 
     my $package_spec = {
         'Package' => {
-            'release'  => 1,
             'category' => 'perl',
             'name'     => $dist_name,
             'version'  => $rel_version,
-            'release'  => 1,
+            'release'  => 1, # hmm... ???
         },
     };
 
     my $package  = Pakket::Package->new_from_spec($package_spec);
 
+
+    # Source
+
+    if ( $self->source_repo->retrieve_location( $package->full_name ) ) {
+        $log->criticalf( "You are trying to add an existing package: %s", $package->full_name );
+        exit 1;
+    }
+
     $log->infof( '%s-> Working on %s (%s)', $self->spaces, $dist_name, $rel_version );
     $self->set_depth( $self->depth + 1 );
 
+
     # Download if source doesn't exist already
-    if ( ! $self->source_repo->retrieve_location( $package->full_name ) ) {
-        my $download = 1;
+    my $download = 1;
 
-        if ( $self->_has_from_dir ) {
-            my $from_name = $dist_name . '-' . $rel_version . '.tar.gz';
-            my $from_file = path( $self->from_dir, $from_name );
+    if ( $self->_has_from_dir ) {
+        my $from_name = $dist_name . '-' . $rel_version . '.tar.gz';
+        my $from_file = path( $self->from_dir, $from_name );
 
-            if ( $from_file->exists ) {
-                $log->debugf(
-                    'Found source for %s [%s]',
-                    $package->full_name, $from_file->stringify
-                );
+        if ( $from_file->exists ) {
+            $log->debugf(
+                'Found source for %s [%s]',
+                $package->full_name, $from_file->stringify
+            );
 
-                $self->source_repo->store_package_source(
-                    $package, $from_file
-                );
+            $self->source_repo->store_package_source(
+                $package, $from_file
+            );
 
-                $download = 0;
-            }
-        }
-
-        if ( $download ) {
-            if ( my $download_url = $self->rewrite_download_url( $release->{'download_url'} ) ) {
-
-                my $source_file = path(
-                    $self->download_dir,
-                    ( $download_url =~ s{^.+/}{}r )
-                );
-
-                $self->ua->mirror( $download_url, $source_file );
-
-                $self->source_repo->store_package_source(
-                    $package, $source_file
-                );
-            }
-            else {
-                $log->errorf( "--- can't find download_url for %s-%s", $dist_name, $rel_version );
-            }
+            $download = 0;
         }
     }
+
+    if ( $download ) {
+        if ( my $download_url = $self->rewrite_download_url( $release->{'download_url'} ) ) {
+
+            my $source_file = path(
+                $self->download_dir,
+                ( $download_url =~ s{^.+/}{}r )
+            );
+
+            $self->ua->mirror( $download_url, $source_file );
+
+            $self->source_repo->store_package_source(
+                $package, $source_file
+            );
+        }
+        else {
+            $log->errorf( "--- can't find download_url for %s-%s", $dist_name, $rel_version );
+        }
+    }
+
+
+    # Spec
 
     $self->spec_repo->retrieve_location( $package->full_name )
         and return;
