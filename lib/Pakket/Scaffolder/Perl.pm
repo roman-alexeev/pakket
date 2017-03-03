@@ -214,6 +214,27 @@ sub skip_name {
     return 0;
 }
 
+sub unpack {
+    my ( $self, $file ) = @_;
+
+    my $archive = Archive::Any->new($file);
+    my $target  = Path::Tiny->tempdir();
+    my $dir_name;
+    if ( $archive->is_naughty ) {
+        die $log->critical("Suspicious module ($file)");
+    }
+
+    if ( $archive->is_impolite ) {
+        $dir_name = $target;
+    } else {
+        my @files = $archive->files;
+        $dir_name = $target->child( $files[0] );
+    }
+
+    $archive->extract($target);
+    return $dir_name;
+}
+
 sub create_spec_for {
     my ( $self, $type, $name, $requirements ) = @_;
     return if $self->skip_name($name);
@@ -276,24 +297,10 @@ sub create_spec_for {
                 $package->full_name, $from_file->stringify
             );
 
-            my $archive = Archive::Any->new($from_file);
-            my $target  = Path::Tiny->tempdir();
-            my $dir_name;
-            if ( $archive->is_naughty ) {
-                die $log->critical("Suspicious module ($from_file)");
-            }
-
-            if ( $archive->is_impolite ) {
-                $dir_name = $target;
-            } else {
-                my @files = $archive->files;
-                $dir_name = $target->child( $files[0] );
-            }
-
-            $archive->extract($target);
+            my $dir = $self->unpack($from_file);
 
             $self->source_repo->store_package_source(
-                $package, $dir_name,
+                $package, $dir,
             );
 
             $download = 0;
@@ -310,24 +317,10 @@ sub create_spec_for {
 
             $self->ua->mirror( $download_url, $source_file );
 
-            my $archive = Archive::Any->new($source_file);
-            my $target  = Path::Tiny->tempdir();
-            my $dir_name;
-            if ( $archive->is_naughty ) {
-                die $log->critical("Suspicious module ($source_file)");
-            }
-
-            if ( $archive->is_impolite ) {
-                $dir_name = $target;
-            } else {
-                my @files = $archive->files;
-                $dir_name = $target->child( $files[0] );
-            }
-
-            $archive->extract($target);
+            my $dir = $self->unpack($source_file);
 
             $self->source_repo->store_package_source(
-                $package, $dir_name,
+                $package, $dir,
             );
 
         }
