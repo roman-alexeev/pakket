@@ -165,17 +165,6 @@ sub bootstrap_build {
 
     @dists or return;
 
-    # XXX: Whoa!
-    my $bootstrap_builder = ref($self)->new(
-        'parcel_repo'    => $self->parcel_repo,
-        'spec_repo'      => $self->spec_repo,
-        'source_repo'    => $self->source_repo,
-        'keep_build_dir' => $self->keep_build_dir,
-        'builders'       => $self->builders,
-        'installer'      => $self->installer,
-        'bootstrapping'  => 0,
-    );
-
     ## no critic qw(BuiltinFunctions::ProhibitComplexMappings Lax::ProhibitComplexMappings::LinesNotStatements)
     my %dist_reqs = map {;
         my $name    = $_;
@@ -233,6 +222,17 @@ sub bootstrap_build {
     }
 
     # Pass III: bootstrap toolchain - rebuild w/ dependencies
+    # XXX: Whoa!
+    my $bootstrap_builder = ref($self)->new(
+        'parcel_repo'    => $self->parcel_repo,
+        'spec_repo'      => $self->spec_repo,
+        'source_repo'    => $self->source_repo,
+        'keep_build_dir' => $self->keep_build_dir,
+        'builders'       => $self->builders,
+        'installer'      => $self->installer,
+        'bootstrapping'  => 0,
+    );
+
     for my $dist_name ( keys %dist_reqs ) {
         my $dist_req = $dist_reqs{$dist_name};
 
@@ -247,7 +247,6 @@ sub bootstrap_build {
         $log->noticef( 'Bootstrapping: phase III: %s (%s)',
                        $dist_req->full_name, 'full deps' );
 
-        delete $bootstrap_builder->is_built->{ $dist_req->short_name };
         $bootstrap_builder->build($dist_req);
     }
 
