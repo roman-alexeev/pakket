@@ -6,6 +6,7 @@ use MooseX::StrictConstructor;
 
 use Path::Tiny;
 use Archive::Any;
+use Archive::Tar::Wrapper;
 use Log::Any      qw< $log >;
 use Pakket::Types qw< PakketRepositoryBackend >;
 use Pakket::Constants qw< PAKKET_PACKAGE_SPEC >;
@@ -88,6 +89,43 @@ sub latest_version_release {
         'Could not analyze %s to find latest version',
         $all[0],
     );
+}
+
+sub freeze_location {
+    my ( $self, $orig_path ) = @_;
+
+    my $arch = Archive::Tar::Wrapper->new();
+
+    if ( $orig_path->is_file ) {
+        $arch->add( $orig_path->basename->stringify, $orig_path->stringify, );
+    } elsif ( $orig_path->is_dir ) {
+        $orig_path->children
+            or
+            die $log->critical("Cannot freeze empty directory ($orig_path)");
+
+        $orig_path->visit(
+            sub {
+                my ( $path, $stash ) = @_;
+
+                $path->is_file
+                    or return;
+
+                $arch->add( $path->relative($orig_path)->stringify,
+                    $path->stringify, );
+            },
+            { 'recurse' => 1 },
+        );
+    } else {
+        die $log->criticalf( "Unknown location type: %s", $orig_path );
+    }
+
+    my $file = Path::Tiny->tempfile();
+
+    # Write and compress
+    $log->debug("Writing archive as $file");
+    $arch->write( $file->stringify, 1 );
+
+    return $file;
 }
 
 __PACKAGE__->meta->make_immutable;

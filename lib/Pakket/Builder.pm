@@ -405,16 +405,7 @@ sub run_build {
         );
 
 
-        # FIXME: This feels like such a hack...
-        # Basically the tmp dir will still have the dist dir inside it
-        # So this goes in and makes sure it's only one directory inside
-        my @inner_dirs = $package_src_dir->children;
-        if ( @inner_dirs != 1 ) {
-            die $log->critical('We only expect one directory in a source tree');
-        }
-
-        my $real_package_src_dir = $inner_dirs[0];
-        dircopy( $real_package_src_dir, $package_dst_dir );
+        dircopy( $package_src_dir, $package_dst_dir );
 
         $builder->build_package(
             $package->name,

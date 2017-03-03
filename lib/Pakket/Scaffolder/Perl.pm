@@ -276,8 +276,24 @@ sub create_spec_for {
                 $package->full_name, $from_file->stringify
             );
 
+            my $archive = Archive::Any->new($from_file);
+            my $target  = Path::Tiny->tempdir();
+            my $dir_name;
+            if ( $archive->is_naughty ) {
+                die $log->critical("Suspicious module ($from_file)");
+            }
+
+            if ( $archive->is_impolite ) {
+                $dir_name = $target;
+            } else {
+                my @files = $archive->files;
+                $dir_name = $target->child( $files[0] );
+            }
+
+            $archive->extract($target);
+
             $self->source_repo->store_package_source(
-                $package, $from_file
+                $package, $dir_name,
             );
 
             $download = 0;
@@ -294,9 +310,26 @@ sub create_spec_for {
 
             $self->ua->mirror( $download_url, $source_file );
 
+            my $archive = Archive::Any->new($source_file);
+            my $target  = Path::Tiny->tempdir();
+            my $dir_name;
+            if ( $archive->is_naughty ) {
+                die $log->critical("Suspicious module ($source_file)");
+            }
+
+            if ( $archive->is_impolite ) {
+                $dir_name = $target;
+            } else {
+                my @files = $archive->files;
+                $dir_name = $target->child( $files[0] );
+            }
+
+            $archive->extract($target);
+
             $self->source_repo->store_package_source(
-                $package, $source_file
+                $package, $dir_name,
             );
+
         }
         else {
             $log->errorf( "--- can't find download_url for %s-%s", $dist_name, $rel_version );
