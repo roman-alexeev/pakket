@@ -215,10 +215,10 @@ sub skip_name {
 }
 
 sub unpack {
-    my ( $self, $file ) = @_;
+    my ( $self, $target, $file ) = @_;
 
     my $archive = Archive::Any->new($file);
-    my $target  = Path::Tiny->tempdir();
+
     my $dir_name;
     if ( $archive->is_naughty ) {
         die $log->critical("Suspicious module ($file)");
@@ -297,7 +297,8 @@ sub create_spec_for {
                 $package->full_name, $from_file->stringify
             );
 
-            my $dir = $self->unpack($from_file);
+            my $target = Path::Tiny->tempdir();
+            my $dir    = $self->unpack( $target, $from_file );
 
             $self->source_repo->store_package_source(
                 $package, $dir,
@@ -317,7 +318,8 @@ sub create_spec_for {
 
             $self->ua->mirror( $download_url, $source_file );
 
-            my $dir = $self->unpack($source_file);
+            my $target = Path::Tiny->tempdir();
+            my $dir    = $self->unpack( $target, $source_file );
 
             $self->source_repo->store_package_source(
                 $package, $dir,
