@@ -219,20 +219,27 @@ sub unpack {
 
     my $archive = Archive::Any->new($file);
 
-    my $dir_name;
     if ( $archive->is_naughty ) {
         die $log->critical("Suspicious module ($file)");
     }
 
-    if ( $archive->is_impolite ) {
-        $dir_name = $target;
-    } else {
-        my @files = $archive->files;
-        $dir_name = $target->child( $files[0] );
+    $archive->extract($target);
+
+    # Determine if this is a directory in and of itself
+    # or whether it's just a bunch of files
+    # (This is what Archive::Any refers to as "impolite")
+    # It has to be done manually, because the list of files
+    # from an archive might return an empty directory listing
+    # or none, which confuses us
+    my @files = $target->children();
+    if ( @files == 1 && $files[0]->is_dir ) {
+        # Polite
+        return $files[0];
     }
 
-    $archive->extract($target);
-    return $dir_name;
+    # Is impolite, meaning it's just a bunch of files
+    # (or a single file, but still)
+    return $target;
 }
 
 sub create_spec_for {
