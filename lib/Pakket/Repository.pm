@@ -97,7 +97,7 @@ sub freeze_location {
     my $arch = Archive::Tar::Wrapper->new();
 
     if ( $orig_path->is_file ) {
-        $arch->add( $orig_path->basename->stringify, $orig_path->stringify, );
+        $arch->add( $orig_path->basename, $orig_path->stringify, );
     } elsif ( $orig_path->is_dir ) {
         $orig_path->children
             or
