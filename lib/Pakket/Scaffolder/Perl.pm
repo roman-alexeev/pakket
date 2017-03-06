@@ -253,6 +253,8 @@ sub create_spec_for {
     my $dist_name    = $release->{'distribution'};
     my $rel_version  = $release->{'version'};
 
+    $log->infof( '%s-> Working on %s (%s)', $self->spaces, $dist_name, $rel_version );
+
     my $index = $self->spec_index;
 
     if ( exists $index->{ $name } ) {
@@ -285,7 +287,6 @@ sub create_spec_for {
     $self->source_repo->retrieve_location( $package->full_name ) and
         $log->debugf( "Package %s already exists in repo.", $package->full_name );
 
-    $log->infof( '%s-> Working on %s (%s)', $self->spaces, $dist_name, $rel_version );
     $self->set_depth( $self->depth + 1 );
 
 
