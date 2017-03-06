@@ -391,11 +391,11 @@ sub get_dist_name {
     my $dist_name;
     eval {
         my $mod_url     = $self->metacpan_api . "/module/$module_name";
-        my $release_url = $self->metacpan_api . "/release/$module_name";
-        my $response    = $self->ua->get($mod_url);
+        my $release_url = $self->metacpan_api . "/release/" . ( $module_name =~ s/::/-/r);
+        my $response    = $self->ua->get($release_url);
 
         $response->{'status'} == 200
-            or $response = $self->ua->get($release_url);
+            or $response = $self->ua->get($mod_url);
 
         $response->{'status'} != 200
             and Carp::croak("Cannot fetch $mod_url or $release_url");
@@ -435,7 +435,6 @@ sub get_release_info {
     my $dist_name = $type eq 'module'
         ? $self->get_dist_name($name)
         : $name;
-
     return +{ 'skip' => 1 } if $self->skip_name($dist_name);
 
     my $req_as_hash = $requirements->as_string_hash;
