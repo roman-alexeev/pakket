@@ -282,10 +282,8 @@ sub create_spec_for {
 
     # Source
 
-    if ( $self->source_repo->retrieve_location( $package->full_name ) ) {
-        $log->criticalf( "You are trying to add an existing package: %s", $package->full_name );
-        exit 1;
-    }
+    $self->source_repo->retrieve_location( $package->full_name ) and
+        $log->debugf( "Package %s already exists in repo.", $package->full_name );
 
     $log->infof( '%s-> Working on %s (%s)', $self->spaces, $dist_name, $rel_version );
     $self->set_depth( $self->depth + 1 );
