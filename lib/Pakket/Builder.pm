@@ -133,7 +133,7 @@ sub DEMOLISH {
     my $build_dir = $self->build_dir;
 
     if ( !$self->keep_build_dir ) {
-        $log->info("Removing build dir $build_dir");
+        $log->debug("Removing build dir $build_dir");
 
         # "safe" is false because it might hit files which it does not have
         # proper permissions to delete (example: ZMQ::Constants.3pm)
@@ -379,14 +379,14 @@ sub run_build {
     my $package_src_dir
         = $self->source_repo->retrieve_package_source($package);
 
-    $log->info('Copying package files');
+    $log->debug('Copying package files');
 
     # FIXME: we shouldn't be generating PKG_CONFIG_PATH every time
     #        Instead, set this as default opt and send it to the build
     #        subroutines as "default opts" to add their own stuff to
     #        and add LD_LIBRARY_PATH and PATH to this as well
     my $pkgconfig_path = $top_build_dir->child( qw<main lib pkgconfig> );
-    $log->info("Setting PKG_CONFIG_PATH=$pkgconfig_path");
+    $log->debug("Setting PKG_CONFIG_PATH=$pkgconfig_path");
     local $ENV{'PKG_CONFIG_PATH'} = $pkgconfig_path;
 
     # FIXME: This shouldn't just be configure flags
@@ -424,7 +424,7 @@ sub run_build {
         $package, $main_build_dir,
     );
 
-    $log->infof( 'Bundling %s', $package->full_name );
+    $log->debugf( 'Bundling %s', $package->full_name );
     $self->bundler->bundle(
         $main_build_dir->absolute,
         $package,
