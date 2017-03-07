@@ -12,6 +12,17 @@ use constant {
     'DEBUG_NOTICE_LEVEL' => 1,
 };
 
+# Just so I remember it:
+# 1  fatal     system unusable, aborts program!
+# 2  alert     failure in primary system
+# 3  critical  failure in backup system
+# 4  error     non-urgent program errors, a bug
+# 5  warning   possible problem, not necessarily error
+# 6  notice    unusual conditions
+# 7  info      normal messages, no action required
+# 8  debug     debugging messages for development
+# 9  trace     copious tracing output
+
 sub arg_default_logger {
     return $_[1] || Log::Dispatch->new(
         'outputs' => [

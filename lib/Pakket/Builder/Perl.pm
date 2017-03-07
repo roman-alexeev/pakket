@@ -16,11 +16,12 @@ sub build_package {
 
     $log->info("Building Perl module: $package");
 
-    my $opts = {
-        'env' => {
-            generate_env_vars($build_dir, $prefix),
-        },
-    };
+    my %env  = generate_env_vars( $build_dir, $prefix );
+    my $opts = { 'env' => \%env };
+
+    foreach my $env_var ( keys %env ) {
+        $log->trace( 'export ' . join '=', $env_var, $env{$env_var} );
+    }
 
     my $install_base = $prefix->absolute;
 
