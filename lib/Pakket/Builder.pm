@@ -187,7 +187,7 @@ sub bootstrap_build {
         $self->parcel_repo->has_object($dist_req)
             or next;
 
-        $log->noticef(
+        $log->debugf(
             'Skipping: parcel %s already exists',
             $dist_req->full_name,
         );
@@ -199,7 +199,7 @@ sub bootstrap_build {
     for my $dist_name ( keys %dist_reqs ) {
         my $dist_req = $dist_reqs{$dist_name};
 
-        $log->noticef( 'Bootstrapping: phase I: %s (%s)',
+        $log->debugf( 'Bootstrapping: phase I: %s (%s)',
                        $dist_req->full_name, 'no-deps' );
 
         $self->run_build(
@@ -212,7 +212,7 @@ sub bootstrap_build {
     for my $dist_name ( keys %dist_reqs ) {
         my $dist_req = $dist_reqs{$dist_name};
 
-        $log->noticef( 'Bootstrapping: phase II: %s (%s)',
+        $log->debugf( 'Bootstrapping: phase II: %s (%s)',
                        $dist_req->full_name, 'deps-only' );
 
         $self->run_build(
@@ -237,20 +237,20 @@ sub bootstrap_build {
         my $dist_req = $dist_reqs{$dist_name};
 
         # remove the temp (no-deps) parcel
-        $log->noticef( 'Removing %s (no-deps parcel)',
+        $log->debugf( 'Removing %s (no-deps parcel)',
                        $dist_req->full_name );
 
         $self->parcel_repo->remove_package_parcel($dist_req);
 
         # build again with dependencies
 
-        $log->noticef( 'Bootstrapping: phase III: %s (%s)',
+        $log->debugf( 'Bootstrapping: phase III: %s (%s)',
                        $dist_req->full_name, 'full deps' );
 
         $bootstrap_builder->build($dist_req);
     }
 
-    $log->notice('Finished Bootstrapping!');
+    $log->debug('Finished Bootstrapping!');
 }
 
 sub run_build {
