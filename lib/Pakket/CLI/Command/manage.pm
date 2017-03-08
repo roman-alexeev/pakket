@@ -44,6 +44,8 @@ sub validate_args {
     $self->_validate_arg_command($args);
     $self->_validate_arg_from_dir($opt);
 
+    $self->{'config'}{'env'}{'cli'} = 1;
+
     $self->{'command'} eq 'add'
         and $self->_validate_args_add( $opt, $args );
 

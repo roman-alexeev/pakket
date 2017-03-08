@@ -105,6 +105,8 @@ sub validate_args {
     $opt->{'pakket_dir'} = $opt->{'to'};
     $opt->{'config'}     = $self->_determine_config($opt);
     $opt->{'packages'}   = $self->_determine_packages( $opt, $args );
+
+    $opt->{'config'}{'env'}{'cli'} = 1;
 }
 
 sub execute {

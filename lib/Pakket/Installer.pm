@@ -15,6 +15,7 @@ use English               qw< -no_match_vars >;
 use Pakket::Repository::Parcel;
 use Pakket::Requirement;
 use Pakket::Package;
+use Pakket::Log;
 use Pakket::Types     qw< PakketRepositoryBackend >;
 use Pakket::Utils     qw< is_writeable encode_json_pretty >;
 use Pakket::Constants qw<
@@ -129,6 +130,8 @@ sub install {
         "Finished installing %d packages into $pakket_libraries_dir",
         scalar keys %{$installer_cache},
     );
+
+    log_success( 'Finished installing: ' .  join ', ', @packages );
 
     # Clean up
     my $keep = $self->keep_copies;
@@ -293,7 +296,7 @@ sub install_package {
 
     $self->_update_info_file( $parcel_dir, $dir, $full_package, $opts );
 
-    $log->infof( 'Delivered parcel %s', $full_package->full_name );
+    log_success( sprintf 'Delivering parcel %s', $full_package->full_name );
 
     return;
 }

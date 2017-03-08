@@ -123,8 +123,12 @@ sub build {
     my ( $self, $requirement ) = @_;
 
     $self->_setup_build_dir;
-    $self->bootstrapping
-        and $self->bootstrap_build( $requirement->category );
+
+    if ( $self->bootstrapping ) {
+        $self->bootstrap_build( $requirement->category );
+        log_success('Bootstrapping');
+    }
+
     $self->run_build($requirement);
 }
 
@@ -133,7 +137,7 @@ sub DEMOLISH {
     my $build_dir = $self->build_dir;
 
     if ( !$self->keep_build_dir ) {
-        $log->info("Removing build dir $build_dir");
+        $log->debug("Removing build dir $build_dir");
 
         # "safe" is false because it might hit files which it does not have
         # proper permissions to delete (example: ZMQ::Constants.3pm)
@@ -187,7 +191,7 @@ sub bootstrap_build {
         $self->parcel_repo->has_object($dist_req)
             or next;
 
-        $log->noticef(
+        $log->debugf(
             'Skipping: parcel %s already exists',
             $dist_req->full_name,
         );
@@ -199,7 +203,7 @@ sub bootstrap_build {
     for my $dist_name ( keys %dist_reqs ) {
         my $dist_req = $dist_reqs{$dist_name};
 
-        $log->noticef( 'Bootstrapping: phase I: %s (%s)',
+        $log->debugf( 'Bootstrapping: phase I: %s (%s)',
                        $dist_req->full_name, 'no-deps' );
 
         $self->run_build(
@@ -212,7 +216,7 @@ sub bootstrap_build {
     for my $dist_name ( keys %dist_reqs ) {
         my $dist_req = $dist_reqs{$dist_name};
 
-        $log->noticef( 'Bootstrapping: phase II: %s (%s)',
+        $log->debugf( 'Bootstrapping: phase II: %s (%s)',
                        $dist_req->full_name, 'deps-only' );
 
         $self->run_build(
@@ -237,20 +241,18 @@ sub bootstrap_build {
         my $dist_req = $dist_reqs{$dist_name};
 
         # remove the temp (no-deps) parcel
-        $log->noticef( 'Removing %s (no-deps parcel)',
+        $log->debugf( 'Removing %s (no-deps parcel)',
                        $dist_req->full_name );
 
         $self->parcel_repo->remove_package_parcel($dist_req);
 
         # build again with dependencies
 
-        $log->noticef( 'Bootstrapping: phase III: %s (%s)',
+        $log->debugf( 'Bootstrapping: phase III: %s (%s)',
                        $dist_req->full_name, 'full deps' );
 
         $bootstrap_builder->build($dist_req);
     }
-
-    $log->notice('Finished Bootstrapping!');
 }
 
 sub run_build {
@@ -300,7 +302,7 @@ sub run_build {
         ];
     }
 
-    $log->noticef( '%sWorking on %s', '|...' x $level, $prereq->full_name );
+    $log->debugf( '%sWorking on %s', '|...' x $level, $prereq->full_name );
 
     # Create a Package instance from the spec
     # using the information we have on it
@@ -342,7 +344,7 @@ sub run_build {
             # snapshot_build_dir
             $self->snapshot_build_dir( $package, $main_build_dir->absolute, 0 );
 
-            $log->noticef(
+            $log->debugf(
                 '%sInstalled %s',
                 '|...' x $level,
                 $prereq->full_name,
@@ -379,14 +381,14 @@ sub run_build {
     my $package_src_dir
         = $self->source_repo->retrieve_package_source($package);
 
-    $log->info('Copying package files');
+    $log->debug('Copying package files');
 
     # FIXME: we shouldn't be generating PKG_CONFIG_PATH every time
     #        Instead, set this as default opt and send it to the build
     #        subroutines as "default opts" to add their own stuff to
     #        and add LD_LIBRARY_PATH and PATH to this as well
     my $pkgconfig_path = $top_build_dir->child( qw<main lib pkgconfig> );
-    $log->info("Setting PKG_CONFIG_PATH=$pkgconfig_path");
+    $log->debug("Setting PKG_CONFIG_PATH=$pkgconfig_path");
     local $ENV{'PKG_CONFIG_PATH'} = $pkgconfig_path;
 
     # FIXME: This shouldn't just be configure flags
@@ -424,16 +426,18 @@ sub run_build {
         $package, $main_build_dir,
     );
 
-    $log->infof( 'Bundling %s', $package->full_name );
+    $log->debugf( 'Bundling %s', $package->full_name );
     $self->bundler->bundle(
         $main_build_dir->absolute,
         $package,
         $package_files,
     );
 
-    $log->noticef(
+    $log->debugf(
         '%sFinished on %s', '|...' x $level, $prereq->full_name,
     );
+
+    log_success( sprintf 'Building %s', $prereq->full_name );
 
     return;
 }

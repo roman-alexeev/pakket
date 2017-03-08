@@ -11,8 +11,8 @@ requires 'Getopt::Long::Descriptive';
 requires 'JSON::MaybeXS';
 requires 'Log::Any', '>= 0.05';
 requires 'Log::Any::Adapter::Dispatch', '>= 0.06';
-requires 'Log::Dispatch', '<= 2.58';
-requires 'Log::Dispatch::Screen::Color';
+requires 'Log::Dispatch';
+requires 'Log::Dispatch::Screen::Gentoo';
 requires 'MetaCPAN::Client';
 requires 'Module::CPANfile';
 requires 'Module::Runtime';
@@ -27,6 +27,9 @@ requires 'version', '>= 0.77';
 requires 'Archive::Tar::Wrapper';
 requires 'Archive::Any';
 requires 'Digest::SHA';
+
+# Optimizes Gentoo color output
+recommends 'Unicode::UTF8';
 
 # For the HTTP backend
 requires 'HTTP::Tiny';

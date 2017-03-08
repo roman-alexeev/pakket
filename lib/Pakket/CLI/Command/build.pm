@@ -86,6 +86,7 @@ sub validate_args {
     );
 
     $opt->{'config'} = $self->_determine_config($opt);
+    $opt->{'config'}{'env'}{'cli'} = 1;
 
     my @specs;
     if ( defined ( my $file = $opt->{'input_file'} ) ) {
