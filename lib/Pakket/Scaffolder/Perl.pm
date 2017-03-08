@@ -361,7 +361,15 @@ sub create_spec_for {
                 my $rel = $self->get_release_info( module => $module, $dep_requirements );
                 next if exists $rel->{'skip'};
 
-                $prereq_data->{ $rel->{'distribution'} } = +{
+                my $dist = $rel->{'distribution'};
+
+                if ( exists $self->known_incorrect_dependencies->{ $package->name }{ $dist } ) {
+                    $log->debugf( "%s* skipping %s (known 'bad' dependency for %s)",
+                                  $self->spaces, $dist, $package->name );
+                    next;
+                }
+
+                $prereq_data->{ $dist } = +{
                     'version' => ( $rel->{'write_version_as_zero'} ? "0" : $rel->{'version'} )
                 };
             }

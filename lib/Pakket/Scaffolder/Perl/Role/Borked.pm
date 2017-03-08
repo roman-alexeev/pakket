@@ -26,6 +26,22 @@ has 'known_incorrect_version_fixes' => (
     },
 );
 
+has 'known_incorrect_dependencies' => (
+    'is'      => 'ro',
+    'isa'     => 'HashRef',
+    'default' => sub {
+        +{
+            'Module-Install' => {
+                'libwww-perl' => 1,
+                'PAR-Dist'    => 1,
+            },
+            'libwww-perl'    => {
+                'NTLM' => 1,
+            },
+        }
+    },
+);
+
 has 'known_names_to_skip' => (
     'is'      => 'ro',
     'isa'     => 'HashRef',
