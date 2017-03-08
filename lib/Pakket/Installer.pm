@@ -293,7 +293,7 @@ sub install_package {
 
     $self->_update_info_file( $parcel_dir, $dir, $full_package, $opts );
 
-    $log->infof( 'Delivered parcel %s', $full_package->full_name );
+    log_success( sprintf 'Delivering parcel %s', $full_package->full_name );
 
     return;
 }

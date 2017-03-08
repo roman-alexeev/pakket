@@ -123,8 +123,12 @@ sub build {
     my ( $self, $requirement ) = @_;
 
     $self->_setup_build_dir;
-    $self->bootstrapping
-        and $self->bootstrap_build( $requirement->category );
+
+    if ( $self->bootstrapping ) {
+        $self->bootstrap_build( $requirement->category );
+        log_success('Bootstrapping');
+    }
+
     $self->run_build($requirement);
 }
 
@@ -249,8 +253,6 @@ sub bootstrap_build {
 
         $bootstrap_builder->build($dist_req);
     }
-
-    $log->debug('Finished Bootstrapping!');
 }
 
 sub run_build {
@@ -434,6 +436,8 @@ sub run_build {
     $log->noticef(
         '%sFinished on %s', '|...' x $level, $prereq->full_name,
     );
+
+    log_success( sprintf 'Building %s', $prereq->full_name );
 
     return;
 }
