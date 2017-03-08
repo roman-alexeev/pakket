@@ -302,7 +302,7 @@ sub run_build {
         ];
     }
 
-    $log->noticef( '%sWorking on %s', '|...' x $level, $prereq->full_name );
+    $log->debugf( '%sWorking on %s', '|...' x $level, $prereq->full_name );
 
     # Create a Package instance from the spec
     # using the information we have on it
@@ -344,7 +344,7 @@ sub run_build {
             # snapshot_build_dir
             $self->snapshot_build_dir( $package, $main_build_dir->absolute, 0 );
 
-            $log->noticef(
+            $log->debugf(
                 '%sInstalled %s',
                 '|...' x $level,
                 $prereq->full_name,
@@ -433,7 +433,7 @@ sub run_build {
         $package_files,
     );
 
-    $log->noticef(
+    $log->debugf(
         '%sFinished on %s', '|...' x $level, $prereq->full_name,
     );
 
