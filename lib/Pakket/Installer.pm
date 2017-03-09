@@ -131,7 +131,8 @@ sub install {
         scalar keys %{$installer_cache},
     );
 
-    log_success( 'Finished installing: ' .  join ', ', @packages );
+    log_success( 'Finished installing: ' . join ', ',
+        map $_->full_name, @packages );
 
     # Clean up
     my $keep = $self->keep_copies;
