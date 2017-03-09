@@ -185,7 +185,7 @@ sub bootstrap_build {
         );
     } @dists;
 
-    foreach my $dist_name ( keys %dist_reqs ) {
+    foreach my $dist_name ( @dists ) {
         my $dist_req = $dist_reqs{$dist_name};
 
         $self->parcel_repo->has_object($dist_req)
@@ -200,7 +200,7 @@ sub bootstrap_build {
     }
 
     # Pass I: bootstrap toolchain - build w/o dependencies
-    for my $dist_name ( keys %dist_reqs ) {
+    for my $dist_name ( @dists ) {
         my $dist_req = $dist_reqs{$dist_name};
 
         $log->debugf( 'Bootstrapping: phase I: %s (%s)',
@@ -213,7 +213,7 @@ sub bootstrap_build {
     }
 
     # Pass II: bootstrap toolchain - build dependencies only
-    for my $dist_name ( keys %dist_reqs ) {
+    for my $dist_name ( @dists ) {
         my $dist_req = $dist_reqs{$dist_name};
 
         $log->debugf( 'Bootstrapping: phase II: %s (%s)',
@@ -237,7 +237,7 @@ sub bootstrap_build {
         'bootstrapping'  => 0,
     );
 
-    for my $dist_name ( keys %dist_reqs ) {
+    for my $dist_name ( @dists ) {
         my $dist_req = $dist_reqs{$dist_name};
 
         # remove the temp (no-deps) parcel
