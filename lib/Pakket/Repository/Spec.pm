@@ -6,7 +6,7 @@ use MooseX::StrictConstructor;
 use Types::Path::Tiny qw< Path >;
 use Carp              qw< croak >;
 use JSON::MaybeXS     qw< decode_json >;
-use Pakket::Utils     qw< encode_json_canonical >;
+use Pakket::Utils     qw< encode_json_pretty >;
 
 extends qw< Pakket::Repository >;
 
@@ -34,7 +34,7 @@ sub store_package_spec {
 
     return $self->store_content(
         $package->id,
-        encode_json_canonical( $package->spec ),
+        encode_json_pretty( $package->spec ),
     );
 }
 
