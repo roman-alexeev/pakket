@@ -49,7 +49,7 @@ sub _log_to_outputs {
         }
 
         my $level   = $status ? 'info' : 'error';
-        my $message = " * $msg" . ' ' x _extra_spaces($msg) . $status;
+        my $message = " * $msg" . ' ' x _extra_spaces($msg) . $status_output;
 
         $output->log(
             'level'   => $level,
