@@ -29,7 +29,7 @@ requires 'Archive::Any';
 requires 'Digest::SHA';
 
 # Optimizes Gentoo color output
-recommends 'Unicode::UTF8';
+requires 'Unicode::UTF8';
 
 # For the HTTP backend
 requires 'HTTP::Tiny';

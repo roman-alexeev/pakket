@@ -3640,6 +3640,19 @@ DISTRIBUTIONS
       parent 0
       perl 5.008001
       utf8 0
+  Unicode-UTF8-0.60
+    pathname: C/CH/CHANSEN/Unicode-UTF8-0.60.tar.gz
+    provides:
+      Unicode::UTF8 0.60
+    requirements:
+      Carp 0
+      Encode 1.9801
+      Exporter 0
+      ExtUtils::MakeMaker 6.59
+      Test::Fatal 0.006
+      Test::More 0.47
+      XSLoader 0
+      perl 5.008001
   Variable-Magic-0.61
     pathname: V/VP/VPIT/Variable-Magic-0.61.tar.gz
     provides:
