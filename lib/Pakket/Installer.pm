@@ -266,7 +266,9 @@ sub install_package {
             # something, instead of finding the latest, based on the
             # version range, which "$prereq_version" contains. -- SX
             my $ver_rel = $self->parcel_repo->latest_version_release(
-                $prereq_category, $prereq_name,
+                $prereq_category,
+                $prereq_name,
+                $prereq_data->{'version'},
             );
 
             my ( $prereq_version, $prereq_release ) = @{$ver_rel};
