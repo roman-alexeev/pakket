@@ -59,7 +59,7 @@ sub execute {
 
     my $command = $self->{'command'};
 
-    if ( $command eq 'remove' or $command eq 'deps' ) {
+    if ( $command =~ /^(?:remove|deps|show)$/ ) {
         $package = Pakket::Package->new(
             'category' => $self->{'category'},
             'name'     => $self->{'module'}{'name'},
@@ -83,6 +83,9 @@ sub execute {
 
     } elsif ( $command eq 'list' ) {
         $self->list_ids;
+
+    } elsif ( $command eq 'show' ) {
+        $self->show_package_config($package);
     }
 }
 
@@ -134,10 +137,10 @@ sub _validate_arg_command {
     my $self = shift;
 
     my $command = shift @{ $self->{'args'} }
-        or $self->usage_error("Must pick action (add/remove/deps/list)");
+        or $self->usage_error("Must pick action (add/remove/deps/list/show)");
 
-    grep { $command eq $_ } qw< add remove deps list >
-        or $self->usage_error( "Wrong command (add/remove/deps/list)\n" );
+    grep { $command eq $_ } qw< add remove deps list show >
+        or $self->usage_error( "Wrong command (add/remove/deps/list/show)\n" );
 
     $self->{'command'} = $command;
 
@@ -145,6 +148,7 @@ sub _validate_arg_command {
     $command eq 'remove' and $self->_validate_args_remove;
     $command eq 'deps'   and $self->_validate_args_dependency;
     $command eq 'list'   and $self->_validate_args_list;
+    $command eq 'show'   and $self->_validate_args_show;
 }
 
 sub _validate_arg_from_dir {
@@ -211,6 +215,11 @@ sub _validate_args_list {
         and $self->usage_error( "You muse provide arg --parcel-dir to list parcels." );
 
     $self->{'list_type'} = $type =~ s/s$//r;
+}
+
+sub _validate_args_show {
+    my $self = shift;
+    $self->_read_set_spec_str;
 }
 
 sub _read_spec_str {
@@ -355,9 +364,44 @@ sub _package_dependency_edit {
 }
 
 sub list_ids {
-    my ( $self ) = @_;
+    my $self = shift;
     my $repo = $self->_get_repo( $self->{'list_type'} );
     print "$_\n" for sort @{ $repo->all_object_ids };
+}
+
+sub show_package_config {
+    my ( $self, $package ) = @_;
+    my $repo = $self->_get_repo('spec');
+    my $spec = $repo->retrieve_package_spec($package);
+
+    my ( $category, $name, $version, $release ) =
+        @{ $spec->{'Package'} }{qw< category name version release >};
+
+    print <<"SHOW";
+
+# PACKAGE:
+
+category: $category
+name:     $name
+version:  $version
+release:  $release
+
+# DEPENDENCIES:
+
+SHOW
+
+    for my $c ( sort keys %{ $spec->{'Prereqs'} } ) {
+        for my $p ( sort keys %{ $spec->{'Prereqs'}{$c} } ) {
+            print "$c/$p:\n";
+            for my $n ( sort keys %{ $spec->{'Prereqs'}{$c}{$p} } ) {
+                my $v = $spec->{'Prereqs'}{$c}{$p}{$n}{'version'};
+                print "- $n-$v\n";
+            }
+            print "\n";
+        }
+    }
+
+    # TODO: reverse dependencies (requires map)
 }
 
 1;
