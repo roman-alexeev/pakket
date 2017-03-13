@@ -28,13 +28,13 @@ has 'files' => (
     'default' => sub {
         my $self = shift;
 
-        if ( $ENV{PAKKET_CONFIG_FILE} ) {
-            return [ $ENV{PAKKET_CONFIG_FILE} ];
+        if ( $ENV{'PAKKET_CONFIG_FILE'} ) {
+            return [ $ENV{'PAKKET_CONFIG_FILE'} ];
         }
 
         my %files;
-        foreach my $path (@{$self->{paths}}) {
-            foreach my $extension (@{$self->{extensions}}) {
+        foreach my $path ( @{ $self->{'paths'} } ) {
+            foreach my $extension ( @{ $self->{'extensions'} } ) {
                 my $file = path("$path.$extension");
 
                 $file->exists
@@ -42,16 +42,20 @@ has 'files' => (
 
                 $files{$path}
                     and croak $log->criticalf(
-                        "Multiple extensions for same config file name: %s and %s",
-                        $files{$path}, $file);
+                    'Multiple extensions for same config file name: %s and %s',
+                    $files{$path}, $file
+                    );
 
                 $files{$path} = $file;
             }
 
+            # We found a file in order of precedence
+            # so we return it
             $files{$path}
                 and return [ $files{$path} ];
         }
 
+        # Could not find any files
         return [];
     },
 );
