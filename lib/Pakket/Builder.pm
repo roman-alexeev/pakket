@@ -366,10 +366,8 @@ sub run_build {
         }
     }
 
-    # GH #74
-    my @supported_phases = qw< configure runtime >;
-
     # recursively build prereqs
+    # FIXME: GH #74
     if ( $bootstrap_prereqs or ! $skip_prereqs ) {
         foreach my $category ( keys %{ $self->builders } ) {
             $self->_recursive_build_phase( $package, $category, 'configure', $level+1 );
