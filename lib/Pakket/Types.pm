@@ -5,6 +5,7 @@ use strict;
 use warnings;
 
 use Moose::Util::TypeConstraints;
+use Carp     qw< croak >;
 use Log::Any qw< $log >;
 use Safe::Isa;
 use Module::Runtime qw< require_module >;
@@ -49,6 +50,27 @@ subtype 'PakketRelease', as 'Int';
 
 coerce 'PakketRelease', from 'Undef',
     via { return PAKKET_DEFAULT_RELEASE() };
+
+# PakketVersioning
+
+subtype 'PakketVersioning', as 'Object',
+where { $_->$_does('Pakket::Role::Versioning') };
+
+coerce 'PakketVersioning', from 'Str',
+via {
+    my $type  = $_;
+    my $class = "Pakket::Versioning::$type";
+
+    eval {
+        require_module($class);
+        1;
+    } or do {
+        my $error = $@ || 'Zombie error';
+        croak( $log->critical("Could not load versioning module ($type)") );
+    };
+
+    return $class->new();
+};
 
 no Moose::Util::TypeConstraints;
 
