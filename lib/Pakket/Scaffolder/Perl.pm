@@ -14,6 +14,7 @@ use Types::Path::Tiny   qw< Path  >;
 use Log::Any            qw< $log >;
 
 use Pakket::Package;
+use Pakket::Types;
 use Pakket::Utils::Perl qw< should_skip_module >;
 use Pakket::Scaffolder::Perl::Module;
 use Pakket::Scaffolder::Perl::CPANfile;
@@ -40,8 +41,9 @@ has 'metacpan_api' => (
 );
 
 has 'phases' => (
-    'is'  => 'ro',
-    'isa' => 'ArrayRef',
+    'is'       => 'ro',
+    'isa'      => 'ArrayRef[PakketPhase]',
+    'required' => 1,
 );
 
 has 'processed_dists' => (
@@ -117,6 +119,7 @@ sub BUILDARGS {
 
     my $module   = delete $args{'module'};
     my $cpanfile = delete $args{'cpanfile'};
+
     Carp::croak("Please provide either 'module' or 'cpanfile'")
         unless $module xor $cpanfile;
 
@@ -135,13 +138,6 @@ sub BUILDARGS {
             Pakket::Scaffolder::Perl::CPANfile->new(
                 'cpanfile' => $cpanfile
             )->prereq_specs;
-    }
-
-    $args{'phases'} = [ qw< configure runtime > ];
-
-    if ( exists $args{'additional_phases'} and is_arrayref( $args{'additional_phases'} ) ) {
-        push @{ $args{'phases'} } =>
-            grep { $_ eq 'develop' or $_ eq 'test' } @{ $args{'additional_phases'} };
     }
 
     return \%args;
