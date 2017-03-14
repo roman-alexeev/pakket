@@ -84,19 +84,26 @@ sub latest_version_release {
         'perl' => 'Perl',
     );
 
-    my @my_versions;
+    my @versions;
     foreach my $object_id ( @{ $self->all_object_ids } ) {
-        $object_id =~ PAKKET_PACKAGE_SPEC();
-        push @my_versions, $3;
+        my ( $my_category, $my_name, $my_version, $my_release ) =
+            $object_id =~ PAKKET_PACKAGE_SPEC();
+
+        # Ignore what is not ours
+        $category eq $my_category and $name eq $my_name
+            or next;
+
+        # Add the version
+        push @versions, $my_version;
     }
 
     my $versioner = Pakket::Versioning->new(
         'type' => $types{$category},
     );
 
-    my $my_latest_version = $versioner->latest( $req_string, @my_versions );
-    $my_latest_version
-        and return [ $my_latest_version, 1 ];
+    my $latest_version = $versioner->latest( $req_string, @versions );
+    $latest_version
+        and return [ $latest_version, 1 ];
 
     Carp::croak( $log->criticalf(
         'Could not analyze %s/%s to find latest version',
