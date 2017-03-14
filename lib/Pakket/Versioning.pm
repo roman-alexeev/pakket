@@ -26,6 +26,10 @@ sub parse_req_string {
     my @conditions = split /,/xms, $req_string;
     my @filters;
     foreach my $condition (@conditions) {
+        if ( $condition !~ /^\s*(>=|<=|==|!=|>|<)\s*(\S*)\s*$/xms ) {
+            $condition = ">= $condition";
+        }
+
         my @filter = $condition =~ /^\s*(>=|<=|==|!=|>|<)\s*(\S*)\s*$/xms;
         push @filters, \@filter;
     }
