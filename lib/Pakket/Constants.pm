@@ -29,10 +29,17 @@ use constant {
         $
     }xms,
 
-    'PAKKET_LATEST_VERSION' => 'LATEST',
+    'PAKKET_LATEST_VERSION'  => 'LATEST',
     'PAKKET_DEFAULT_RELEASE' => 1,
 
-    'PAKKET_INFO_FILE'      => 'info.json',
+    'PAKKET_INFO_FILE'       => 'info.json',
+
+    'PAKKET_VALID_PHASES'    => {
+        'configure' => 1,
+        'develop'   => 1,
+        'runtime'   => 1,
+        'test'      => 1,
+    },
 };
 
 our @EXPORT_OK = qw<
@@ -43,6 +50,7 @@ our @EXPORT_OK = qw<
     PAKKET_LATEST_VERSION
     PAKKET_DEFAULT_RELEASE
     PAKKET_INFO_FILE
+    PAKKET_VALID_PHASES
 >;
 
 1;

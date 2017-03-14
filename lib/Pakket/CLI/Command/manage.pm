@@ -6,6 +6,7 @@ use warnings;
 
 use Path::Tiny qw< path  >;
 use List::Util qw< first >;
+use Ref::Util  qw< is_arrayref >;
 use Log::Any   qw< $log >; # to log
 use Log::Any::Adapter;     # to set the logger
 
@@ -13,7 +14,10 @@ use Pakket::CLI '-command';
 use Pakket::Log;
 use Pakket::Config;
 use Pakket::Scaffolder::Perl;
-use Pakket::Constants qw< PAKKET_PACKAGE_SPEC >;
+use Pakket::Constants qw<
+    PAKKET_PACKAGE_SPEC
+    PAKKET_VALID_PHASES
+>;
 
 sub abstract    { 'Scaffold a project' }
 sub description { 'Scaffold a project' }
@@ -138,7 +142,7 @@ sub _validate_arg_command {
         or $self->usage_error("Must pick action (add/remove/deps/list/show)");
 
     grep { $command eq $_ } qw< add remove deps list show >
-        or $self->usage_error( "Wrong command (add/remove/deps/list/show)\n" );
+        or $self->usage_error( "Wrong command (add/remove/deps/list/show)" );
 
     $self->{'command'} = $command;
 
@@ -165,12 +169,21 @@ sub _validate_args_add {
     my $self = shift;
 
     my $cpanfile = $self->{'opt'}{'cpanfile'};
+    my $additional_phase = $self->{'opt'}{'additional_phase'};
 
     if ( $cpanfile ) {
         $self->{'category'} = 'perl';
         $self->{'cpanfile'} = $cpanfile;
     } else {
         $self->_read_set_spec_str;
+    }
+
+    # TODO: config ???
+    $self->{'gen_phases'} = [qw< configure runtime >];
+    if ( is_arrayref($additional_phase) ) {
+        exists PAKKET_VALID_PHASES->{$_} or $self->usage_error( "Unsupported phase: $_" )
+            for @{ $additional_phase };
+        push @{ $self->{'gen_phases'} } => @{ $additional_phase };
     }
 }
 
@@ -227,7 +240,7 @@ sub _read_spec_str {
         or $self->usage_error("Provide [phase=]category/name[=version:release], not '$spec_str'");
 
     first { $_ eq $category } qw< perl > # add supported categories
-        or $self->usage_error( "Wrong 'name' format\n" );
+        or $self->usage_error( "Wrong 'name' format" );
 
     return +{
         category => $category,
@@ -262,28 +275,29 @@ sub _get_scaffolder {
 sub _gen_scaffolder_perl {
     my $self = shift;
 
-    my @params = ( 'config' => $self->{'config'} );
+    my %params = (
+        'config' => $self->{'config'},
+        'phases' => $self->{'gen_phases'},
+    );
 
     if ( $self->{'cpanfile'} ) {
-        push @params =>
-            ( 'cpanfile' => $self->{'cpanfile'} );
+        $params{'cpanfile'} = $self->{'cpanfile'};
 
     } else {
+        $params{'module'}  = $self->{'module'}{'name'};
+
         my $version = $self->{'module'}{'version'}
             # hack to pass exact version in prereq syntax
             ? '=='.$self->{'module'}{'version'}
             : undef;
 
-        push @params => (
-            'module'  => $self->{'module'}{'name'},
-            'version' => $version,
-        );
+        $params{'version'} = $version;
     }
 
     my $cache_dir = $self->{'cache_dir'};
-    $cache_dir and push @params => ( 'cache_dir' => $cache_dir );
+    $cache_dir and push $params{'cache_dir'} = $cache_dir;
 
-    return Pakket::Scaffolder::Perl->new(@params);
+    return Pakket::Scaffolder::Perl->new(%params);
 }
 
 sub _get_repo {

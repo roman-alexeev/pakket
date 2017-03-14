@@ -12,6 +12,7 @@ use Module::Runtime qw< require_module >;
 use Pakket::Constants qw<
     PAKKET_LATEST_VERSION
     PAKKET_DEFAULT_RELEASE
+    PAKKET_VALID_PHASES
 >;
 
 # PakketRepositoryBackend
@@ -71,6 +72,10 @@ via {
 
     return $class->new();
 };
+
+# PakketPhase
+
+enum 'PakketPhase' => [ keys %{PAKKET_VALID_PHASES()} ];
 
 no Moose::Util::TypeConstraints;
 
