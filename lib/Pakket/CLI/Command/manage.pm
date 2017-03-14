@@ -49,8 +49,6 @@ sub validate_args {
     $self->_determine_config;
     $self->_validate_arg_command;
     $self->_validate_arg_from_dir;
-
-    $self->{'config'}{'env'}{'cli'} = 1;
 }
 
 sub execute {

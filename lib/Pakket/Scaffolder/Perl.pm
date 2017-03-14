@@ -155,12 +155,12 @@ sub run {
     for my $dist ( @{ $self->perl_bootstrap_modules } ) {
         # TODO: check versions
         if ( exists $self->spec_index->{$dist} ) {
-            $log->debugf( 'skipping %s (already have version: %s)',
+            $log->debugf( 'Skipping %s (already have version: %s)',
                           $dist, $self->spec_index->{$dist} );
             next;
         }
 
-        $log->debugf( 'bootstrapping config: %s', $dist );
+        $log->debugf( 'Bootstrapping config: %s', $dist );
         my $requirements = $self->prereqs->requirements_for(qw< configure requires >);
         eval {
             $self->create_spec_for( dist => $dist, $requirements );
@@ -173,7 +173,7 @@ sub run {
 
     # the rest
     for my $phase ( @{ $self->phases } ) {
-        $log->debugf( 'phase: %s', $phase );
+        $log->debugf( 'Phase: %s', $phase );
         for my $type ( qw< requires recommends suggests > ) {
             next unless is_hashref( $self->modules->{ $phase }{ $type } );
 
@@ -202,12 +202,12 @@ sub skip_name {
     my ( $self, $name ) = @_;
 
     if ( should_skip_module($name) ) {
-        $log->debugf( "%s* skipping %s (core module, not dual-life)", $self->spaces, $name );
+        $log->debugf( "%sSkipping %s (core module, not dual-life)", $self->spaces, $name );
         return 1;
     }
 
     if ( exists $self->known_names_to_skip->{ $name } ) {
-        $log->debugf( "%s* skipping %s (known 'bad' name for configuration)", $self->spaces, $name );
+        $log->debugf( "%sSkipping %s (known 'bad' name for configuration)", $self->spaces, $name );
         return 1;
     }
 
@@ -253,7 +253,7 @@ sub create_spec_for {
     my $dist_name    = $release->{'distribution'};
     my $rel_version  = $release->{'version'};
 
-    $log->infof( '%s-> Working on %s (%s)', $self->spaces, $dist_name, $rel_version );
+    $log->infof( '%sWorking on %s (%s)', $self->spaces, $dist_name, $rel_version );
 
     my $index = $self->spec_index;
 
@@ -364,7 +364,7 @@ sub create_spec_for {
                 my $dist = $rel->{'distribution'};
 
                 if ( exists $self->known_incorrect_dependencies->{ $package->name }{ $dist } ) {
-                    $log->debugf( "%s* skipping %s (known 'bad' dependency for %s)",
+                    $log->debugf( "%sskipping %s (known 'bad' dependency for %s)",
                                   $self->spaces, $dist, $package->name );
                     next;
                 }
@@ -386,7 +386,6 @@ sub create_spec_for {
     $package = Pakket::Package->new_from_spec($package_spec);
 
     my $filename = $self->spec_repo->store_package_spec($package);
-#    $log->debugf( 'Stored %s as %s', $package->full_name, $filename);
 
     $self->set_depth( $self->depth - 1 );
 }
@@ -430,7 +429,7 @@ sub get_dist_name {
             1;
         } or do {
             my $error = $@ || 'Zombie error';
-            Carp::croak("-> Cannot find module by name: '$module_name'");
+            Carp::croak("Cannot find module by name: '$module_name'");
         };
     }
 
