@@ -14,6 +14,7 @@ use Pakket::CLI '-command';
 use Pakket::Log;
 use Pakket::Config;
 use Pakket::Scaffolder::Perl;
+use Pakket::Manager;
 use Pakket::Constants qw<
     PAKKET_PACKAGE_SPEC
     PAKKET_VALID_PHASES
@@ -61,7 +62,7 @@ sub execute {
 
     my $command = $self->{'command'};
 
-    if ( $command =~ /^(?:remove|deps|show)$/ ) {
+    if ( $command =~ /^(?:add|remove|deps|show)$/ ) {
         $package = Pakket::Package->new(
             'category' => $self->{'category'},
             'name'     => $self->{'module'}{'name'},
@@ -70,24 +71,34 @@ sub execute {
         );
     }
 
+    my $manager = Pakket::Manager->new(
+        config    => $self->{'config'},
+        cpanfile  => $self->{'cpanfile'},
+        cache_dir => $self->{'cache_dir'},
+        phases    => $self->{'gen_phases'},
+        package   => $package,
+    );
+
     if ( $command eq 'add' ) {
-        $self->_get_scaffolder->run;
+        $manager->add_package($package);
 
     } elsif ( $command eq 'remove' ) {
         # TODO: check we are allowed to remove package (dependencies)
-        $self->remove_package_spec($package);
-        $self->remove_package_source($package);
+        $manager->remove_package_spec($package);
+        $manager->remove_package_source($package);
 
     } elsif ( $command eq 'deps' ) {
-        my $deps_action = $self->{'deps_action'};
-        $deps_action eq 'add'    and $self->add_package_dependency($package);
-        $deps_action eq 'remove' and $self->remove_package_dependency($package);
+        $self->{'deps_action'} eq 'add'
+            and $manager->add_package_dependency($package, $self->{'dependency'});
+
+        $self->{'deps_action'} eq 'remove'
+            and $manager->remove_package_dependency($package, $self->{'dependency'});
 
     } elsif ( $command eq 'list' ) {
-        $self->list_ids;
+        $manager->list_ids( $self->{'list_type'} );
 
     } elsif ( $command eq 'show' ) {
-        $self->show_package_config($package);
+        $manager->show_package_config($package);
     }
 }
 
@@ -239,8 +250,8 @@ sub _read_spec_str {
     my ( $category, $name, $version, $release ) = $spec_str =~ PAKKET_PACKAGE_SPEC()
         or $self->usage_error("Provide [phase=]category/name[=version:release], not '$spec_str'");
 
-    first { $_ eq $category } qw< perl > # add supported categories
-        or $self->usage_error( "Wrong 'name' format" );
+    first { $_ eq $category } qw< perl native > # add supported categories
+        or $self->usage_error( "Wrong 'name' format\n" );
 
     return +{
         category => $category,
@@ -261,159 +272,6 @@ sub _read_set_spec_str {
     my $spec = $self->_read_spec_str($spec_str);
     $self->{'category'} = delete $spec->{'category'};
     $self->{'module'}   = $spec;
-}
-
-sub _get_scaffolder {
-    my $self = shift;
-
-    $self->{'category'} eq 'perl'
-        and return $self->_gen_scaffolder_perl;
-
-    die "failed to create a scaffolder\n";
-}
-
-sub _gen_scaffolder_perl {
-    my $self = shift;
-
-    my %params = (
-        'config' => $self->{'config'},
-        'phases' => $self->{'gen_phases'},
-    );
-
-    if ( $self->{'cpanfile'} ) {
-        $params{'cpanfile'} = $self->{'cpanfile'};
-
-    } else {
-        $params{'module'}  = $self->{'module'}{'name'};
-
-        my $version = $self->{'module'}{'version'}
-            # hack to pass exact version in prereq syntax
-            ? '=='.$self->{'module'}{'version'}
-            : undef;
-
-        $params{'version'} = $version;
-    }
-
-    my $cache_dir = $self->{'cache_dir'};
-    $cache_dir and push $params{'cache_dir'} = $cache_dir;
-
-    return Pakket::Scaffolder::Perl->new(%params);
-}
-
-sub _get_repo {
-    my ( $self, $key ) = @_;
-    my $class = 'Pakket::Repository::' . ucfirst($key);
-    return $class->new(
-        'backend' => $self->{'config'}{'repositories'}{$key},
-    );
-}
-
-sub remove_package_source {
-    my ( $self, $package ) = @_;
-    my $repo = $self->_get_repo('source');
-    $repo->remove_package_source( $package );
-    $log->info( sprintf("Removed %s from the source repo.", $package->id ) );
-}
-
-sub remove_package_spec {
-    my ( $self, $package ) = @_;
-    my $repo = $self->_get_repo('spec');
-    $repo->remove_package_spec( $package );
-    $log->info( sprintf("Removed %s from the spec repo.", $package->id ) );
-}
-
-sub add_package_dependency {
-    my ( $self, $package ) = @_;
-    $self->_package_dependency_edit($package,'add');
-}
-
-sub remove_package_dependency {
-    my ( $self, $package ) = @_;
-    $self->_package_dependency_edit($package,'remove');
-}
-
-sub _package_dependency_edit {
-    my ( $self, $package, $cmd ) = @_;
-    my $repo = $self->_get_repo('spec');
-    my $spec = $repo->retrieve_package_spec($package);
-
-    my $dep_name    = $self->{'dependency'}{'name'};
-    my $dep_version = $self->{'dependency'}{'version'};
-
-    my ( $category, $phase ) = @{ $self->{'dependency'} }{qw< category phase >};
-
-    my $dep_exists = ( defined $spec->{'Prereqs'}{$category}{$phase}{$dep_name}
-        and $spec->{'Prereqs'}{$category}{$phase}{$dep_name}{'version'} eq $dep_version );
-
-    if ( $cmd eq 'add' ) {
-        if ( $dep_exists ) {
-            $log->info( sprintf("%s is already a %s dependency for %s.",
-                                $dep_name, $phase, $package->name) );
-            exit 1;
-        }
-
-        $spec->{'Prereqs'}{$category}{$phase}{$dep_name} = +{
-            version => $dep_version
-        };
-
-        $log->info( sprintf("Added %s as %s dependency for %s.",
-                            $dep_name, $phase, $package->name) );
-
-    } elsif ( $cmd eq 'remove' ) {
-        if ( !$dep_exists ) {
-            $log->info( sprintf("%s is not a %s dependency for %s.",
-                                $dep_name, $phase, $package->name) );
-            exit 1;
-        }
-
-        delete $spec->{'Prereqs'}{$category}{$phase}{$dep_name};
-
-        $log->info( sprintf("Removed %s as %s dependency for %s.",
-                            $dep_name, $phase, $package->name) );
-    }
-
-    $repo->store_package_spec($package, $spec);
-}
-
-sub list_ids {
-    my $self = shift;
-    my $repo = $self->_get_repo( $self->{'list_type'} );
-    print "$_\n" for sort @{ $repo->all_object_ids };
-}
-
-sub show_package_config {
-    my ( $self, $package ) = @_;
-    my $repo = $self->_get_repo('spec');
-    my $spec = $repo->retrieve_package_spec($package);
-
-    my ( $category, $name, $version, $release ) =
-        @{ $spec->{'Package'} }{qw< category name version release >};
-
-    print <<"SHOW";
-
-# PACKAGE:
-
-category: $category
-name:     $name
-version:  $version
-release:  $release
-
-# DEPENDENCIES:
-
-SHOW
-
-    for my $c ( sort keys %{ $spec->{'Prereqs'} } ) {
-        for my $p ( sort keys %{ $spec->{'Prereqs'}{$c} } ) {
-            print "$c/$p:\n";
-            for my $n ( sort keys %{ $spec->{'Prereqs'}{$c}{$p} } ) {
-                my $v = $spec->{'Prereqs'}{$c}{$p}{$n}{'version'};
-                print "- $n-$v\n";
-            }
-            print "\n";
-        }
-    }
-
-    # TODO: reverse dependencies (requires map)
 }
 
 1;
