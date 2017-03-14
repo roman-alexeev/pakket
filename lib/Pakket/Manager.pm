@@ -12,6 +12,13 @@ has config => (
     default   => sub { +{} },
 );
 
+has category => (
+    is        => 'ro',
+    isa       => 'Str',
+    lazy      => 1,
+    builder   => '_build_category',
+);
+
 has cache_dir => (
     is        => 'ro',
     isa       => 'Maybe[Str]',
@@ -32,6 +39,12 @@ has phases => (
     isa       => 'Maybe[ArrayRef]',
 );
 
+sub _build_category {
+    my $self = shift;
+    $self->{'cpanfile'} and return 'perl';
+    return $self->package->category;
+}
+
 sub list_ids {
     my ( $self, $type ) = @_;
     my $repo = $self->_get_repo($type);
@@ -39,9 +52,9 @@ sub list_ids {
 }
 
 sub show_package_config {
-    my ( $self, $package ) = @_;
+    my $self = shift;
     my $repo = $self->_get_repo('spec');
-    my $spec = $repo->retrieve_package_spec($package);
+    my $spec = $repo->retrieve_package_spec( $self->package );
 
     my ( $category, $name, $version, $release ) =
         @{ $spec->{'Package'} }{qw< category name version release >};
@@ -74,38 +87,38 @@ SHOW
 }
 
 sub add_package {
-    my ( $self, $category ) = @_;
-    $self->_get_scaffolder($category)->run;
+    my $self = shift;
+    $self->_get_scaffolder->run;
 }
 
 sub remove_package_source {
-    my ( $self, $package ) = @_;
+    my $self = shift;
     my $repo = $self->_get_repo('source');
-    $repo->remove_package_source( $package );
-    $log->info( sprintf("Removed %s from the source repo.", $package->id ) );
+    $repo->remove_package_source( $self->package );
+    $log->info( sprintf("Removed %s from the source repo.", $self->package->id ) );
 }
 
 sub remove_package_spec {
-    my ( $self, $package ) = @_;
+    my $self = shift;
     my $repo = $self->_get_repo('spec');
-    $repo->remove_package_spec( $package );
-    $log->info( sprintf("Removed %s from the spec repo.", $package->id ) );
+    $repo->remove_package_spec( $self->package );
+    $log->info( sprintf("Removed %s from the spec repo.", $self->package->id ) );
 }
 
 sub add_dependency {
-    my ( $self, $package, $dependency ) = @_;
-    $self->_package_dependency_edit($package, $dependency, 'add');
+    my ( $self, $dependency ) = @_;
+    $self->_package_dependency_edit($dependency, 'add');
 }
 
 sub remove_dependency {
-    my ( $self, $package, $dependency ) = @_;
-    $self->_package_dependency_edit($package, $dependency, 'remove');
+    my ( $self, $dependency ) = @_;
+    $self->_package_dependency_edit($dependency, 'remove');
 }
 
 sub _package_dependency_edit {
-    my ( $self, $package, $dependency, $cmd ) = @_;
+    my ( $self, $dependency, $cmd ) = @_;
     my $repo = $self->_get_repo('spec');
-    my $spec = $repo->retrieve_package_spec($package);
+    my $spec = $repo->retrieve_package_spec( $self->package );
 
     my $dep_name    = $dependency->{'name'};
     my $dep_version = $dependency->{'version'};
@@ -115,10 +128,12 @@ sub _package_dependency_edit {
     my $dep_exists = ( defined $spec->{'Prereqs'}{$category}{$phase}{$dep_name}
                            and $spec->{'Prereqs'}{$category}{$phase}{$dep_name}{'version'} eq $dep_version );
 
+    my $name = $self->package->name;
+
     if ( $cmd eq 'add' ) {
         if ( $dep_exists ) {
             $log->info( sprintf("%s is already a %s dependency for %s.",
-                                $dep_name, $phase, $package->name) );
+                                $dep_name, $phase, $name) );
             exit 1;
         }
 
@@ -127,22 +142,22 @@ sub _package_dependency_edit {
         };
 
         $log->info( sprintf("Added %s as %s dependency for %s.",
-                            $dep_name, $phase, $package->name) );
+                            $dep_name, $phase, $name) );
 
     } elsif ( $cmd eq 'remove' ) {
         if ( !$dep_exists ) {
             $log->info( sprintf("%s is not a %s dependency for %s.",
-                                $dep_name, $phase, $package->name) );
+                                $dep_name, $phase, $name) );
             exit 1;
         }
 
         delete $spec->{'Prereqs'}{$category}{$phase}{$dep_name};
 
         $log->info( sprintf("Removed %s as %s dependency for %s.",
-                            $dep_name, $phase, $package->name) );
+                            $dep_name, $phase, $name) );
     }
 
-    $repo->store_package_spec($package, $spec);
+    $repo->store_package_spec($self->package, $spec);
 }
 
 sub _get_repo {
@@ -154,9 +169,9 @@ sub _get_repo {
 }
 
 sub _get_scaffolder {
-    my ( $self, $package ) = @_;
+    my $self = shift;
 
-    $package->category eq 'perl'
+    $self->category eq 'perl'
         and return $self->_gen_scaffolder_perl;
 
     die "failed to create a scaffolder\n";

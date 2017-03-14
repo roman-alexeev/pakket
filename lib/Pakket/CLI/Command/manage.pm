@@ -62,9 +62,14 @@ sub execute {
 
     my $command = $self->{'command'};
 
-    if ( $command =~ /^(?:add|remove|deps|show)$/ ) {
+    my $category =
+        $self->{'spec'}     ? $self->{'spec'}->category :
+        $self->{'cpanfile'} ? 'perl' :
+        undef;
+
+    if ( $command =~ /^(?:add|remove|deps|show)$/ and !$self->{'cpanfile'} ) {
         $package = Pakket::Package->new(
-            'category' => $self->{'spec'}->category,
+            'category' => $category,
             'name'     => $self->{'spec'}->name,
             'version'  => $self->{'spec'}->version,
             'release'  => $self->{'spec'}->release,
@@ -80,23 +85,22 @@ sub execute {
     );
 
     if ( $command eq 'add' ) {
-        $manager->add_package($package);
+        $manager->add_package;
 
     } elsif ( $command eq 'remove' ) {
         # TODO: check we are allowed to remove package (dependencies)
-        $manager->remove_package_spec($package);
-        $manager->remove_package_source($package);
+        $manager->remove_package_spec;
+        $manager->remove_package_source;
 
     } elsif ( $command eq 'deps' ) {
-        my @args = ($package, $self->{'dependency'});
-        $self->{'opt'}{'add'}    and $manager->add_dependency(@args);
-        $self->{'opt'}{'remove'} and $manager->remove_dependency(@args);
+        $self->{'opt'}{'add'}    and $manager->add_dependency( $self->{'dependency'} );
+        $self->{'opt'}{'remove'} and $manager->remove_dependency( $self->{'dependency'} );
 
     } elsif ( $command eq 'list' ) {
         $manager->list_ids( $self->{'list_type'} );
 
     } elsif ( $command eq 'show' ) {
-        $manager->show_package_config($package);
+        $manager->show_package_config;
     }
 }
 
@@ -181,7 +185,8 @@ sub _validate_args_add {
     my $additional_phase = $self->{'opt'}{'additional_phase'};
 
     if ( $cpanfile ) {
-        $self->{'category'} = 'perl';
+        @{ $self->{'args'} }
+            and $self->usage_error( "You can't have both a 'spec' and a 'cpanfile'\n" );
         $self->{'cpanfile'} = $cpanfile;
     } else {
         $self->_read_set_spec_str;
@@ -258,9 +263,6 @@ sub _read_set_spec_str {
 
     my $spec_str = shift @{ $self->{'args'} };
     $spec_str or $self->usage_error( "Must provide a package id (category/name=version:release)" );
-
-    $self->{'cpanfile'}
-        and $self->usage_error( "You can't provide both a cpanfile and a package id." );
 
     $self->{'spec'} = $self->_read_spec_str($spec_str);
 }
