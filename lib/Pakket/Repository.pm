@@ -7,9 +7,11 @@ use MooseX::StrictConstructor;
 use Path::Tiny;
 use Archive::Any;
 use Archive::Tar::Wrapper;
+use Carp ();
 use Log::Any      qw< $log >;
 use Pakket::Types qw< PakketRepositoryBackend >;
 use Pakket::Constants qw< PAKKET_PACKAGE_SPEC >;
+use Pakket::Versioning;
 
 has 'backend' => (
     'is'      => 'ro',
@@ -71,24 +73,42 @@ sub remove_package_file {
 }
 
 sub latest_version_release {
-    my ( $self, $category, $name ) = @_;
+    my ( $self, $category, $name, $req_string ) = @_;
 
-    # TODO: This is where the version comparison goes...
-    my @all = grep m{^ \Q$category\E / \Q$name\E =}xms,
-              @{ $self->all_object_ids };
+    # This will also convert '0' to '>= 0'
+    # (If we want to disable it, we just can just //= instead)
+    $req_string ||= '>= 0';
 
-    # I don't like this, but okay...
-    if ( $all[0] =~ PAKKET_PACKAGE_SPEC() ) {
-        my ( $version, $release ) = ( $3, $4 );
+    # Category -> Versioning type class
+    my %types = (
+        'perl' => 'Perl',
+    );
 
-        defined $version && defined $release
-            and return [ $version, $release ];
+    my @versions;
+    foreach my $object_id ( @{ $self->all_object_ids } ) {
+        my ( $my_category, $my_name, $my_version, $my_release ) =
+            $object_id =~ PAKKET_PACKAGE_SPEC();
+
+        # Ignore what is not ours
+        $category eq $my_category and $name eq $my_name
+            or next;
+
+        # Add the version
+        push @versions, $my_version;
     }
 
-    die $log->criticalf(
-        'Could not analyze %s to find latest version',
-        $all[0],
+    my $versioner = Pakket::Versioning->new(
+        'type' => $types{$category},
     );
+
+    my $latest_version = $versioner->latest( $req_string, @versions );
+    $latest_version
+        and return [ $latest_version, 1 ];
+
+    Carp::croak( $log->criticalf(
+        'Could not analyze %s/%s to find latest version',
+        $category, $name,
+    ) );
 }
 
 sub freeze_location {

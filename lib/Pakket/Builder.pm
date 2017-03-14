@@ -445,8 +445,11 @@ sub _recursive_build_phase {
     my @prereqs = keys %{ $package->prereqs->{$category}{$phase} };
 
     foreach my $prereq_name (@prereqs) {
+        my $prereq_ver_req =
+            $package->prereqs->{$category}{$phase}{$prereq_name}{'version'};
+
         my $ver_rel = $self->spec_repo->latest_version_release(
-            $category, $prereq_name,
+            $category, $prereq_name, $prereq_ver_req,
         );
 
         my ( $version, $release ) = @{$ver_rel};
