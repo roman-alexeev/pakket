@@ -50,6 +50,7 @@ sub new_from_string {
             'category' => $1,
             'name'     => $2,
             'version'  => $3,
+            ( 'release'  => $4 )x!! $4,
         );
     }
 }

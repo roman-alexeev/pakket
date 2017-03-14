@@ -64,10 +64,10 @@ sub execute {
 
     if ( $command =~ /^(?:add|remove|deps|show)$/ ) {
         $package = Pakket::Package->new(
-            'category' => $self->{'category'},
-            'name'     => $self->{'module'}{'name'},
-            'version'  => $self->{'module'}{'version'},
-            'release'  => $self->{'module'}{'release'},
+            'category' => $self->{'spec'}->category,
+            'name'     => $self->{'spec'}->name,
+            'version'  => $self->{'spec'}->version,
+            'release'  => $self->{'spec'}->release,
         );
     }
 
@@ -245,18 +245,12 @@ sub _validate_args_show {
 sub _read_spec_str {
     my ( $self, $spec_str ) = @_;
 
-    my ( $category, $name, $version, $release ) = $spec_str =~ PAKKET_PACKAGE_SPEC()
-        or $self->usage_error("Provide [phase=]category/name[=version:release], not '$spec_str'");
+    my $spec = Pakket::Requirement->new_from_string($spec_str);
 
-    first { $_ eq $category } qw< perl native > # add supported categories
+    first { $_ eq $spec->category } qw< perl native > # add supported categories
         or $self->usage_error( "Wrong 'name' format\n" );
 
-    return +{
-        category => $category,
-        name     => $name,
-        version  => $version,
-        release  => $release || 1,
-    };
+    return $spec;
 }
 
 sub _read_set_spec_str {
@@ -268,9 +262,7 @@ sub _read_set_spec_str {
     $self->{'cpanfile'}
         and $self->usage_error( "You can't provide both a cpanfile and a package id." );
 
-    my $spec = $self->_read_spec_str($spec_str);
-    $self->{'category'} = delete $spec->{'category'};
-    $self->{'module'}   = $spec;
+    $self->{'spec'} = $self->_read_spec_str($spec_str);
 }
 
 1;
