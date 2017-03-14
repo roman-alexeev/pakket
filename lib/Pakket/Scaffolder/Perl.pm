@@ -291,10 +291,14 @@ sub create_spec_for {
 
 
     # Download if source doesn't exist already
-    my $download = 1;
+    my $download     = 1;
+    my $download_url = $self->rewrite_download_url( $release->{'download_url'} );
 
     if ( $self->_has_from_dir ) {
-        my $from_name = $dist_name . '-' . $rel_version . '.tar.gz';
+        my $from_name = $download_url
+            ? $download_url =~ s{^.+/}{}r
+            : $dist_name . '-' . $rel_version . '.tar.gz';
+
         my $from_file = path( $self->from_dir, $from_name );
 
         if ( $from_file->exists ) {
@@ -315,8 +319,7 @@ sub create_spec_for {
     }
 
     if ( $download ) {
-        if ( my $download_url = $self->rewrite_download_url( $release->{'download_url'} ) ) {
-
+        if ( $download_url ) {
             my $source_file = path(
                 $self->download_dir,
                 ( $download_url =~ s{^.+/}{}r )
