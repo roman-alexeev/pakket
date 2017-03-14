@@ -76,11 +76,11 @@ has 'download_dir' => (
     'builder' => '_build_download_dir',
 );
 
-has 'from_dir' => (
+has 'cache_dir' => (
     'is'        => 'ro',
     'isa'       => Path,
     'coerce'    => 1,
-    'predicate' => '_has_from_dir',
+    'predicate' => '_has_cache_dir',
 );
 
 sub _build_metacpan_api {
@@ -294,12 +294,12 @@ sub create_spec_for {
     my $download     = 1;
     my $download_url = $self->rewrite_download_url( $release->{'download_url'} );
 
-    if ( $self->_has_from_dir ) {
+    if ( $self->_has_cache_dir ) {
         my $from_name = $download_url
             ? $download_url =~ s{^.+/}{}r
             : $dist_name . '-' . $rel_version . '.tar.gz';
 
-        my $from_file = path( $self->from_dir, $from_name );
+        my $from_file = path( $self->cache_dir, $from_name );
 
         if ( $from_file->exists ) {
             $log->debugf(

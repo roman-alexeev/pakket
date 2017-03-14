@@ -24,7 +24,7 @@ sub opt_spec {
         [ 'spec-dir=s',   'directory to write the spec to (JSON files)' ],
         [ 'source-dir=s', 'directory to write the sources to (downloads if provided)' ],
         [ 'parcel-dir=s', 'directory where build output (parcels) are' ],
-        [ 'from-dir=s',   'directory to get sources from (optional)' ],
+        [ 'cache-dir=s',  'directory to get sources from (optional)' ],
         [ 'additional-phase=s@',
           "additional phases to use ('develop' = author_requires, 'test' = test_requires). configure & runtime are done by default.",
         ],
@@ -48,7 +48,7 @@ sub validate_args {
 
     $self->_determine_config;
     $self->_validate_arg_command;
-    $self->_validate_arg_from_dir;
+    $self->_validate_arg_cache_dir;
 }
 
 sub execute {
@@ -149,15 +149,15 @@ sub _validate_arg_command {
     $command eq 'show'   and $self->_validate_args_show;
 }
 
-sub _validate_arg_from_dir {
+sub _validate_arg_cache_dir {
     my $self = shift;
 
-    my $from_dir = $self->{'opt'}{'from_dir'};
+    my $cache_dir = $self->{'opt'}{'cache_dir'};
 
-    if ( $from_dir ) {
-        path( $from_dir )->exists
-            or $self->usage_error( "from-dir: $from_dir doesn't exist\n" );
-        $self->{'from_dir'} = $from_dir;
+    if ( $cache_dir ) {
+        path( $cache_dir )->exists
+            or $self->usage_error( "cache-dir: $cache_dir doesn't exist\n" );
+        $self->{'cache_dir'} = $cache_dir;
     }
 }
 
@@ -280,8 +280,8 @@ sub _gen_scaffolder_perl {
         );
     }
 
-    my $from_dir = $self->{'from_dir'};
-    $from_dir and push @params => ( 'from_dir' => $from_dir );
+    my $cache_dir = $self->{'cache_dir'};
+    $cache_dir and push @params => ( 'cache_dir' => $cache_dir );
 
     return Pakket::Scaffolder::Perl->new(@params);
 }
