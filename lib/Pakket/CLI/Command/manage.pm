@@ -88,11 +88,9 @@ sub execute {
         $manager->remove_package_source($package);
 
     } elsif ( $command eq 'deps' ) {
-        $self->{'deps_action'} eq 'add'
-            and $manager->add_package_dependency($package, $self->{'dependency'});
-
-        $self->{'deps_action'} eq 'remove'
-            and $manager->remove_package_dependency($package, $self->{'dependency'});
+        my @args = ($package, $self->{'dependency'});
+        $self->{'opt'}{'add'}    and $manager->add_dependency(@args);
+        $self->{'opt'}{'remove'} and $manager->remove_dependency(@args);
 
     } elsif ( $command eq 'list' ) {
         $manager->list_ids( $self->{'list_type'} );
@@ -216,13 +214,13 @@ sub _validate_args_dependency {
 
     my ( $phase, $dep_str ) = %{ $action };
     $phase or $self->usage_error( "Invalid dependency: missing phase" );
+
     my $dep = $self->_read_spec_str($dep_str);
     defined $dep->{'version'}
         or $self->usage_error( "Invalid dependency: missing version" );
     $dep->{'phase'} = $phase;
 
     $self->{'dependency'}  = $dep;
-    $self->{'deps_action'} = $opt->{'add'} ? 'add' : 'remove';
 }
 
 sub _validate_args_list {
@@ -266,6 +264,7 @@ sub _read_set_spec_str {
 
     my $spec_str = shift @{ $self->{'args'} };
     $spec_str or $self->usage_error( "Must provide a package id (category/name=version:release)" );
+
     $self->{'cpanfile'}
         and $self->usage_error( "You can't provide both a cpanfile and a package id." );
 

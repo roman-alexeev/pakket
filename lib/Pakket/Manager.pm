@@ -92,12 +92,12 @@ sub remove_package_spec {
     $log->info( sprintf("Removed %s from the spec repo.", $package->id ) );
 }
 
-sub add_package_dependency {
+sub add_dependency {
     my ( $self, $package, $dependency ) = @_;
     $self->_package_dependency_edit($package, $dependency, 'add');
 }
 
-sub remove_package_dependency {
+sub remove_dependency {
     my ( $self, $package, $dependency ) = @_;
     $self->_package_dependency_edit($package, $dependency, 'remove');
 }
