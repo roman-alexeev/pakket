@@ -144,8 +144,13 @@ sub execute {
         ), qw< build_dir keep_build_dir > ),
     );
 
-    foreach my $prereq ( @{ $opt->{'prereqs'} } ) {
-        $builder->build($prereq);
+    # Run the first prereq, to clear out the bootstrapping
+    my @prereqs = @{ $opt->{'prereqs'} };
+    $builder->build( shift @prereqs );
+
+    # Install any additional prereqs
+    foreach my $prereq (@prereqs) {
+        $builder->run_build($prereq);
     }
 }
 
