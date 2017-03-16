@@ -275,7 +275,8 @@ sub create_spec_for {
         },
     };
 
-    my $package  = Pakket::Package->new_from_spec($package_spec);
+    my $package   = Pakket::Package->new_from_spec($package_spec);
+    my $full_name = $package->full_name;
 
     $self->set_depth( $self->depth + 1 );
 
@@ -283,10 +284,10 @@ sub create_spec_for {
     # Source
 
     # check if we already have the source in the repo
-    if ( $self->source_repo->retrieve_location( $package->full_name ) ) {
+    if ( $self->source_repo->retrieve_location( $full_name ) ) {
         $log->debugf(
-            "Package %s source already exists in repo (won't download).",
-            $package->full_name
+            "Package %s - source already exists in repo (skipping).",
+            $full_name
         );
 
     } else {
@@ -304,7 +305,7 @@ sub create_spec_for {
             if ( $from_file->exists ) {
                 $log->debugf(
                     'Found source for %s [%s]',
-                    $package->full_name, $from_file->stringify
+                    $full_name, $from_file->stringify
                 );
 
                 my $target = Path::Tiny->tempdir();
@@ -344,8 +345,14 @@ sub create_spec_for {
 
     # Spec
 
-    $self->spec_repo->retrieve_location( $package->full_name )
-        and return;
+    if ( $self->spec_repo->retrieve_location( $full_name ) ) {
+        $log->debugf(
+            "Package %s - spec already exists in repo (skipping).",
+            $full_name
+        );
+
+        return;
+    }
 
     my $dep_modules = $release->{'prereqs'};
     my $dep_prereqs = CPAN::Meta::Prereqs->new( $dep_modules );
