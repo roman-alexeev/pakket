@@ -12,21 +12,6 @@ use Pakket::Repository::Source;
 
 ## no critic qw(Modules::RequireExplicitInclusion)
 
-# Example
-set 'repositories' => {
-    'Spec' => [
-        'File' => { 'directory' => '/opt/pakket/specs' },
-    ],
-
-    'Source' => [
-        'File' => { 'directory' => '/opt/pakket/sources' },
-    ],
-
-    'Parcel' => [
-        'File' => { 'directory' => '/opt/pakket/parcels' },
-    ],
-};
-
 sub setup {
     my $class = shift;
     my $config_reader = Pakket::Config->new();
