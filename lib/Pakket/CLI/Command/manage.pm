@@ -51,9 +51,9 @@ sub validate_args {
     $self->{'opt'}  = $opt;
     $self->{'args'} = $args;
 
-    $self->_determine_config;
     $self->_validate_arg_command;
     $self->_validate_arg_cache_dir;
+    $self->_read_config;
 }
 
 sub execute {
@@ -104,31 +104,53 @@ sub execute {
     }
 }
 
-
-sub _determine_config {
+sub _read_config {
     my $self = shift;
-    my $opt  = $self->{'opt'};
 
-    my $config_file   = $opt->{'config'};
+    my $config_file   = $self->{'opt'}{'config'};
     my $config_reader = Pakket::Config->new(
         $config_file ? ( 'files' => [$config_file] ) : (),
     );
 
-    my $config = $config_reader->read_config;
+    $self->{'config'} = $config_reader->read_config;
+
+    $self->_validate_repos;
+}
+
+sub _validate_repos {
+    my $self   = shift;
 
     my %map = (
-        'spec'   => [ 'spec_dir',   'ini' ],
+        'spec'   => [ 'spec_dir',   'ini'  ],
         'source' => [ 'source_dir', 'spkt' ],
-        'parcel' => [ 'parcel_dir', 'pkt' ],
+        'parcel' => [ 'parcel_dir', 'pkt'  ],
     );
 
-    foreach my $type ( keys %map ) {
-        next if $type eq 'parcel' and !$opt->{'parcel_dir'};
+    my %cmd2repo = (
+        'add'    => [ 'spec', 'source' ],
+        'remove' => [ 'spec', 'source' ],
+        'deps'   => [ 'spec' ],
+        'list'   => {
+            spec   => [ 'spec'   ],
+            parcel => [ 'parcel' ],
+            source => [ 'source' ],
+        },
+    );
 
+    my $config  = $self->{'config'};
+    my $command = $self->{'command'};
+
+    my @required_repos = @{
+        $command eq 'list'
+            ? $cmd2repo{$command}{ $self->{'list_type'} }
+            : $cmd2repo{$command}
+    };
+
+    for my $type ( @required_repos ) {
         my ( $opt_key, $opt_ext ) = @{ $map{$type} };
-        my $directory = $opt->{$opt_key};
+        my $directory = $self->{'opt'}{$opt_key};
 
-        if ($directory) {
+        if ( $directory ) {
             $config->{'repositories'}{$type} = [
                 'File',
                 'directory'      => $directory,
@@ -140,12 +162,9 @@ sub _determine_config {
                 or $self->usage_error("Bad directory for $type repo: $path");
         }
 
-        if ( !$config->{'repositories'}{$type} ) {
-            $self->usage_error("Missing configuration for $type repository");
-        }
+        $config->{'repositories'}{$type}
+            or $self->usage_error("Missing configuration for $type repository");
     }
-
-    $self->{'config'} = $config;
 }
 
 sub _validate_arg_command {
@@ -233,13 +252,10 @@ sub _validate_args_list {
 
     my $type = shift @{ $self->{'args'} };
 
-    $type and grep { $type eq $_ } qw< parcels specs sources >
+    $type and grep { $type eq $_ or $type eq $_.'s' } qw< parcel spec source >
         or $self->usage_error( "Invalid type of list (parcels/specs/sources): " . ($type||"") );
 
-    $type eq 'parcels' and !$self->{'opt'}{'parcel_dir'}
-        and $self->usage_error( "You muse provide arg --parcel-dir to list parcels." );
-
-    $self->{'list_type'} = $type =~ s/s$//r;
+    $self->{'list_type'} = $type =~ s/s?$//r;
 }
 
 sub _validate_args_show {
