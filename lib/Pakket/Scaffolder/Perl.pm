@@ -255,7 +255,7 @@ sub create_spec_for {
 
     if ( exists $index->{ $name } ) {
         if ( exists $index->{ $name }{ $rel_version } ) {
-            $log->debugf( 'Skipping %s-%s (already exists in repo)', $name, $rel_version );
+            $log->debugf( 'Skipping %s-%s (spec already exists in repo)', $name, $rel_version );
             return;
         }
         else {
@@ -277,62 +277,67 @@ sub create_spec_for {
 
     my $package  = Pakket::Package->new_from_spec($package_spec);
 
-
-    # Source
-
-    $self->source_repo->retrieve_location( $package->full_name ) and
-        $log->debugf( "Package %s already exists in repo.", $package->full_name );
-
     $self->set_depth( $self->depth + 1 );
 
 
-    # Download if source doesn't exist already
-    my $download     = 1;
-    my $download_url = $self->rewrite_download_url( $release->{'download_url'} );
+    # Source
 
-    if ( $self->_has_cache_dir ) {
-        my $from_name = $download_url
-            ? $download_url =~ s{^.+/}{}r
-            : $dist_name . '-' . $rel_version . '.tar.gz';
+    # check if we already have the source in the repo
+    if ( $self->source_repo->retrieve_location( $package->full_name ) ) {
+        $log->debugf(
+            "Package %s source already exists in repo (won't download).",
+            $package->full_name
+        );
 
-        my $from_file = path( $self->cache_dir, $from_name );
+    } else {
+        # Download if source doesn't exist in cache
+        my $download     = 1;
+        my $download_url = $self->rewrite_download_url( $release->{'download_url'} );
 
-        if ( $from_file->exists ) {
-            $log->debugf(
-                'Found source for %s [%s]',
-                $package->full_name, $from_file->stringify
-            );
+        if ( $self->_has_cache_dir ) {
+            my $from_name = $download_url
+                ? $download_url =~ s{^.+/}{}r
+                : $dist_name . '-' . $rel_version . '.tar.gz';
 
-            my $target = Path::Tiny->tempdir();
-            my $dir    = $self->unpack( $target, $from_file );
+            my $from_file = path( $self->cache_dir, $from_name );
 
-            $self->source_repo->store_package_source(
-                $package, $dir,
-            );
+            if ( $from_file->exists ) {
+                $log->debugf(
+                    'Found source for %s [%s]',
+                    $package->full_name, $from_file->stringify
+                );
 
-            $download = 0;
+                my $target = Path::Tiny->tempdir();
+                my $dir    = $self->unpack( $target, $from_file );
+
+                $self->source_repo->store_package_source(
+                    $package, $dir,
+                );
+
+                $download = 0;
+            }
         }
-    }
 
-    if ( $download ) {
-        if ( $download_url ) {
-            my $source_file = path(
-                $self->download_dir,
-                ( $download_url =~ s{^.+/}{}r )
-            );
+        if ( $download ) {
+            if ( $download_url ) {
+                my $source_file = path(
+                    $self->download_dir,
+                    ( $download_url =~ s{^.+/}{}r )
+                );
 
-            $self->ua->mirror( $download_url, $source_file );
+                $self->ua->mirror( $download_url, $source_file );
 
-            my $target = Path::Tiny->tempdir();
-            my $dir    = $self->unpack( $target, $source_file );
+                my $target = Path::Tiny->tempdir();
+                my $dir    = $self->unpack( $target, $source_file );
 
-            $self->source_repo->store_package_source(
-                $package, $dir,
-            );
+                $self->source_repo->store_package_source(
+                    $package, $dir,
+                );
 
-        }
-        else {
-            $log->errorf( "--- can't find download_url for %s-%s", $dist_name, $rel_version );
+            }
+            else {
+                $log->errorf( "--- can't find download_url for %s-%s", $dist_name, $rel_version );
+            }
         }
     }
 
