@@ -120,16 +120,21 @@ sub _build_bundler {
 }
 
 sub build {
-    my ( $self, $requirement ) = @_;
+    my ( $self, @requirements ) = @_;
+    my %categories = map +( $_->category => 1 ), @requirements;
 
     $self->_setup_build_dir;
 
     if ( $self->bootstrapping ) {
-        $self->bootstrap_build( $requirement->category );
-        log_success('Bootstrapping');
+        foreach my $category ( keys %categories ) {
+            $self->bootstrap_build($category);
+            log_success('Bootstrapping');
+        }
     }
 
-    $self->run_build($requirement);
+    foreach my $requirement (@requirements ) {
+        $self->run_build($requirement);
+    }
 }
 
 sub DEMOLISH {
