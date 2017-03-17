@@ -5,6 +5,7 @@ use Moose;
 use Log::Any qw< $log >;
 
 use Pakket::Log;
+use Pakket::Scaffolder::Perl;
 
 has config => (
     is        => 'ro',
@@ -37,6 +38,11 @@ has package => (
 has phases => (
     is        => 'ro',
     isa       => 'Maybe[ArrayRef]',
+);
+
+has file_02packages => (
+    is        => 'ro',
+    isa       => 'Maybe[Str]',
 );
 
 sub _build_category {
@@ -198,6 +204,9 @@ sub _gen_scaffolder_perl {
 
     $self->cache_dir
         and $params{'cache_dir'} = $self->cache_dir;
+
+    $self->file_02packages
+        and $params{'file_02packages'} = $self->file_02packages;
 
     return Pakket::Scaffolder::Perl->new(%params);
 }
