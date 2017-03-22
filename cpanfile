@@ -2,6 +2,7 @@ requires 'Algorithm::Diff::Callback';
 requires 'App::Cmd';
 requires 'Archive::Any';
 requires 'CLI::Helpers';
+requires 'CPAN::DistnameInfo';
 requires 'CPAN::Meta::Requirements', '>= 2.140';
 requires 'File::Basename';
 requires 'File::Copy::Recursive';

@@ -6,6 +6,7 @@ use MooseX::StrictConstructor;
 use version 0.77;
 use Carp ();
 use Archive::Any;
+use CPAN::DistnameInfo;
 use CPAN::Meta::Prereqs;
 use JSON::MaybeXS       qw< decode_json encode_json >;
 use Ref::Util           qw< is_arrayref is_hashref >;
@@ -85,6 +86,18 @@ has 'cache_dir' => (
     'predicate' => '_has_cache_dir',
 );
 
+has 'file_02packages' => (
+    'is'      => 'ro',
+    'isa'     => 'Str',
+);
+
+has 'cpan_02packages' => (
+    'is'      => 'ro',
+    'isa'     => 'HashRef',
+    'lazy'    => 1,
+    'builder' => '_build_cpan_02packages',
+);
+
 sub _build_metacpan_api {
     my $self = shift;
     return $ENV{'PAKKET_METACPAN_API'}
@@ -111,6 +124,40 @@ sub _build_spec_index {
         $spec_index{$1}{$2} = 1;
     }
     return \%spec_index;
+}
+
+sub _build_cpan_02packages {
+    my $self = shift;
+    my $ret  = +{};
+    my ( $dir, $file );
+
+    if ( $self->file_02packages ) {
+        $file = path( $self->file_02packages );
+        $log->infof( "Using 02packages file: %s", $self->file_02packages );
+
+    } else {
+        $dir  = Path::Tiny->tempdir;
+        $file = path( $dir, '02packages.details.txt' );
+        $log->infof( "Downloading 02packages" );
+        $self->ua->mirror( 'https://cpan.metacpan.org/modules/02packages.details.txt', $file );
+    }
+
+    chomp( my @content = $file->lines_utf8 );
+    shift @content for 0..8; # remove headers
+
+    for my $c ( @content ) {
+        my ( $name, $latest, $path ) =
+            $c =~ /^([^\s]+)\s+([^\s]+)\s+([^\s]+)\s*$/;
+
+        my $d = CPAN::DistnameInfo->new($path);
+
+        $ret->{$name} = {
+            'distribution'   => $d->dist,
+            'latest_version' => $d->version,
+        };
+    }
+
+    return $ret;
 }
 
 sub BUILDARGS {
@@ -191,7 +238,7 @@ sub run {
         $log->infof( "[FAILED] %s: %s", $f, $failed{$f} );
     }
 
-    return;
+    $log->info( 'Done' );
 }
 
 sub skip_name {
@@ -399,27 +446,33 @@ sub create_spec_for {
     my $filename = $self->spec_repo->store_package_spec($package);
 
     $self->set_depth( $self->depth - 1 );
+
+    $log->infof( '%sDone: %s (%s)', $self->spaces, $dist_name, $rel_version );
 }
 
 sub get_dist_name {
     my ( $self, $module_name ) = @_;
+
+    # fist check if we can get it from 02packages
+    exists $self->cpan_02packages->{$module_name}
+        and return $self->cpan_02packages->{$module_name}{'distribution'};
+
+    # fallback to metacpan check
     $module_name = $self->known_incorrect_name_fixes->{ $module_name }
         if exists $self->known_incorrect_name_fixes->{ $module_name };
 
     my $dist_name;
+
     eval {
-        my $mod_url     = $self->metacpan_api . "/module/$module_name";
-        my $release_url = $self->metacpan_api . "/release/" . ( $module_name =~ s/::/-/r);
-        my $response    = $self->ua->get($release_url);
+        my $mod_url  = $self->metacpan_api . "/module/$module_name";
+        my $response = $self->ua->get($mod_url);
 
         $response->{'status'} == 200
-            or $response = $self->ua->get($mod_url);
-
-        $response->{'status'} != 200
-            and Carp::croak("Cannot fetch $mod_url or $release_url");
+            and Carp::croak("Cannot fetch $mod_url");
 
         my $content = decode_json $response->{'content'};
         $dist_name  = $content->{'distribution'};
+
         1;
     } or do {
         my $error = $@ || 'Zombie error';

@@ -13,12 +13,8 @@ use Log::Any::Adapter;     # to set the logger
 use Pakket::CLI '-command';
 use Pakket::Log;
 use Pakket::Config;
-use Pakket::Scaffolder::Perl;
 use Pakket::Manager;
-use Pakket::Constants qw<
-    PAKKET_PACKAGE_SPEC
-    PAKKET_VALID_PHASES
->;
+use Pakket::Constants qw< PAKKET_VALID_PHASES >;
 
 sub abstract    { 'Scaffold a project' }
 sub description { 'Scaffold a project' }
@@ -37,6 +33,7 @@ sub opt_spec {
         [ 'verbose|v+',   'verbose output (can be provided multiple times)' ],
         [ 'add=s%',       '(deps) add the following dependency (phase=category/name=version[:release])' ],
         [ 'remove=s%',    '(deps) add the following dependency (phase=category/name=version[:release])' ],
+        [ 'cpan-02packages=s', '02packages file (optional)' ],
     );
 }
 
@@ -77,11 +74,12 @@ sub execute {
     }
 
     my $manager = Pakket::Manager->new(
-        config    => $self->{'config'},
-        cpanfile  => $self->{'cpanfile'},
-        cache_dir => $self->{'cache_dir'},
-        phases    => $self->{'gen_phases'},
-        package   => $package,
+        config          => $self->{'config'},
+        cpanfile        => $self->{'cpanfile'},
+        cache_dir       => $self->{'cache_dir'},
+        phases          => $self->{'gen_phases'},
+        package         => $package,
+        file_02packages => $self->{'file_02packages'},
     );
 
     if ( $command eq 'add' ) {
@@ -203,6 +201,8 @@ sub _validate_args_add {
 
     my $cpanfile = $self->{'opt'}{'cpanfile'};
     my $additional_phase = $self->{'opt'}{'additional_phase'};
+
+    $self->{'file_02packages'} = $self->{'opt'}{'cpan_02packages'};
 
     if ( $cpanfile ) {
         @{ $self->{'args'} }
