@@ -71,22 +71,29 @@ sub setup {
             };
 
             prefix '/store' => sub {
-                post '/content' => with_types [
-                    [ 'body', 'id',      'Str',  'MissingID'      ],
-                    [ 'body', 'content', 'Str', 'MissingContent' ],
-                ] => sub {
-                    my $id      = body_parameters->get('id');
-                    my $content = body_parameters->get('content');
-                    return $repo->store_content( $id, $content );
+                # There is no body to check, because the body is JSON content
+                # So we manually decode and check
+                post '/content' => sub {
+                    my $data    = decode_json( request->body );
+                    my $id      = $data->{'id'};
+                    my $content = $data->{'content'};
+
+                    defined && length
+                        or send_error( 'Bad input', 400 )
+                        for $id, $content;
+
+                    $repo->store_content( $id, $content );
+                    return encode_json( { 'success' => 1 } );
                 };
 
                 post '/location' => with_types [
-                    [ 'body', 'id',       'Str',  'MissingID'       ],
-                    [ 'body', 'filename', 'Str', 'MissingFilename' ],
+                    [ 'query', 'id', 'Str',  'MissingID' ],
                 ] => sub {
-                    my $id       = body_parameters->get('id');
-                    my $filename = upload('filename')->tempname;
-                    return $repo->store_location( $id, $filename );
+                    my $id   = query_parameters->get('id');
+                    my $file = Path::Tiny->tempfile;
+                    $file->spew_raw( request->body );
+                    $repo->store_location( $id, $file );
+                    return encode_json( { 'success' => 1 } );
                 };
             };
         };

@@ -88,10 +88,25 @@ sub has_object {
 
 sub store_location {
     my ( $self, $id, $file_to_store ) = @_;
-    my $content = {
-        'data' => path($file_to_store)->slurp( { 'binmode' => ':raw' } ),
-    };
-    $self->store_content( $id, $content );
+    my $content = path($file_to_store)->slurp(
+        { 'binmode' => ':raw' },
+    );
+
+    my $url = "/store/location?id=" . uri_escape($id);
+    my $full_url = $self->base_url . $url;
+
+    my $response = $self->http_client->post(
+        $full_url => {
+            'content' => $content,
+            'headers' => {
+                'Content-Type' => 'application/x-www-form-urlencoded',
+            },
+        },
+    );
+
+    if ( !$response->{'success'} ) {
+        die $log->criticalf( 'Could not store location for id %s', $id );
+    }
 }
 
 sub retrieve_location {
@@ -99,6 +114,7 @@ sub retrieve_location {
     my $url      = '/retrieve/location?id=' . uri_escape($id);
     my $full_url = $self->base_url . $url;
     my $response = $self->http_client->get($full_url);
+    $response->{'success'} or return;
     my $content  = $response->{'content'};
     my $location = Path::Tiny->tempfile;
     $location->spew( { 'binmode' => ':raw' }, $content );
@@ -112,7 +128,10 @@ sub store_content {
 
     my $response = $self->http_client->post(
         $full_url => {
-            'content' => encode_json_canonical( { 'data' => $content, 'id' => $id, } ),
+            'content' => encode_json_canonical(
+                { 'content' => $content, 'id' => $id, },
+            ),
+
             'headers' => {
                 'Content-Type' => 'application/json',
             },
