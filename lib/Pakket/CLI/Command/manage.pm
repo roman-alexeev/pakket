@@ -130,6 +130,7 @@ sub _validate_repos {
         'add'    => [ 'spec', 'source' ],
         'remove' => [ 'spec', 'source' ],
         'deps'   => [ 'spec' ],
+        'show'   => [ 'spec' ],
         'list'   => {
             spec   => [ 'spec'   ],
             parcel => [ 'parcel' ],
