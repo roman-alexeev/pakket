@@ -464,18 +464,15 @@ sub get_dist_name {
     my $dist_name;
 
     eval {
-        my $mod_url     = $self->metacpan_api . "/module/$module_name";
-        my $release_url = $self->metacpan_api . "/release/" . ( $module_name =~ s/::/-/r);
-        my $response    = $self->ua->get($release_url);
+        my $mod_url  = $self->metacpan_api . "/module/$module_name";
+        my $response = $self->ua->get($mod_url);
 
         $response->{'status'} == 200
-            or $response = $self->ua->get($mod_url);
-
-        $response->{'status'} != 200
-            and Carp::croak("Cannot fetch $mod_url or $release_url");
+            and Carp::croak("Cannot fetch $mod_url");
 
         my $content = decode_json $response->{'content'};
         $dist_name  = $content->{'distribution'};
+
         1;
     } or do {
         my $error = $@ || 'Zombie error';
