@@ -83,10 +83,10 @@ sub arg_default_logger {
 }
 
 sub build_logger {
-    my ( $class, $verbose ) = @_;
+    my ( $class, $verbose, $file ) = @_;
     my $logger = Log::Dispatch->new(
         'outputs' => [
-            $class->_build_logger(),
+            $class->_build_logger($file),
             $class->_cli_logger( $verbose // 1 ),
         ],
     );
@@ -95,10 +95,12 @@ sub build_logger {
 }
 
 sub _build_logger {
+    my $file = shift || Path::Tiny->cwd->child('build.log')->stringify;
+
     return [
         'File',
         'min_level' => 'debug',
-        'filename'  => path( Path::Tiny->cwd, 'build.log' )->stringify,
+        'filename'  => $file,
         'newline'   => 1,
     ];
 }

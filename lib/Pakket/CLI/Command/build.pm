@@ -34,6 +34,7 @@ sub opt_spec {
         [ 'output-dir=s', 'output directory (default: .)' ],
         [ 'config|c=s',   'configuration file' ],
         [ 'verbose|v+',   'verbose output (can be provided multiple times)' ],
+        [ 'log-file=s',   'Log file (default: build.log)' ],
     );
 }
 
@@ -83,9 +84,12 @@ sub validate_args {
     $opt->{'config'} = $self->_determine_config($opt);
     $opt->{'config'}{'env'}{'cli'} = 1;
 
+    my $log_file = $opt->{'log_file'} || $opt->{'config'}{'log_file'};
     Log::Any::Adapter->set(
         'Dispatch',
-        'dispatcher' => Pakket::Log->build_logger( $opt->{'verbose'} ),
+        'dispatcher' => Pakket::Log->build_logger(
+            $opt->{'verbose'}, $log_file,
+        ),
     );
 
     my @specs;
