@@ -298,21 +298,6 @@ sub create_spec_for {
 
     $log->infof( '%sWorking on %s (%s)', $self->spaces, $dist_name, $rel_version );
 
-    my $index = $self->spec_index;
-
-    if ( exists $index->{ $name } ) {
-        if ( exists $index->{ $name }{ $rel_version } ) {
-            $log->debugf( 'Skipping %s-%s (spec already exists in repo)', $name, $rel_version );
-            return;
-        }
-        else {
-            $log->debugf( 'We have the following versions for %s:', $name );
-            $log->debugf( '- %s', $_ )
-                for keys %{ $index->{ $name } };
-            $log->debugf( 'Adding %s version %s', $name, $rel_version );
-        }
-    }
-
     my $package_spec = {
         'Package' => {
             'category' => 'perl',
