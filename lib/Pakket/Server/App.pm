@@ -20,16 +20,19 @@ sub setup {
         %{ config() },
     );
 
+    my %instance_map = (
+        'spec'   => sub { return Pakket::Repository::Spec->new(@_);   },
+        'source' => sub { return Pakket::Repository::Source->new(@_); },
+        'parcel' => sub { return Pakket::Repository::Parcel->new(@_); },
+    );
+
     my $repositories_data = $config{'repositories'};
     foreach my $repository_type ( keys %{$repositories_data} ) {
-        my $repo_class = "Pakket::Repository::$repository_type";
-        my $repo       = $repo_class->new(
+        my $repo = $instance_map{$repository_type}->(
             'backend' => $repositories_data->{$repository_type},
         );
 
-        my $prefix = lc $repository_type;
-
-        prefix "/$prefix" => sub {
+        prefix "/$repository_type" => sub {
             get '/has_object' => with_types [
                 [ 'query', 'id', 'Str', 'MissingID' ],
             ] => sub {
