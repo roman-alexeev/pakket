@@ -15,6 +15,7 @@ use Pakket::Log;
 use Pakket::Config;
 use Pakket::Manager;
 use Pakket::Constants qw< PAKKET_VALID_PHASES >;
+use Pakket::Utils::Repository qw< gen_repo_config >;
 
 sub abstract    { 'Scaffold a project' }
 sub description { 'Scaffold a project' }
@@ -116,13 +117,7 @@ sub _read_config {
 }
 
 sub _validate_repos {
-    my $self   = shift;
-
-    my %map = (
-        'spec'   => [ 'spec_dir',   'ini'  ],
-        'source' => [ 'source_dir', 'spkt' ],
-        'parcel' => [ 'parcel_dir', 'pkt'  ],
-    );
+    my $self = shift;
 
     my %cmd2repo = (
         'add'    => [ 'spec', 'source' ],
@@ -145,38 +140,18 @@ sub _validate_repos {
             : $cmd2repo{$command}
     };
 
+    my %repo_opt = (
+        'spec'   => 'spec_dir',
+        'source' => 'source_dir',
+        'parcel' => 'parcel_dir',
+    );
+
     for my $type ( @required_repos ) {
-        my ( $opt_key, $opt_ext ) = @{ $map{$type} };
+        my $opt_key   = $repo_opt{$type};
         my $directory = $self->{'opt'}{$opt_key};
-
-        if ( $directory ) {
-            if ( $directory =~ m{^/} ) {
-                $config->{'repositories'}{$type} =
-                    [
-                        'File',
-                        'directory'      => $directory,
-                        'file_extension' => $opt_ext,
-                    ];
-
-                my $path = path($directory);
-                $path->exists && $path->is_dir
-                    or $self->usage_error("Bad directory for $type repo: $path");
-
-            } elsif ( $directory =~ m{^(https?)://([^/]+)(:[^/]+)?(/.*)?$} ) {
-                my ( $protocol, $host, $port, $base_path ) = ( $1, $2, $3, $4 );
-                $port or $port = $protocol eq 'http' ? 80 : 443;
-                $config->{'repositories'}{$type} =
-                    [
-                        'HTTP',
-                        'host'      => $host,
-                        'port'      => $port,
-                        'base_path' => $base_path,
-                    ];
-            }
-        }
-
-        $config->{'repositories'}{$type}
-            or $self->usage_error("Missing configuration for $type repository");
+        my $repo_conf = $self->gen_repo_config( $type, $directory );
+        $repo_conf or $self->usage_error("Missing configuration for $type repository");
+        $config->{'repositories'}{$type} = $repo_conf;
     }
 }
 
