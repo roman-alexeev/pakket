@@ -11,6 +11,7 @@ use Types::Path::Tiny         qw< Path >;
 use Log::Any                  qw< $log >;
 use version 0.77;
 
+use Pakket::Log;
 use Pakket::Package;
 use Pakket::Bundler;
 use Pakket::Installer;
