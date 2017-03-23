@@ -80,13 +80,13 @@ sub _determine_config {
 sub validate_args {
     my ( $self, $opt, $args ) = @_;
 
+    $opt->{'config'} = $self->_determine_config($opt);
+    $opt->{'config'}{'env'}{'cli'} = 1;
+
     Log::Any::Adapter->set(
         'Dispatch',
         'dispatcher' => Pakket::Log->build_logger( $opt->{'verbose'} ),
     );
-
-    $opt->{'config'} = $self->_determine_config($opt);
-    $opt->{'config'}{'env'}{'cli'} = 1;
 
     my @specs;
     if ( defined ( my $file = $opt->{'input_file'} ) ) {
