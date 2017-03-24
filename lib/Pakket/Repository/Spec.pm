@@ -19,7 +19,8 @@ sub retrieve_package_spec {
 
     my $config;
     eval {
-        $config = decode_json($spec_str);
+        my $config_raw = decode_json($spec_str);
+        $config = decode_json $config_raw->{'content'};
         1;
     } or do {
         my $err = $@ || 'Unknown error';
