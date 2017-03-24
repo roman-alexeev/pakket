@@ -255,7 +255,7 @@ $fatpacked{"Pakket/Builder.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
   use Log::Any                  qw< $log >;
   use version 0.77;
   
-  use Pakket::Log;
+  use Pakket::Log qw< log_success log_fail >;
   use Pakket::Package;
   use Pakket::Bundler;
   use Pakket::Installer;
@@ -551,7 +551,8 @@ $fatpacked{"Pakket/Builder.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
           ];
       }
   
-      $log->debugf( '%sWorking on %s', '|...' x $level, $prereq->full_name );
+      # TODO: indent to $level
+      $log->debugf( 'Working on %s', $prereq->full_name );
   
       # Create a Package instance from the spec
       # using the information we have on it
@@ -593,11 +594,8 @@ $fatpacked{"Pakket/Builder.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
               # snapshot_build_dir
               $self->snapshot_build_dir( $package, $main_build_dir->absolute, 0 );
   
-              $log->debugf(
-                  '%sInstalled %s',
-                  '|...' x $level,
-                  $prereq->full_name,
-              );
+              # TODO: indent to $level
+              $log->debugf( 'Installed %s', $prereq->full_name );
   
               # sync build cache with our install cache
               # so we do not accidentally build things
@@ -680,10 +678,8 @@ $fatpacked{"Pakket/Builder.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
           $package_files,
       );
   
-      $log->debugf(
-          '%sFinished on %s', '|...' x $level, $prereq->full_name,
-      );
-  
+      # TODO: indent to $level
+      $log->debugf( 'Finished on %s', $prereq->full_name );
       log_success( sprintf 'Building %s', $prereq->full_name );
   
       return;
@@ -2362,7 +2358,7 @@ $fatpacked{"Pakket/Installer.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<
   use Pakket::Package;
   use Pakket::InfoFile;
   use Pakket::LibDir;
-  use Pakket::Log;
+  use Pakket::Log       qw< log_success log_fail >;
   use Pakket::Types     qw< PakketRepositoryBackend >;
   use Pakket::Utils     qw< is_writeable >;
   use Pakket::Constants qw<
@@ -2730,7 +2726,7 @@ $fatpacked{"Pakket/Log.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PAKK
   # 8  debug     debugging messages for development
   # 9  trace     copious tracing output
   
-  our @EXPORT = qw< log_success log_fail >; ## no critic qw(Modules::ProhibitAutomaticExportation)
+  our @EXPORT_OK = qw< log_success log_fail >; ## no critic qw(Modules::ProhibitAutomaticExportation)
   
   sub _extra_spaces {
       my $msg = shift;
@@ -5538,7 +5534,7 @@ $fatpacked{"Pakket/Uninstaller.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n"
   use Types::Path::Tiny qw< Path  >;
   use Log::Any qw< $log >;
   
-  use Pakket::Log;
+  use Pakket::Log qw< log_success log_fail >;
   use Pakket::LibDir;
   use Pakket::InfoFile;
   
