@@ -1,7 +1,7 @@
 package Pakket::Repository::Backend::HTTP;
 # ABSTRACT: A remote HTTP backend repository
 
-# FIXME: Add methods: remove_location remove_content
+# FIXME: Add method: remove_content
 
 use Moose;
 use MooseX::StrictConstructor;
@@ -156,9 +156,16 @@ sub retrieve_content {
     return $response->{'content'};
 }
 
+sub remove_location {
+    my ( $self, $id ) = @_;
+    my $url = '/remove/location?id=' . uri_escape($id);
+    my $full_url = $self->base_url . $url;
+    my $response = $self->http_client->get($full_url);
+    return $response->{'success'};
+}
+
 # FIXME: Add these
 sub remove_content;
-sub remove_location;
 
 __PACKAGE__->meta->make_immutable;
 no Moose;

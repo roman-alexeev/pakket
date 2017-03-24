@@ -99,6 +99,16 @@ sub setup {
                     return encode_json( { 'success' => 1 } );
                 };
             };
+
+            prefix '/remove' => sub {
+                get '/location' => with_types [
+                    [ 'query', 'id', 'Str',  'MissingID' ],
+                ] => sub {
+                    my $id = query_parameters->get('id');
+                    $repo->remove_location( $id );
+                    return encode_json( { 'success' => 1 } );
+                };
+            };
         };
     }
 }
