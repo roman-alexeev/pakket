@@ -3,7 +3,6 @@ package Pakket::Builder;
 
 use Moose;
 use MooseX::StrictConstructor;
-use List::Util                qw< first       >;
 use Path::Tiny                qw< path        >;
 use File::Copy::Recursive     qw< dircopy     >;
 use Algorithm::Diff::Callback qw< diff_hashes >;
@@ -271,8 +270,8 @@ sub run_build {
     # FIXME: GH #29
     if ( $prereq->category eq 'perl' ) {
         # XXX: perl_mlb is a MetaCPAN bug
-        first { $prereq->name eq $_ } qw<perl perl_mlb>
-            and return;
+        $prereq->name eq 'perl_mlb' and return;
+        $prereq->name eq 'perl'     and return;
     }
 
     if ( ! $bootstrap_prereqs and defined $self->is_built->{$short_name} ) {

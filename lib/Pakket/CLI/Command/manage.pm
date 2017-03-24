@@ -5,7 +5,6 @@ use strict;
 use warnings;
 
 use Path::Tiny qw< path  >;
-use List::Util qw< first >;
 use Ref::Util  qw< is_arrayref >;
 use Log::Any   qw< $log >; # to log
 use Log::Any::Adapter;     # to set the logger
@@ -258,8 +257,10 @@ sub _read_spec_str {
 
     my $spec = Pakket::Requirement->new_from_string($spec_str);
 
-    first { $_ eq $spec->category } qw< perl native > # add supported categories
-        or $self->usage_error( "Wrong 'name' format\n" );
+    # add supported categories
+    if ( !( $spec->category eq 'perl' or $spec->category eq 'native' ) ) {
+        $self->usage_error( "Wrong 'name' format\n" );
+    }
 
     return $spec;
 }

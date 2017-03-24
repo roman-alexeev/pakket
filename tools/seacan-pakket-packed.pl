@@ -247,7 +247,6 @@ $fatpacked{"Pakket/Builder.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
   
   use Moose;
   use MooseX::StrictConstructor;
-  use List::Util                qw< first       >;
   use Path::Tiny                qw< path        >;
   use File::Copy::Recursive     qw< dircopy     >;
   use Algorithm::Diff::Callback qw< diff_hashes >;
@@ -515,8 +514,8 @@ $fatpacked{"Pakket/Builder.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
       # FIXME: GH #29
       if ( $prereq->category eq 'perl' ) {
           # XXX: perl_mlb is a MetaCPAN bug
-          first { $prereq->name eq $_ } qw<perl perl_mlb>
-              and return;
+          $prereq->name eq 'perl_mlb' and return;
+          $prereq->name eq 'perl'     and return;
       }
   
       if ( ! $bootstrap_prereqs and defined $self->is_built->{$short_name} ) {
@@ -1612,7 +1611,6 @@ $fatpacked{"Pakket/CLI/Command/manage.pm"} = '#line '.(1+__LINE__).' "'.__FILE__
   use warnings;
   
   use Path::Tiny qw< path  >;
-  use List::Util qw< first >;
   use Ref::Util  qw< is_arrayref >;
   use Log::Any   qw< $log >; # to log
   use Log::Any::Adapter;     # to set the logger
@@ -1865,8 +1863,10 @@ $fatpacked{"Pakket/CLI/Command/manage.pm"} = '#line '.(1+__LINE__).' "'.__FILE__
   
       my $spec = Pakket::Requirement->new_from_string($spec_str);
   
-      first { $_ eq $spec->category } qw< perl native > # add supported categories
-          or $self->usage_error( "Wrong 'name' format\n" );
+      # add supported categories
+      if ( !( $spec->category eq 'perl' or $spec->category eq 'native' ) ) {
+          $self->usage_error( "Wrong 'name' format\n" );
+      }
   
       return $spec;
   }
