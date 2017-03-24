@@ -2792,7 +2792,8 @@ $fatpacked{"Pakket/Log.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PAKK
   }
   
   sub _build_logger {
-      my $file = shift || Path::Tiny->cwd->child('build.log')->stringify;
+      my $class = shift;
+      my $file  = shift || Path::Tiny->cwd->child('build.log')->stringify;
   
       return [
           'File',

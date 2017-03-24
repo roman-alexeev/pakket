@@ -95,7 +95,8 @@ sub build_logger {
 }
 
 sub _build_logger {
-    my $file = shift || Path::Tiny->cwd->child('build.log')->stringify;
+    my $class = shift;
+    my $file  = shift || Path::Tiny->cwd->child('build.log')->stringify;
 
     return [
         'File',
