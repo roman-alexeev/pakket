@@ -10,6 +10,7 @@ use Pakket::Config;
 use Pakket::Builder;
 use Pakket::Requirement;
 use Pakket::Log;
+use Pakket::Utils::Repository qw< gen_repo_config >;
 
 use Path::Tiny qw< path >;
 use Log::Any   qw< $log >;
@@ -43,30 +44,18 @@ sub _determine_config {
     my $config = $config_reader->read_config;
 
     # Setup default repos
-    my %map = (
-        'spec'   => [ 'spec_dir',   'ini'  ],
-        'source' => [ 'source_dir', 'spkt' ],
-        'parcel' => [ 'output_dir', 'pkt'  ],
+    my %repo_opt = (
+        'spec'   => 'spec_dir',
+        'source' => 'source_dir',
+        'parcel' => 'output_dir',
     );
 
-    foreach my $type ( keys %map ) {
-        my ( $opt_key, $opt_ext ) = @{ $map{$type} };
+    foreach my $type ( keys %repo_opt ) {
+        my $opt_key   = $repo_opt{$type};
         my $directory = $opt->{$opt_key};
-        if ($directory) {
-            $config->{'repositories'}{$type} = [
-                'File',
-                'directory'      => $directory,
-                'file_extension' => $opt_ext,
-            ];
-
-            my $path = path($directory);
-            $path->exists && $path->is_dir
-                or $self->usage_error("Bad directory for $type repo: $path");
-        }
-
-        if ( !$config->{'repositories'}{$type} ) {
-            $self->usage_error("Missing configuration for $type repository");
-        }
+        my $repo_conf = $self->gen_repo_config( $type, $directory );
+        $repo_conf or $self->usage_error("Missing configuration for $type repository");
+        $config->{'repositories'}{$type} = $repo_conf;
     }
 
     return $config;

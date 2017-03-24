@@ -5,6 +5,7 @@ use Moose;
 use MooseX::StrictConstructor;
 use Pakket::Types;
 use Pakket::Constants qw< PAKKET_DEFAULT_RELEASE >;
+use JSON::MaybeXS qw< decode_json >;
 
 with qw< Pakket::Role::BasicPackageAttrs >;
 
@@ -97,7 +98,11 @@ sub spec {
 }
 
 sub new_from_spec {
-    my ( $class, $spec ) = @_;
+    my ( $class, $spec_raw ) = @_;
+
+    my $spec = exists $spec_raw->{'Package'}
+        ? $spec_raw
+        : decode_json $spec_raw->{'content'};
 
     my %package_details = (
         %{ $spec->{'Package'} },

@@ -68,7 +68,7 @@ sub all_object_ids {
     }
 
     my $content = decode_json( $response->{'content'} );
-    return $content->{'data'};
+    return $content->{'object_ids'};
 }
 
 sub has_object {
