@@ -29,7 +29,7 @@ sub gen_repo_config {
             'file_extension' => $file_ext{$type},
         ];
 
-    } elsif ( $directory =~ m{^(https?)://([^/]+)(:[^/]+)?(/.*)?$} ) {
+    } elsif ( $directory =~ m{^(https?)://([^/:]+):?([^/]+)?(/.*)?$} ) {
         my ( $protocol, $host, $port, $base_path ) = ( $1, $2, $3, $4 );
         $port or $port = $protocol eq 'http' ? 80 : 443;
 
