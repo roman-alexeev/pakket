@@ -307,7 +307,8 @@ sub run_build {
         ];
     }
 
-    $log->debugf( '%sWorking on %s', '|...' x $level, $prereq->full_name );
+    # TODO: indent to $level
+    $log->debugf( 'Working on %s', $prereq->full_name );
 
     # Create a Package instance from the spec
     # using the information we have on it
@@ -349,11 +350,8 @@ sub run_build {
             # snapshot_build_dir
             $self->snapshot_build_dir( $package, $main_build_dir->absolute, 0 );
 
-            $log->debugf(
-                '%sInstalled %s',
-                '|...' x $level,
-                $prereq->full_name,
-            );
+            # TODO: indent to $level
+            $log->debugf( 'Installed %s', $prereq->full_name );
 
             # sync build cache with our install cache
             # so we do not accidentally build things
@@ -436,10 +434,8 @@ sub run_build {
         $package_files,
     );
 
-    $log->debugf(
-        '%sFinished on %s', '|...' x $level, $prereq->full_name,
-    );
-
+    # TODO: indent to $level
+    $log->debugf( 'Finished on %s', $prereq->full_name );
     log_success( sprintf 'Building %s', $prereq->full_name );
 
     return;
