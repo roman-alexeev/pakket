@@ -23,18 +23,12 @@ sub opt_spec {
         [ 'input-file=s',   'build stuff from this file' ],
         [ 'build-dir=s',    'use an existing build directory' ],
         [ 'keep-build-dir', 'do not delete the build directory' ],
-        [
-            'spec-dir=s',
-            'directory holding the specs',
-        ],
-        [
-            'source-dir=s',
-            'directory holding the sources',
-        ],
-        [ 'output-dir=s', 'output directory (default: .)' ],
-        [ 'config|c=s',   'configuration file' ],
-        [ 'verbose|v+',   'verbose output (can be provided multiple times)' ],
-        [ 'log-file=s',   'Log file (default: build.log)' ],
+        [ 'spec-dir=s',     'directory holding the specs' ],
+        [ 'source-dir=s',   'directory holding the sources' ],
+        [ 'output-dir=s',   'output directory (default: .)' ],
+        [ 'config|c=s',     'configuration file' ],
+        [ 'verbose|v+',     'verbose output (can be provided multiple times)' ],
+        [ 'log-file=s',     'Log file (default: build.log)' ],
     );
 }
 
