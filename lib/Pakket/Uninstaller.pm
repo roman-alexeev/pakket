@@ -9,15 +9,9 @@ use Types::Path::Tiny qw< Path  >;
 use Log::Any qw< $log >;
 
 use Pakket::Log qw< log_success log_fail >;
-use Pakket::LibDir;
 use Pakket::InfoFile;
 
-has 'lib_dir' => (
-    'is'       => 'ro',
-    'isa'      => Path,
-    'coerce'   => 1,
-    'required' => 1,
-);
+with 'Pakket::Role::HasLibDir';
 
 has 'packages' => (
     'is'       => 'ro',
@@ -34,12 +28,10 @@ has 'without_dependencies' => (
 sub get_list_of_packages_for_uninstall {
     my $self = shift;
 
-    if ( !@{ $self->packages } ) {
-        die $log->critical('Did not receive any packages to uninstall');
-    }
+    @{ $self->packages }
+        or die $log->critical('Did not receive any packages to uninstall');
 
-    my $active_dir = Pakket::LibDir::get_active_dir( $self->lib_dir );
-    my $info_file  = Pakket::InfoFile::load_info_file($active_dir);
+    my $info_file  = Pakket::InfoFile::load_info_file($self->active_dir);
     my @packages_for_uninstall
         = $self->get_packages_available_for_uninstall($info_file);
 
@@ -49,8 +41,7 @@ sub get_list_of_packages_for_uninstall {
 sub uninstall {
     my $self = shift;
 
-    my $active_dir = Pakket::LibDir::get_active_dir( $self->lib_dir );
-    my $info_file  = Pakket::InfoFile::load_info_file($active_dir);
+    my $info_file  = Pakket::InfoFile::load_info_file($self->active_dir);
     my @packages_for_uninstall
         = $self->get_packages_available_for_uninstall($info_file);
     unless ( 0 + @packages_for_uninstall ) {
@@ -58,19 +49,17 @@ sub uninstall {
         return;
     }
 
-    my $work_dir = Pakket::LibDir::create_new_work_dir( $self->lib_dir );
-
     foreach my $package (@packages_for_uninstall) {
-        $self->delete_package( $work_dir, $info_file, $package );
+        $self->delete_package( $info_file, $package );
     }
 
-    Pakket::InfoFile::save_info_file( $work_dir, $info_file );
-    Pakket::LibDir::activate_work_dir($work_dir);
+    Pakket::InfoFile::save_info_file( $self->work_dir, $info_file );
+    $self->activate_work_dir;
 
     $log->infof(
         "Finished uninstalling %d packages from %s",
         0 + @packages_for_uninstall,
-        $self->lib_dir
+        $self->pakket_dir
     );
 
     log_success(
@@ -80,7 +69,7 @@ sub uninstall {
                 @packages_for_uninstall )
     );
 
-    Pakket::LibDir::remove_old_libraries( $self->lib_dir );
+    $self->remove_old_libraries();
 
     return;
 }
@@ -101,13 +90,11 @@ sub get_packages_available_for_uninstall {
     my @queue;
     my ( %to_delete, %to_delete_by_requirements );
     foreach my $package ( @{ $self->packages } ) {
-        if ( !$installed_packages->{ $package->{category} }
-            { $package->{name} } )
-        {
-            die $log->critical(
+        $installed_packages->{ $package->{category} }{ $package->{name} }
+            or die $log->critical(
                 "Package $package->{category}/$package->{name} doesn't exists"
             );
-        }
+
         $to_delete{ $package->{category} }{ $package->{name} }++ and next;
         push @queue, $package;
         $to_delete_by_requirements{ $package->{category} }
@@ -176,7 +163,7 @@ sub get_packages_available_for_uninstall {
 }
 
 sub delete_package {
-    my ( $self, $work_dir, $info_file, $package ) = @_;
+    my ( $self, $info_file, $package ) = @_;
     my $info = delete $info_file->{installed_packages}{ $package->{category} }
         { $package->{name} };
     $log->debugf( "Deleting package %s/%s",
@@ -185,7 +172,7 @@ sub delete_package {
     for my $file ( @{ $info->{files} } ) {
         delete $info_file->{installed_files}{$file};
         my ( $type, $file_name ) = $file =~ /(\w+)\/(.+)/;
-        my $path = $work_dir->child($file_name);
+        my $path = $self->work_dir->child($file_name);
         $log->debugf( "Deleting file %s", $path );
         if ( !$path->remove ) {
             $log->error("Could not remove $path: $!");

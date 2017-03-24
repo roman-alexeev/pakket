@@ -1,17 +1,51 @@
-package Pakket::LibDir;
+package Pakket::Role::HasLibDir;
 
-# ABSTRACT: Function to work with lib directory
+# ABSTRACT: a Role to add lib directory functionality
+
+use Moose::Role;
 
 use Path::Tiny qw< path  >;
+use Types::Path::Tiny qw< Path  >;
 use File::Copy::Recursive qw< dircopy >;
 use Time::HiRes qw< time >;
 use Log::Any qw< $log >;
 use English qw< -no_match_vars >;
 
-sub get_libraries_dir {
-    my $lib_dir = shift;
+has 'pakket_dir' => (
+    'is'       => 'ro',
+    'isa'      => Path,
+    'coerce'   => 1,
+    'required' => 1,
+);
 
-    my $libraries_dir = $lib_dir->child('libraries');
+has 'libraries_dir' => (
+    'is'      => 'ro',
+    'isa'     => Path,
+    'coerce'  => 1,
+    'lazy'    => 1,
+    'builder' => '_build_libraries_dir',
+);
+
+has 'active_dir' => (
+    'is'      => 'ro',
+    'isa'     => Path,
+    'coerce'  => 1,
+    'lazy'    => 1,
+    'builder' => '_build_active_dir',
+);
+
+has 'work_dir' => (
+    'is'      => 'ro',
+    'isa'     => Path,
+    'coerce'  => 1,
+    'lazy'    => 1,
+    'builder' => '_build_work_dir',
+);
+
+sub _build_libraries_dir {
+    my $self = shift;
+
+    my $libraries_dir = $self->pakket_dir->child('libraries');
 
     $libraries_dir->is_dir
         or $libraries_dir->mkpath();
@@ -19,51 +53,40 @@ sub get_libraries_dir {
     return $libraries_dir;
 }
 
-sub get_active_dir {
-    my $lib_dir = shift;
+sub _build_active_dir {
+    my $self = shift;
 
-    my $active_dir = get_libraries_dir($lib_dir)->child('active');
-
-    return $active_dir;
+    return $self->libraries_dir->child('active');
 }
 
-sub create_new_work_dir {
-    my $pakket_dir = shift;
+sub _build_work_dir {
+    my $self = shift;
 
-    my $pakket_libraries_dir = get_libraries_dir($pakket_dir);
+    my $work_dir = $self->libraries_dir->child( time() );
 
-    my $work_dir = $pakket_libraries_dir->child( time() );
-
-    if ( $work_dir->exists ) {
-        die $log->critical(
+    $work_dir->exists
+        and die $log->critical(
             "Internal installation directory exists ($work_dir), exiting",
         );
-    }
 
     $work_dir->mkpath();
 
-    my $active_link = get_active_dir($pakket_dir);
-
     # we copy any previous installation
-    if ( $active_link->exists ) {
-        my $orig_work_dir = eval { my $link = readlink $active_link } or do {
-            die $log->critical("$active_link is not a symlink");
+    if ( $self->active_dir->exists ) {
+        my $orig_work_dir = eval { my $link = readlink $self->active_dir } or do {
+            die $log->critical("$self->active_dir is not a symlink");
         };
 
-        dircopy( $pakket_libraries_dir->child($orig_work_dir), $work_dir );
+        dircopy( $self->libraries_dir->child($orig_work_dir), $work_dir );
     }
     $log->debugf( 'Created new working directory %s', $work_dir );
+
     return $work_dir;
 }
 
 sub activate_work_dir {
-    my $work_dir = shift;
-
-    unless ( $work_dir->exists ) {
-        die $log->critical("Directory $work_dir doesn't exist");
-    }
-
-    my $pakket_libraries_dir = $work_dir->parent;
+    my $self     = shift;
+    my $work_dir = $self->work_dir;
 
     # The only way to make a symlink point somewhere else in an atomic way is
     # to create a new symlink pointing to the target, and then rename it to the
@@ -75,9 +98,8 @@ sub activate_work_dir {
     #
     # So, we just create a file name that looks like 'active_P_T.tmp', where P
     # is the pid and T is the current time.
-    my $active_link = $pakket_libraries_dir->child('active');
     my $active_temp
-        = $pakket_libraries_dir->child(
+        = $self->libraries_dir->child(
         sprintf( 'active_%s_%s.tmp', $PID, time() ),
         );
 
@@ -85,36 +107,35 @@ sub activate_work_dir {
 
         # Huh? why does this temporary pathname exist? Try to delete it...
         $log->debug('Deleting existing temporary active object');
-        if ( !$active_temp->remove ) {
-            die $log->error(
+
+        $active_temp->remove
+            or die $log->error(
                 'Could not activate new installation (temporary symlink remove failed)'
             );
-        }
     }
 
     $log->debugf( 'Setting temporary active symlink to new work directory %s',
         $work_dir );
-    if ( !symlink $work_dir->basename, $active_temp ) {
-        die $log->error(
+
+    symlink( $work_dir->basename, $active_temp )
+        or die $log->error(
             'Could not activate new installation (temporary symlink create failed)'
         );
-    }
-    if ( !$active_temp->move($active_link) ) {
-        die $log->error(
+
+    $active_temp->move($self->active_dir)
+        or die $log->error(
             'Could not atomically activate new installation (symlink rename failed)'
         );
-    }
 }
 
 sub remove_old_libraries {
-    my $lib_dir              = shift;
-    my $pakket_libraries_dir = get_libraries_dir($lib_dir);
+    my $self = shift;
 
     my $keep = 1;
 
     my @dirs = sort { $a->stat->mtime <=> $b->stat->mtime }
         grep +( $_->basename ne 'active' && $_->is_dir ),
-        $pakket_libraries_dir->children;
+        $self->libraries_dir->children;
 
     my $num_dirs = @dirs;
     foreach my $dir (@dirs) {
@@ -124,6 +145,6 @@ sub remove_old_libraries {
     }
 }
 
+no Moose::Role;
 1;
-
 __END__

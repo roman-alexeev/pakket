@@ -16,7 +16,6 @@ use Pakket::Repository::Parcel;
 use Pakket::Requirement;
 use Pakket::Package;
 use Pakket::InfoFile;
-use Pakket::LibDir;
 use Pakket::Log       qw< log_success log_fail >;
 use Pakket::Types     qw< PakketRepositoryBackend >;
 use Pakket::Utils     qw< is_writeable >;
@@ -28,15 +27,9 @@ use Pakket::Constants qw<
 with qw<
     Pakket::Role::HasConfig
     Pakket::Role::HasParcelRepo
+    Pakket::Role::HasLibDir
     Pakket::Role::RunCommand
 >;
-
-has 'pakket_dir' => (
-    'is'       => 'ro',
-    'isa'      => Path,
-    'coerce'   => 1,
-    'required' => 1,
-);
 
 sub install {
     my ( $self, @packages ) = @_;
@@ -46,14 +39,17 @@ sub install {
         return;
     }
 
-    my $work_dir = Pakket::LibDir::create_new_work_dir($self->pakket_dir);
-
     my $installer_cache = {};
+
     foreach my $package (@packages) {
-        $self->install_package( $package, $work_dir, { 'cache' => $installer_cache } );
+        $self->install_package(
+            $package,
+            $self->work_dir,
+            { 'cache' => $installer_cache }
+        );
     }
 
-    Pakket::LibDir::activate_work_dir($work_dir);
+    $self->activate_work_dir;
 
     $log->infof(
         "Finished installing %d packages into $self->pakket_dir",
@@ -63,7 +59,7 @@ sub install {
     log_success( 'Finished installing: ' . join ', ',
         map $_->full_name, @packages );
 
-    Pakket::LibDir::remove_old_libraries($self->pakket_dir);
+    $self->remove_old_libraries;
 
     return;
 }
