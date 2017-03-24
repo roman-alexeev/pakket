@@ -29,7 +29,7 @@ use constant {
 # 8  debug     debugging messages for development
 # 9  trace     copious tracing output
 
-our @EXPORT = qw< log_success log_fail >; ## no critic qw(Modules::ProhibitAutomaticExportation)
+our @EXPORT_OK = qw< log_success log_fail >; ## no critic qw(Modules::ProhibitAutomaticExportation)
 
 sub _extra_spaces {
     my $msg = shift;

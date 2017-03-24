@@ -8,7 +8,7 @@ use Path::Tiny qw< path  >;
 use Types::Path::Tiny qw< Path  >;
 use Log::Any qw< $log >;
 
-use Pakket::Log;
+use Pakket::Log qw< log_success log_fail >;
 use Pakket::LibDir;
 use Pakket::InfoFile;
 
