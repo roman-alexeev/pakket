@@ -18,7 +18,17 @@ sub gen_repo_config {
     my ( $self, $type, $directory ) = @_;
     $directory or return;
 
-    if ( $directory =~ m{^/} ) {
+    if ( $directory =~ m{^(https?)://([^/:]+):?([^/]+)?(/.*)?$} ) {
+        my ( $protocol, $host, $port, $base_path ) = ( $1, $2, $3, $4 );
+        $port or $port = $protocol eq 'http' ? 80 : 443;
+
+        return [
+            'HTTP',
+            'host'      => $host,
+            'port'      => $port,
+            'base_path' => $base_path,
+        ];
+    } else {
         my $path = path($directory);
         $path->exists && $path->is_dir
             or die "Bad directory for $type repo: $path\n";
@@ -29,16 +39,6 @@ sub gen_repo_config {
             'file_extension' => $file_ext{$type},
         ];
 
-    } elsif ( $directory =~ m{^(https?)://([^/:]+):?([^/]+)?(/.*)?$} ) {
-        my ( $protocol, $host, $port, $base_path ) = ( $1, $2, $3, $4 );
-        $port or $port = $protocol eq 'http' ? 80 : 443;
-
-        return [
-            'HTTP',
-            'host'      => $host,
-            'port'      => $port,
-            'base_path' => $base_path,
-        ];
     }
 
     return;

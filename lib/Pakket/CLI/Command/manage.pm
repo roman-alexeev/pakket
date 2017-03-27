@@ -148,9 +148,12 @@ sub _validate_repos {
     for my $type ( @required_repos ) {
         my $opt_key   = $repo_opt{$type};
         my $directory = $self->{'opt'}{$opt_key};
-        my $repo_conf = $self->gen_repo_config( $type, $directory );
-        $repo_conf or $self->usage_error("Missing configuration for $type repository");
-        $config->{'repositories'}{$type} = $repo_conf;
+        if ( $directory ) {
+            my $repo_conf = $self->gen_repo_config( $type, $directory );
+            $config->{'repositories'}{$type} = $repo_conf;
+        }
+        $config->{'repositories'}{$type}
+            or $self->usage_error("Missing configuration for $type repository");
     }
 }
 
