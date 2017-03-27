@@ -15,7 +15,6 @@ use English               qw< -no_match_vars >;
 use Pakket::Repository::Parcel;
 use Pakket::Requirement;
 use Pakket::Package;
-use Pakket::InfoFile;
 use Pakket::Log       qw< log_success log_fail >;
 use Pakket::Types     qw< PakketRepositoryBackend >;
 use Pakket::Utils     qw< is_writeable >;
@@ -27,6 +26,7 @@ use Pakket::Constants qw<
 with qw<
     Pakket::Role::HasConfig
     Pakket::Role::HasParcelRepo
+    Pakket::Role::HasInfoFile
     Pakket::Role::HasLibDir
     Pakket::Role::RunCommand
 >;
@@ -201,7 +201,7 @@ sub install_package {
         dircopy( $item, $target_dir );
     }
 
-    Pakket::InfoFile::add_package( $parcel_dir, $dir, $full_package, $opts );
+    $self->add_package_in_info_file( $parcel_dir, $dir, $full_package, $opts );
 
     log_success( sprintf 'Delivering parcel %s', $full_package->full_name );
 
