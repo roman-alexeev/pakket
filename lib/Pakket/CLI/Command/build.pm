@@ -53,9 +53,12 @@ sub _determine_config {
     foreach my $type ( keys %repo_opt ) {
         my $opt_key   = $repo_opt{$type};
         my $directory = $opt->{$opt_key};
-        my $repo_conf = $self->gen_repo_config( $type, $directory );
-        $repo_conf or $self->usage_error("Missing configuration for $type repository");
-        $config->{'repositories'}{$type} = $repo_conf;
+        if ( $directory ) {
+            my $repo_conf = $self->gen_repo_config( $type, $directory );
+            $config->{'repositories'}{$type} = $repo_conf;
+        }
+        $config->{'repositories'}{$type}
+            or $self->usage_error("Missing configuration for $type repository");
     }
 
     return $config;
