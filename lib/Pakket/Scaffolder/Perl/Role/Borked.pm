@@ -21,6 +21,7 @@ has 'known_incorrect_version_fixes' => (
     'default' => sub {
         +{
             'ExtUtils-Constant' => '0.23',
+            'Getopt-Long'       => '2.49',
             'IO-Capture'        => '0.05',
         }
     },
