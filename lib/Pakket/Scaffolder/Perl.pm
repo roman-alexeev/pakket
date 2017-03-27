@@ -590,9 +590,13 @@ sub get_latest_release_info {
 
     my $res_body= decode_json $res->{'content'};
 
+    my $version = $res_body->{'version'};
+    $version = $self->known_incorrect_version_fixes->{ $dist_name }
+        if exists $self->known_incorrect_version_fixes->{ $dist_name };
+
     return +{
         'distribution' => $dist_name,
-        'version'      => $res_body->{'version'},
+        'version'      => $version,
         'download_url' => $res_body->{'download_url'},
         'prereqs'      => $res_body->{'metadata'}{'prereqs'},
     };
