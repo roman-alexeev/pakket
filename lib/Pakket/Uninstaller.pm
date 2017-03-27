@@ -9,9 +9,11 @@ use Types::Path::Tiny qw< Path  >;
 use Log::Any qw< $log >;
 
 use Pakket::Log qw< log_success log_fail >;
-use Pakket::InfoFile;
 
-with 'Pakket::Role::HasLibDir';
+with qw<
+    Pakket::Role::HasInfoFile
+    Pakket::Role::HasLibDir
+>;
 
 has 'packages' => (
     'is'       => 'ro',
@@ -31,7 +33,7 @@ sub get_list_of_packages_for_uninstall {
     @{ $self->packages }
         or die $log->critical('Did not receive any packages to uninstall');
 
-    my $info_file  = Pakket::InfoFile::load_info_file($self->active_dir);
+    my $info_file  = $self->load_info_file($self->active_dir);
     my @packages_for_uninstall
         = $self->get_packages_available_for_uninstall($info_file);
 
@@ -41,7 +43,7 @@ sub get_list_of_packages_for_uninstall {
 sub uninstall {
     my $self = shift;
 
-    my $info_file  = Pakket::InfoFile::load_info_file($self->active_dir);
+    my $info_file  = $self->load_info_file($self->active_dir);
     my @packages_for_uninstall
         = $self->get_packages_available_for_uninstall($info_file);
     unless ( 0 + @packages_for_uninstall ) {
@@ -53,7 +55,7 @@ sub uninstall {
         $self->delete_package( $info_file, $package );
     }
 
-    Pakket::InfoFile::save_info_file( $self->work_dir, $info_file );
+    $self->save_info_file( $self->work_dir, $info_file );
     $self->activate_work_dir;
 
     $log->infof(

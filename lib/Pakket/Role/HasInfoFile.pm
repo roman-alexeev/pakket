@@ -1,17 +1,18 @@
-package Pakket::InfoFile;
-
+package Pakket::Role::HasInfoFile;
 # ABSTRACT: Functions to work with 'info.json'
+
+use Moose::Role;
 
 use Log::Any qw< $log >;
 use JSON::MaybeXS qw< decode_json >;
 use Pakket::Utils qw< encode_json_pretty >;
 use Pakket::Constants qw<PAKKET_INFO_FILE>;
 
-sub add_package {
-    my ( $parcel_dir, $dir, $package, $opts ) = @_;
+sub add_package_in_info_file {
+    my ( $self, $parcel_dir, $dir, $package, $opts ) = @_;
 
     my $prereqs      = $package->prereqs;
-    my $install_data = load_info_file($dir);
+    my $install_data = $self->load_info_file($dir);
 
     my %files;
 
@@ -47,11 +48,11 @@ sub add_package {
         $install_data->{'installed_files'}{$file} = $files{$file};
     }
 
-    save_info_file( $dir, $install_data );
+    $self->save_info_file( $dir, $install_data );
 }
 
 sub load_info_file {
-    my $dir = shift;
+    my ($self, $dir) = @_;
 
     my $info_file = $dir->child( PAKKET_INFO_FILE() );
 
@@ -64,13 +65,13 @@ sub load_info_file {
 }
 
 sub save_info_file {
-    my ( $dir, $install_data ) = @_;
+    my ( $self, $dir, $install_data ) = @_;
 
     my $info_file = $dir->child( PAKKET_INFO_FILE() );
 
     $info_file->spew_utf8( encode_json_pretty($install_data) );
 }
 
+no Moose::Role;
 1;
-
 __END__
