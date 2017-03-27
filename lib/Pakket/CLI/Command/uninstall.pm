@@ -46,21 +46,21 @@ sub _determine_packages {
 sub _validate_arg_lib_dir {
     my ( $self, $opt ) = @_;
 
-    my $lib_dir = $opt->{'lib_dir'};
+    my $pakket_dir = $opt->{'pakket_dir'};
 
-    $lib_dir
+    $pakket_dir
         or $self->usage_error(
-        "please define the library dir --lib-dir <path_to_library>\n");
+        "please define the library dir --pakket-dir <path_to_library>\n");
 
-    path($lib_dir)->exists
-        or $self->usage_error("Library dir: $lib_dir doesn't exist\n");
+    path($pakket_dir)->exists
+        or $self->usage_error("Library dir: $pakket_dir doesn't exist\n");
 
-    $self->{'lib_dir'} = $lib_dir;
+    $self->{'pakket_dir'} = $pakket_dir;
 }
 
 sub opt_spec {
     return (
-        [ 'lib-dir=s',            'repo directory' ],
+        [ 'pakket-dir=s',         'path where installed pakket' ],
         [ 'input-file=s',         'uninstall eveything listed in this file' ],
         [ 'without-dependencies', 'don\'t remove dependencies' ],
         [
@@ -85,7 +85,7 @@ sub execute {
     my ( $self, $opt ) = @_;
 
     my $uninstaller = Pakket::Uninstaller->new(
-        'lib_dir'              => $self->{'lib_dir'},
+        'pakket_dir'           => $self->{'pakket_dir'},
         'packages'             => $opt->{'packages'},
         'without_dependencies' => $opt->{'without_dependencies'},
     );
