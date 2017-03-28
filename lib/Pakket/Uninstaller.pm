@@ -142,7 +142,7 @@ sub get_packages_available_for_uninstall {
                             $keep_it{$category}{$name}++ and next;
                             $to_delete_by_requirements{$category}{$name}
                                 and die $log->critical(
-                                "Can't uninstall package $category/$name, it's requered by $package->{category}/$package->{name}"
+                                "Can't uninstall package $category/$name, it's required by $package->{category}/$package->{name}"
                                 );
                             push @queue,
                                 { 'category' => $category, 'name' => $name };
