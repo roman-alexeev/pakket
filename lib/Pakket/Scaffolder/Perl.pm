@@ -413,7 +413,7 @@ sub create_spec_for {
                 }
 
                 $prereq_data->{ $dist } = +{
-                    'version' => ( $rel->{'write_version_as_zero'} ? "0" : $rel->{'version'} )
+                    'version' => ( $dep_requirements->requirements_for_module( $dist ) || 0 ),
                 };
             }
 
