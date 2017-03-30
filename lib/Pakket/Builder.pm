@@ -192,7 +192,7 @@ sub bootstrap_build {
     foreach my $dist_name ( @dists ) {
         my $dist_req = $dist_reqs{$dist_name};
 
-        $self->parcel_repo->has_object($dist_req)
+        $self->parcel_repo->has_object($dist_req->id)
             or next;
 
         $log->debugf(
@@ -202,6 +202,9 @@ sub bootstrap_build {
 
         delete $dist_reqs{$dist_name};
     }
+
+    @dists = grep { $dist_reqs{$_} } @dists;
+    @dists or return;
 
     # Pass I: bootstrap toolchain - build w/o dependencies
     for my $dist_name ( @dists ) {
