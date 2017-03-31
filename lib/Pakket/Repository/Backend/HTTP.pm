@@ -4,6 +4,7 @@ package Pakket::Repository::Backend::HTTP;
 use Moose;
 use MooseX::StrictConstructor;
 
+use Carp              qw< croak >;
 use URI::Escape       qw< uri_escape >;
 use JSON::MaybeXS     qw< decode_json >;
 use Path::Tiny        qw< path >;
@@ -61,8 +62,8 @@ sub all_object_ids {
     my $response = $self->http_client->get($full_url);
 
     if ( !$response->{'success'} ) {
-        die $log->criticalf( 'Could not get remote all_object_ids: %d -- %s',
-            $response->{'status'}, $response->{'reason'} );
+        croak( $log->criticalf( 'Could not get remote all_object_ids: %d -- %s',
+            $response->{'status'}, $response->{'reason'} ) );
     }
 
     my $content = decode_json( $response->{'content'} );
@@ -76,8 +77,8 @@ sub has_object {
     );
 
     if ( !$response->{'success'} ) {
-        die $log->criticalf( 'Could not get remote has_object: %d -- %s',
-            $response->{'status'}, $response->{'reason'} );
+        croak( $log->criticalf( 'Could not get remote has_object: %d -- %s',
+            $response->{'status'}, $response->{'reason'} ) );
     }
 
     my $content = decode_json( $response->{'content'} );
@@ -103,7 +104,7 @@ sub store_location {
     );
 
     if ( !$response->{'success'} ) {
-        die $log->criticalf( 'Could not store location for id %s', $id );
+        croak( $log->criticalf( 'Could not store location for id %s', $id ) );
     }
 }
 
@@ -137,7 +138,7 @@ sub store_content {
     );
 
     if ( !$response->{'success'} ) {
-        die $log->criticalf( 'Could not store content for id %s', $id );
+        croak( $log->criticalf( 'Could not store content for id %s', $id ) );
     }
 }
 
@@ -148,7 +149,7 @@ sub retrieve_content {
     my $response = $self->http_client->get($full_url);
 
     if ( !$response->{'success'} ) {
-        die $log->criticalf( 'Could not retrieve content for id %s', $id );
+        croak( $log->criticalf( 'Could not retrieve content for id %s', $id ) );
     }
 
     return $response->{'content'};

@@ -263,7 +263,7 @@ sub unpack {
     my $archive = Archive::Any->new($file);
 
     if ( $archive->is_naughty ) {
-        die $log->critical("Suspicious module ($file)");
+        Carp::croak( $log->critical("Suspicious module ($file)") );
     }
 
     $archive->extract($target);

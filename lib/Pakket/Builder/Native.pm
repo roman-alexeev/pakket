@@ -3,6 +3,7 @@ package Pakket::Builder::Native;
 
 use Moose;
 use MooseX::StrictConstructor;
+use Carp qw< croak >;
 use Log::Any qw< $log >;
 use Pakket::Log;
 use Pakket::Builder::Native::Makefile;
@@ -18,8 +19,8 @@ sub build_package {
         my $builder = Pakket::Builder::Native::Makefile->new();
         $builder->build_package( $package, $build_dir, $prefix, $flags );
     } else {
-        die $log->critical(
-            "I cannot build this native package. No 'configure'.");
+        croak( $log->critical(
+            "I cannot build this native package. No 'configure'.") );
     }
 
     return;

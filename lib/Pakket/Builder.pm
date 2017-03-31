@@ -3,6 +3,7 @@ package Pakket::Builder;
 
 use Moose;
 use MooseX::StrictConstructor;
+use Carp                      qw< croak >;
 use Path::Tiny                qw< path        >;
 use File::Copy::Recursive     qw< dircopy     >;
 use Algorithm::Diff::Callback qw< diff_hashes >;
@@ -283,18 +284,18 @@ sub run_build {
 
         # Check the versions mismatch
         if ( $built_version ne $prereq->version ) {
-            die $log->criticalf(
+            croak( $log->criticalf(
                 'Asked to build %s when %s=%s already built',
                 $prereq->full_name, $short_name, $built_version,
-            );
+            ) );
         }
 
         # Check the releases mismatch
         if ( $built_release ne $prereq->release ) {
-            die $log->criticalf(
+            croak( $log->criticalf(
                 'Asked to build %s when %s=%s:%s already built',
                 $prereq->full_name, $short_name, $built_version, $built_release,
-            );
+            ) );
         }
 
         $log->debug(
@@ -411,10 +412,10 @@ sub run_build {
             $configure_flags,
         );
     } else {
-        die $log->criticalf(
+        croak( $log->criticalf(
             'I do not have a builder for category %s.',
             $package->category,
-        );
+        ) );
     }
 
     my $package_files = $self->snapshot_build_dir(
@@ -477,11 +478,11 @@ sub snapshot_build_dir {
 
     if ($error_out) {
         keys %{$package_files}
-            or die $log->criticalf(
+            or croak( $log->criticalf(
                 'This is odd. %s build did not generate new files. '
                     . 'Cannot package.',
                 $package->full_name,
-            );
+            ) );
     }
 
     # store per all packages to get the diff
@@ -512,9 +513,9 @@ sub _scan_directory {
         # save the symlink path in order to symlink them
         if ( -l $node ) {
             path( $state->{ $node->absolute } = readlink $node )->is_absolute
-                and die $log->critical(
-                    "Error. Absolute path symlinks aren't supported."
-                );
+                and croak( $log->critical(
+                    "Error. Absolute path symlinks aren't supported.",
+                ) );
         } else {
             $state->{ $node->absolute } = '';
         }
@@ -538,8 +539,8 @@ sub _diff_nodes_list {
         $new_nodes,
         'added'   => sub { $nodes_diff{ $_[0] } = $_[1] },
         'deleted' => sub {
-            die $log->critical(
-                "Last build deleted previously existing file: $_[0]");
+            croak( $log->critical(
+                "Last build deleted previously existing file: $_[0]") );
         },
     );
 

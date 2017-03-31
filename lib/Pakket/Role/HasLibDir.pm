@@ -4,6 +4,7 @@ package Pakket::Role::HasLibDir;
 
 use Moose::Role;
 
+use Carp qw< croak >;
 use Path::Tiny qw< path  >;
 use Types::Path::Tiny qw< Path  >;
 use File::Copy::Recursive qw< dircopy >;
@@ -65,16 +66,16 @@ sub _build_work_dir {
     my $work_dir = $self->libraries_dir->child( time() );
 
     $work_dir->exists
-        and die $log->critical(
+        and croak( $log->critical(
             "Internal installation directory exists ($work_dir), exiting",
-        );
+        ) );
 
     $work_dir->mkpath();
 
     # we copy any previous installation
     if ( $self->active_dir->exists ) {
         my $orig_work_dir = eval { my $link = readlink $self->active_dir } or do {
-            die $log->critical("$self->active_dir is not a symlink");
+            croak( $log->critical("$self->active_dir is not a symlink") );
         };
 
         dircopy( $self->libraries_dir->child($orig_work_dir), $work_dir );
@@ -109,23 +110,23 @@ sub activate_work_dir {
         $log->debug('Deleting existing temporary active object');
 
         $active_temp->remove
-            or die $log->error(
+            or croak( $log->error(
                 'Could not activate new installation (temporary symlink remove failed)'
-            );
+            ) );
     }
 
     $log->debugf( 'Setting temporary active symlink to new work directory %s',
         $work_dir );
 
     symlink( $work_dir->basename, $active_temp )
-        or die $log->error(
+        or croak( $log->error(
             'Could not activate new installation (temporary symlink create failed)'
-        );
+        ) );
 
     $active_temp->move($self->active_dir)
-        or die $log->error(
+        or croak( $log->error(
             'Could not atomically activate new installation (symlink rename failed)'
-        );
+        ) );
 }
 
 sub remove_old_libraries {

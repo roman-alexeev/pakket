@@ -2,9 +2,10 @@ package Pakket::Utils::Repository;
 
 use strict;
 use warnings;
-
-use Path::Tiny qw< path >;
 use parent 'Exporter';
+
+use Carp qw< croak >;
+use Path::Tiny qw< path >;
 
 our @EXPORT_OK = (qw< gen_repo_config >);
 
@@ -31,7 +32,7 @@ sub gen_repo_config {
     } else {
         my $path = path($directory);
         $path->exists && $path->is_dir
-            or die "Bad directory for $type repo: $path\n";
+            or croak("Bad directory for $type repo: $path\n");
 
         return [
             'File',

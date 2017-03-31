@@ -3,6 +3,7 @@ package Pakket::Installer;
 
 use Moose;
 use MooseX::StrictConstructor;
+use Carp                  qw< croak >;
 use Path::Tiny            qw< path  >;
 use Types::Path::Tiny     qw< Path  >;
 use File::Copy::Recursive qw< dircopy >;
@@ -94,11 +95,11 @@ sub install_package {
     # Are we in a regular (non-bootstrap) mode?
     # Are we using a bootstrap version of a package?
     if ( ! $opts->{'skip_prereqs'} && $package->is_bootstrap ) {
-        die $log->critical(
+        croak( $log->critical(
             'You are trying to install a bootstrap version of %s.'
           . ' Please rebuild this package from scratch.',
             $package->full_name,
-        );
+        ) );
     }
 
     # Extracted to use more easily in the install cache below
@@ -113,23 +114,23 @@ sub install_package {
 
         # Check version
         if ( $version ne $package->version ) {
-            die $log->criticalf(
+            croak( $log->criticalf(
                 "%s=$version already installed. "
               . "Cannot install new version: %s",
               $package->short_name,
               $package->version,
-            );
+            ) );
         }
 
         # Check release
         if ( $release ne $package->release ) {
-            die $log->criticalf(
+            croak( $log->criticalf(
                 '%s=%s:%s already installed. '
               . 'Cannot install new version: %s:%s',
                 $package->short_name,
                 $version, $release,
                 $package->release,
-            );
+            ) );
         }
 
         $log->debugf( '%s already installed.', $package->full_name );
@@ -142,9 +143,9 @@ sub install_package {
     }
 
     if ( !is_writeable($dir) ) {
-        die $log->critical(
+        croak( $log->critical(
             "Can't write to your installation directory ($dir)",
-        );
+        ) );
     }
 
     my $parcel_dir
