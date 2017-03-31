@@ -29,8 +29,9 @@ sub is_writeable {
 
 sub generate_env_vars {
     my ( $build_dir, $prefix ) = @_;
-    my $lib_path = generate_lib_path($prefix);
-    my $bin_path = generate_bin_path($prefix);
+    my $lib_path       = generate_lib_path($prefix);
+    my $bin_path       = generate_bin_path($prefix);
+    my $pkgconfig_path = generate_pkgconfig_path($prefix);
 
     my @perl5lib = (
         $build_dir,
@@ -50,6 +51,7 @@ sub generate_env_vars {
 
     return (
         'CPATH'           => $prefix->child('include')->stringify,
+        'PKG_CONFIG_PATH' => $pkgconfig_path,
         'LD_LIBRARY_PATH' => $lib_path,
         'LIBRARY_PATH'    => $lib_path,
         'PATH'            => $bin_path,
@@ -77,6 +79,17 @@ sub generate_bin_path {
     }
 
     return $bin_path;
+}
+
+sub generate_pkgconfig_path {
+    my $prefix = shift;
+
+    my $pkgconfig_path = $prefix->child('lib/pkgconfig')->absolute->stringify;
+    if ( defined( my $env_pkgconfig_path = $ENV{'PKG_CONFIG_PATH'} ) ) {
+        $pkgconfig_path .= ":$env_pkgconfig_path";
+    }
+
+    return $pkgconfig_path;
 }
 
 sub canonical_package_name {

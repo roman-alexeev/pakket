@@ -386,14 +386,6 @@ sub run_build {
 
     $log->debug('Copying package files');
 
-    # FIXME: we shouldn't be generating PKG_CONFIG_PATH every time
-    #        Instead, set this as default opt and send it to the build
-    #        subroutines as "default opts" to add their own stuff to
-    #        and add LD_LIBRARY_PATH and PATH to this as well
-    my $pkgconfig_path = $top_build_dir->child( qw<main lib pkgconfig> );
-    $log->debug("Setting PKG_CONFIG_PATH=$pkgconfig_path");
-    local $ENV{'PKG_CONFIG_PATH'} = $pkgconfig_path;
-
     # FIXME: This shouldn't just be configure flags
     # we should allow the builder to have access to a general
     # metadata chunk which *might* include configure flags
