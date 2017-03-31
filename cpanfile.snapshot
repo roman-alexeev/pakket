@@ -178,6 +178,13 @@ DISTRIBUTIONS
     requirements:
       B 0
       ExtUtils::MakeMaker 0
+  CPAN-DistnameInfo-0.12
+    pathname: G/GB/GBARR/CPAN-DistnameInfo-0.12.tar.gz
+    provides:
+      CPAN::DistnameInfo 0.12
+    requirements:
+      ExtUtils::MakeMaker 0
+      Test::More 0
   CPAN-Meta-Requirements-2.140
     pathname: D/DA/DAGOLDEN/CPAN-Meta-Requirements-2.140.tar.gz
     provides:
@@ -293,20 +300,7 @@ DISTRIBUTIONS
       Config::Any::XML undef
       Config::Any::YAML undef
     requirements:
-      Config::General 2.47
       Module::Pluggable::Object 3.6
-  Config-General-2.63
-    pathname: T/TL/TLINDEN/Config-General-2.63.tar.gz
-    provides:
-      Config::General 2.63
-      Config::General::Extended 2.07
-      Config::General::Interpolated 2.15
-    requirements:
-      ExtUtils::MakeMaker 0
-      File::Glob 0
-      File::Spec::Functions 0
-      FileHandle 0
-      IO::File 0
   Config-Tiny-2.23
     pathname: R/RS/RSAVAGE/Config-Tiny-2.23.tgz
     provides:
@@ -329,6 +323,13 @@ DISTRIBUTIONS
       Module::Build 0.38
       URI::Escape 0
       perl 5.008001
+  Cpanel-JSON-XS-3.0231
+    pathname: R/RU/RURBAN/Cpanel-JSON-XS-3.0231.tar.gz
+    provides:
+      Cpanel::JSON::XS 3.0231
+    requirements:
+      ExtUtils::MakeMaker 0
+      Pod::Text 2.08
   DBI-1.636
     pathname: T/TI/TIMB/DBI-1.636.tar.gz
     provides:
@@ -1066,6 +1067,17 @@ DISTRIBUTIONS
       Encode 2.10
       Exporter 5.57
       ExtUtils::MakeMaker 6.30
+  IO-Prompt-Tiny-0.003
+    pathname: D/DA/DAGOLDEN/IO-Prompt-Tiny-0.003.tar.gz
+    provides:
+      IO::Prompt::Tiny 0.003
+    requirements:
+      Carp 0
+      Exporter 0
+      ExtUtils::MakeMaker 6.17
+      perl 5.006
+      strict 0
+      warnings 0
   IO-String-1.08
     pathname: G/GA/GAAS/IO-String-1.08.tar.gz
     provides:
@@ -1093,22 +1105,6 @@ DISTRIBUTIONS
     requirements:
       ExtUtils::MakeMaker 0
       Test::More 0
-  IO-stringy-2.111
-    pathname: D/DS/DSKOLL/IO-stringy-2.111.tar.gz
-    provides:
-      IO::AtomicFile 2.111
-      IO::Clever 1.01
-      IO::InnerFile 2.111
-      IO::Lines 2.111
-      IO::Scalar 2.111
-      IO::ScalarArray 2.111
-      IO::Stringy 2.111
-      IO::Wrap 2.111
-      IO::WrapTie 2.111
-      IO::WrapTie::Master 2.111
-      IO::WrapTie::Slave 2.111
-    requirements:
-      ExtUtils::MakeMaker 0
   IPC-Run-0.94
     pathname: T/TO/TODDR/IPC-Run-0.94.tar.gz
     provides:
@@ -1139,6 +1135,7 @@ DISTRIBUTIONS
       JSON::MaybeXS 1.003008
     requirements:
       Carp 0
+      Cpanel::JSON::XS 2.3310
       ExtUtils::CBuilder 0.27
       ExtUtils::MakeMaker 0
       File::Spec 0
@@ -1263,18 +1260,6 @@ DISTRIBUTIONS
       perl 5.006
       strict 0
       warnings 0
-  Log-Dispatch-Screen-Color-0.04
-    pathname: Y/YA/YAPPO/Log-Dispatch-Screen-Color-0.04.tar.gz
-    provides:
-      Log::Dispatch::Screen::Color 0.04
-    requirements:
-      ExtUtils::MakeMaker 6.42
-      Filter::Util::Call 0
-      IO::Scalar 0
-      Log::Dispatch 0
-      Params::Validate 0
-      Term::ANSIColor 0
-      Test::More 0
   Log-Dispatch-Screen-Gentoo-0.001
     pathname: X/XS/XSAWYERX/Log-Dispatch-Screen-Gentoo-0.001.tar.gz
     provides:
