@@ -413,7 +413,7 @@ sub create_spec_for {
                 }
 
                 $prereq_data->{ $dist } = +{
-                    'version' => ( $rel->{'write_version_as_zero'} ? "0" : $rel->{'version'} )
+                    'version' => ( $dep_requirements->requirements_for_module( $dist ) || 0 ),
                 };
             }
 
@@ -493,16 +493,10 @@ sub get_release_info {
         : $name;
     return +{ 'skip' => 1 } if $self->skip_name($dist_name);
 
-    my $req_as_hash = $requirements->as_string_hash;
-    my $write_version_as_zero = !!(
-        defined $req_as_hash->{ $name }
-        and version->parse( $req_as_hash->{ $name } =~ s/[^0-9.]//gr ) == 0
-    );
 
     # first try the latest
 
     my $latest = $self->get_latest_release_info( $dist_name );
-    $latest->{'write_version_as_zero'} = $write_version_as_zero;
     return $latest
         if defined $latest->{'version'}
            and defined $latest->{'download_url'}
@@ -566,11 +560,10 @@ sub get_release_info {
         if exists $self->known_incorrect_version_fixes->{ $dist_name };
 
     return +{
-        'distribution'          => $dist_name,
-        'version'               => $version,
-        'prereqs'               => $release_prereqs,
-        'download_url'          => $download_url,
-        'write_version_as_zero' => $write_version_as_zero,
+        'distribution' => $dist_name,
+        'version'      => $version,
+        'prereqs'      => $release_prereqs,
+        'download_url' => $download_url,
     };
 }
 
