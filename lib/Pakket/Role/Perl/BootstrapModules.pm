@@ -14,7 +14,6 @@ has 'perl_bootstrap_modules' => (
             ExtUtils-MakeMaker
             Module-Build
             Module-Build-WithXSpp
-            Module-Install
         >]
     },
 );
