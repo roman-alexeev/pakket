@@ -5,6 +5,251 @@
 BEGIN {
 my %fatpacked;
 
+$fatpacked{"App/Seacan.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'APP_SEACAN';
+  package App::Seacan;
+  use strict;
+  use warnings;
+  use constant { 'EXEC_MODE' => '0755' };
+  
+  # Semantic Vesioning: http://semver.org/
+  # Not sure if I want to use v-string, but I do want to follow
+  # semvar as a convention.
+  our $VERSION = "0.1.0";
+  
+  use English qw<-no_match_vars>;
+  use Mo qw<required coerce>;
+  use TOML qw<from_toml>;
+  use Path::Tiny qw<path>;
+  
+  has config => (
+      required => 1,
+      coerce   => sub {
+          my $c = $_[0];
+  
+          if ( !ref($c) && -f $c ) {
+              $c = from_toml( path($c)->slurp_utf8 );
+          }
+  
+          $c->{perl}{installed_as} //= "seacan";
+  
+          return $c;
+      }
+  );
+  
+  sub seacan_perlbrew_root {
+      my $self = shift;
+      return path($self->config->{seacan}{output}, "perlbrew");
+  }
+  
+  sub seacan_perl {
+      my $self = shift;
+      return $self->seacan_perlbrew_root->child(
+          'perls',
+          $self->config->{perl}{installed_as},
+          'bin',
+          'perl',
+     );
+  }
+  
+  sub perl_is_installed {
+      my $self = shift;
+  
+      my $perlbrew_root_path
+          = path( $self->config->{seacan}{output}, 'perlbrew' );
+  
+      $perlbrew_root_path->is_dir
+          or return 0;
+  
+      my $perl_executable = $perlbrew_root_path->child(
+          'perls',
+          $self->config->{perl}{installed_as},
+          'bin',
+          'perl',
+      );
+  
+      if ( $perl_executable->is_file ) {
+          print STDERR "perl is installed: $perl_executable\n";
+          return 1;
+      }
+  
+      return 0;
+  }
+  
+  sub install_perl {
+      my $self = shift;
+  
+      my $perlbrew_root_path = $self->seacan_perlbrew_root;
+  
+      # FIXME: Shouldn't this use 'safe' => 0 ?
+      $perlbrew_root_path->is_dir
+          or $perlbrew_root_path->mkpath();
+  
+      for (keys %ENV) {
+          delete $ENV{$_} if /\APERLBREW_/;
+      }
+      delete $ENV{PERL_CPANM_OPT};
+      delete $ENV{PERL_LOCAL_LIB_ROOT};
+      delete $ENV{PERL_MB_OPT};
+      delete $ENV{PERL_MM_OPT};
+      delete $ENV{PERL5LIB};
+  
+      $ENV{PERLBREW_ROOT} = $perlbrew_root_path;
+  
+      system("curl -L https://install.perlbrew.pl | bash") == 0 or die $!;
+      my $perlbrew_command = path($perlbrew_root_path, "bin", "perlbrew");
+  
+      my @perl_install_cmd = (
+          $perlbrew_command,
+          "install", $self->config->{perl}{version},
+          "--as",    $self->config->{perl}{installed_as},
+  
+          $self->config->{perl}{relocatable_INC}
+              ? ("-Duserelocatableinc")
+              : (),
+  
+          $self->config->{perl}{noman}
+              ? ("--noman")
+              : (),
+  
+          $self->config->{perl}{notest}
+              ? ("--notest")
+              : (),
+  
+          $self->config->{perl}{parallel}
+              ? ("-j", $self->config->{perl}{parallel})
+              : (),
+      );
+      system(@perl_install_cmd) == 0 or die $!;
+  
+      system($perlbrew_command, "install-cpanm", "--force");
+  
+      system($perlbrew_command, "clean");
+  }
+  
+  sub install_cpan {
+      my $self = shift;
+      my $cpanm_command = $self->seacan_perlbrew_root->child( "bin", "cpanm");
+      my $perl_command = $self->seacan_perl;
+  
+      local $OUTPUT_FIELD_SEPARATOR = q{ };
+      my $o = $self->config->{seacan}{output};
+      my $ap = $self->config->{seacan}{app};
+      print STDERR "===> $perl_command $cpanm_command --notest -L $o local --installdeps $ap";
+      system($perl_command, $cpanm_command, "--notest", "-L", path($self->config->{seacan}{output}, "local"), "--installdeps", $self->config->{seacan}{app} ) == 0 or die $!;
+  }
+  
+  sub copy_app {
+      my $self = shift;
+      my $target_directory = path($self->config->{seacan}{output}, "app", $self->config->{seacan}{app_name});
+      my $source_directory = $self->config->{seacan}{app};
+  
+      $target_directory->mkpath();
+  
+      unless ( $source_directory =~ m{/$} ) {
+          # this is telling rsync to copy the contents of $source_directory
+          # instead of $source_directory itself
+          $source_directory .= "/";
+      }
+  
+      system("rsync", "-8vPa", $source_directory, $target_directory) == 0 or die;
+  }
+  
+  sub create_launcher {
+      # Instead of giving a very long command to the user
+      # a launcher script is generated.
+      # app_name and main_script could be added to the configuration
+      # so we can add the info directly instead of "guessing" it
+      # through a regex.
+  
+      my $self = shift;
+      my $output = $self->config->{seacan}{output};
+  
+      # The launcher script goes into bin of the target directory
+      my $target_directory = path($output, 'bin');
+  
+      my $app_name = $self->config->{seacan}{app_name};
+      if ( !$app_name ) {
+          # This is a hack to determine the application name from the
+          # output value of the config in case it wasn't provided
+  
+          $app_name = $output;
+          $app_name =~ s/^.+\/(.+?)$/$1/;
+      }
+  
+      # Apps following the CPAN guidelines have a lib directory with the
+      # modules. Adding this to the PERL5LIB allows to run this distributions
+      # without installing them.
+      my $launcher_path = $target_directory->child($app_name);
+      $target_directory->mkpath();
+  
+      $launcher_path->spew_utf8(
+          "#!/bin/bash\n",
+          'CURRDIR=$(dirname $(readlink -f $0))' . "\n",
+          "PERL5LIB=\$CURRDIR/../local/lib/perl5:\$CURRDIR/../app/$app_name/lib\n",
+          "export PERL5LIB\n",
+  
+          # String "app" shouldn't be hardcoded and be part of the config
+          # app.pl will not be the likely name of the main script.
+          "\$CURRDIR/../perlbrew/perls/seacan/bin/perl \$CURRDIR/../app/$app_name/bin/$app_name \$@\n",
+      );
+  
+      $launcher_path->chmod( EXEC_MODE() );
+  }
+  
+  sub run {
+      my $self = shift;
+      $self->install_perl unless $self->perl_is_installed;
+      $self->install_cpan;
+      $self->copy_app;
+      $self->create_launcher;
+  }
+  
+  1;
+  
+  =encoding utf-8
+  
+  =head1 NAME
+  
+  Seacan - A tool to prepare a self-contained app directory.
+  
+  =head1 DESCRIPTION
+  
+  Read the README file for now. L<https://github.com/gugod/Seacan/blob/master/README.md>
+  
+  =head1 COPYRIGHT
+  
+  Copyright (c) 2016 Kang-min Liu C<< <gugod@gugod.org> >>.
+  
+  =head1 LICENCE
+  
+  The MIT License
+  
+  =head1 DISCLAIMER OF WARRANTY
+  
+  BECAUSE THIS SOFTWARE IS LICENSED FREE OF CHARGE, THERE IS NO WARRANTY
+  FOR THE SOFTWARE, TO THE EXTENT PERMITTED BY APPLICABLE LAW. EXCEPT WHEN
+  OTHERWISE STATED IN WRITING THE COPYRIGHT HOLDERS AND/OR OTHER PARTIES
+  PROVIDE THE SOFTWARE "AS IS" WITHOUT WARRANTY OF ANY KIND, EITHER
+  EXPRESSED OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+  WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. THE
+  ENTIRE RISK AS TO THE QUALITY AND PERFORMANCE OF THE SOFTWARE IS WITH
+  YOU. SHOULD THE SOFTWARE PROVE DEFECTIVE, YOU ASSUME THE COST OF ALL
+  NECESSARY SERVICING, REPAIR, OR CORRECTION.
+  
+  IN NO EVENT UNLESS REQUIRED BY APPLICABLE LAW OR AGREED TO IN WRITING
+  WILL ANY COPYRIGHT HOLDER, OR ANY OTHER PARTY WHO MAY MODIFY AND/OR
+  REDISTRIBUTE THE SOFTWARE AS PERMITTED BY THE ABOVE LICENCE, BE
+  LIABLE TO YOU FOR DAMAGES, INCLUDING ANY GENERAL, SPECIAL, INCIDENTAL,
+  OR CONSEQUENTIAL DAMAGES ARISING OUT OF THE USE OR INABILITY TO USE
+  THE SOFTWARE (INCLUDING BUT NOT LIMITED TO LOSS OF DATA OR DATA BEING
+  RENDERED INACCURATE OR LOSSES SUSTAINED BY YOU OR THIRD PARTIES OR A
+  FAILURE OF THE SOFTWARE TO OPERATE WITH ANY OTHER SOFTWARE), EVEN IF
+  SUCH HOLDER OR OTHER PARTY HAS BEEN ADVISED OF THE POSSIBILITY OF
+  SUCH DAMAGES.
+  
+  =cut
+APP_SEACAN
+
 $fatpacked{"Dancer2/Plugin/Pakket/ParamTypes.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'DANCER2_PLUGIN_PAKKET_PARAMTYPES';
   package Dancer2::Plugin::Pakket::ParamTypes;
   # ABSTRACT: Parameter types for the Dancer2 Pakket app
@@ -50,6 +295,503 @@ $fatpacked{"Dancer2/Plugin/Pakket/ParamTypes.pm"} = '#line '.(1+__LINE__).' "'._
   
   1;
 DANCER2_PLUGIN_PAKKET_PARAMTYPES
+
+$fatpacked{"Mo.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'MO';
+  package Mo;
+  $Mo::VERSION = '0.40';
+  $VERSION='0.40';
+  no warnings;my$M=__PACKAGE__.'::';*{$M.Object::new}=sub{my$c=shift;my$s=bless{@_},$c;my%n=%{$c.'::'.':E'};map{$s->{$_}=$n{$_}->()if!exists$s->{$_}}keys%n;$s};*{$M.import}=sub{import warnings;$^H|=1538;my($P,%e,%o)=caller.'::';shift;eval"no Mo::$_",&{$M.$_.::e}($P,\%e,\%o,\@_)for@_;return if$e{M};%e=(extends,sub{eval"no $_[0]()";@{$P.ISA}=$_[0]},has,sub{my$n=shift;my$m=sub{$#_?$_[0]{$n}=$_[1]:$_[0]{$n}};@_=(default,@_)if!($#_%2);$m=$o{$_}->($m,$n,@_)for sort keys%o;*{$P.$n}=$m},%e,);*{$P.$_}=$e{$_}for keys%e;@{$P.ISA}=$M.Object};
+MO
+
+$fatpacked{"Mo/Golf.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'MO_GOLF';
+  ##
+  # name:      Mo::Golf
+  # abstract:  Module for Compacting Mo Modules
+  # author:    Ingy döt Net <ingy@ingy.net>
+  # license:   perl
+  # copyright: 2011
+  # see:
+  # - Mo
+  
+  use strict;
+  use warnings;
+  package Mo::Golf;
+  
+  our $VERSION='0.40';
+  
+  use PPI;
+  
+  # This is the mapping of common names to shorter forms that still make some
+  # sense.
+  my %short_names = (
+      (
+          map {($_, substr($_, 0, 1))}
+          qw(
+              args builder class default exports features
+              generator import is_lazy method MoPKG name
+              nonlazy_defaults options reftype self
+          )
+      ),
+      build_subs => 'B',
+      old_constructor => 'C',
+      caller_pkg => 'P',
+  );
+  
+  my %short_barewords = ( EAGERINIT => q{':E'}, NONLAZY => q{':N'} );
+  
+  my %hands_off = map {($_,1)} qw'&import *import';
+  
+  sub import {
+      return unless @_ == 2 and $_[1] eq 'golf';
+      binmode STDOUT;
+      my $text = do { local $/; <> };
+      print STDOUT golf( $text );
+  };
+  
+  sub golf {
+      my ( $text ) = @_;
+  
+      my $tree = PPI::Document->new( \$text );
+  
+      my %finder_subs = _finder_subs();
+  
+      my @order = qw( comments duplicate_whitespace whitespace trailing_whitespace );
+  
+      for my $name ( @order ) {
+          my $elements = $tree->find( $finder_subs{$name} );
+          die $@ if !defined $elements;
+          $_->delete for @{ $elements || [] };
+      }
+  
+      $tree->find( $finder_subs{$_} )
+        for qw( del_superfluous_concat del_last_semicolon_in_block separate_version shorten_var_names shorten_barewords );
+      die $@ if $@;
+  
+      for my $name ( 'double_semicolon' ) {
+          my $elements = $tree->find( $finder_subs{$name} );
+          die $@ if !defined $elements;
+          $_->delete for @{ $elements || [] };
+      }
+  
+      return $tree->serialize . "\n";
+  }
+  
+  sub tok { "PPI::Token::$_[0]" }
+  
+  sub _finder_subs {
+      return (
+          comments => sub { $_[1]->isa( tok 'Comment' ) },
+  
+          duplicate_whitespace => sub {
+              my ( $top, $current ) = @_;
+              return 0 if !$current->isa( tok 'Whitespace' );
+  
+              $current->set_content(' ') if 1 < length $current->content;
+  
+              return 0 if !$current->next_token;
+              return 0 if !$current->next_token->isa( tok 'Whitespace' );
+              return 1;
+          },
+  
+          whitespace => sub {
+              my ( $top, $current ) = @_;
+              return 0 if !$current->isa( tok 'Whitespace' );
+              my $prev = $current->previous_token;
+              my $next = $current->next_token;
+  
+              return 1 if $prev->isa( tok 'Number' ) and $next->isa( tok 'Operator' ) and $next->content =~ /^\W/; # my $P
+              return 1 if $prev->isa( tok 'Word' )   and $next->isa( tok 'Operator' ) and $next->content =~ /^\W/; # my $P
+              return 1 if $prev->isa( tok 'Symbol' ) and $next->isa( tok 'Operator' ) and $next->content =~ /^\W/; # $VERSION =  but not $v and
+  
+              return 1 if $prev->isa( tok 'Operator' ) and $next->isa( tok 'Quote::Single' ) and $next->content =~ /^\W/; # eq ''
+              return 1 if $prev->isa( tok 'Operator' ) and $next->isa( tok 'Quote::Double' ) and $next->content =~ /^\W/; # eq ""
+              return 1 if $prev->isa( tok 'Operator' ) and $next->isa( tok 'Symbol' )        and $next->content =~ /^\W/; # eq $v
+              return 1 if $prev->isa( tok 'Operator' ) and $next->isa( tok 'Structure' )     and $next->content =~ /^\W/; # eq (
+  
+              return 1 if $prev->isa( tok 'Word' )       and $next->isa( tok 'Symbol' );           # my $P
+              return 1 if $prev->isa( tok 'Word' )       and $next->isa( tok 'Structure' );        # sub {
+              return 1 if $prev->isa( tok 'Word' )       and $next->isa( tok 'Quote::Double' );    # eval "
+              return 1 if $prev->isa( tok 'Symbol' )     and $next->isa( tok 'Structure' );        # %a )
+              return 1 if $prev->isa( tok 'ArrayIndex' ) and $next->isa( tok 'Operator' );         # $#_ ?
+              return 1 if $prev->isa( tok 'Word' )       and $next->isa( tok 'Cast' );             # exists &$_
+              return 0;
+          },
+  
+          trailing_whitespace => sub {
+              my ( $top, $current ) = @_;
+              return 0 if !$current->isa( tok 'Whitespace' );
+              my $prev = $current->previous_token;
+  
+              return 1 if $prev->isa( tok 'Structure' );                                           # ;[\n\s]
+              return 1 if $prev->isa( tok 'Operator' ) and $prev->content =~ /\W$/;                # = 0.24
+              return 1 if $prev->isa( tok 'Quote::Double' );                                       # " .
+              return 1 if $prev->isa( tok 'Quote::Single' );                                       # ' }
+  
+              return 0;
+          },
+  
+          double_semicolon => sub {
+              my ( $top, $current ) = @_;
+              return 0 if !$current->isa( tok 'Structure' );
+              return 0 if $current->content ne ';';
+  
+              my $prev = $current->previous_token;
+  
+              return 0 if !$prev->isa( tok 'Structure' );
+              return 0 if $prev->content ne ';';
+  
+              return 1;
+          },
+  
+          del_last_semicolon_in_block => sub {
+              my ( $top, $current ) = @_;
+              return 0 if !$current->isa( 'PPI::Structure::Block' );
+  
+              my $last = $current->last_token;
+  
+              return 0 if !$last->isa( tok 'Structure' );
+              return 0 if $last->content ne '}';
+  
+              my $maybe_semi = $last->previous_token;
+  
+              return 0 if !$maybe_semi->isa( tok 'Structure' );
+              return 0 if $maybe_semi->content ne ';';
+  
+              $maybe_semi->delete;
+  
+              return 1;
+          },
+  
+          del_superfluous_concat => sub {
+              my ( $top, $current ) = @_;
+              return 0 if !$current->isa( tok 'Operator' );
+  
+              my $prev = $current->previous_token;
+              my $next = $current->next_token;
+  
+              return 0 if $current->content ne '.';
+              return 0 if !$prev->isa( tok 'Quote::Double' );
+              return 0 if !$next->isa( tok 'Quote::Double' );
+  
+              $current->delete;
+              $prev->set_content( $prev->{separator} . $prev->string . $next->string . $prev->{separator} );
+              $next->delete;
+  
+              return 1;
+          },
+  
+          separate_version => sub {
+              my ( $top, $current ) = @_;
+              return 0 if !$current->isa( 'PPI::Statement' );
+  
+              my $first = $current->first_token;
+              return 0 if $first->content ne '$VERSION';
+  
+              $current->$_( PPI::Token::Whitespace->new( "\n" ) ) for qw( insert_before insert_after );
+  
+              return 1;
+          },
+  
+          shorten_var_names => sub {
+              my ( $top, $current ) = @_;
+              return 0 if !$current->isa( tok 'Symbol' );
+  
+              my $long_name = $current->canonical;
+  
+              return 1 if $hands_off{$long_name};
+              (my $name = $long_name) =~ s/^([\$\@\%])// or die $long_name;
+              my $sigil = $1;
+              die "variable $long_name conflicts with shortened var name"
+                  if grep {
+                      $name eq $_
+                  } values %short_names;
+  
+              my $short_name = $short_names{$name};
+              $current->set_content( "$sigil$short_name" ) if $short_name;
+  
+              return 1;
+          },
+  
+          shorten_barewords => sub {
+              my ( $top, $current ) = @_;
+              return 0 if !$current->isa( tok 'Word' );
+  
+              my $name = $current->content;
+  
+              die "bareword $name conflicts with shortened bareword"
+                  if grep {
+                      $name eq $_
+                  } values %short_barewords;
+  
+              my $short_name = $short_barewords{$name};
+              $current->set_content( $short_name ) if $short_name;
+  
+              return 1;
+          },
+      );
+  }
+  
+  =head1 SYNOPSIS
+  
+      perl -MMo::Golf=golf < src/Mo/foo.pm > lib/Mo/foo.pm
+  
+  =head1 DESCRIPTION
+  
+  This is the module that is responsible for taking Mo code (which is
+  documented and fairly readable) and reducing it to a single undecipherable
+  line.
+MO_GOLF
+
+$fatpacked{"Mo/Inline.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'MO_INLINE';
+  ##
+  # name:      Mo::Inline
+  # abstract:  Inline Mo and Features into your package
+  # author:    Ingy döt Net <ingy@ingy.net>
+  # license:   perl
+  # copyright: 2011
+  # see:
+  # - Mo
+  
+  package Mo::Inline;
+  use Mo;
+  
+  our $VERSION='0.40';
+  
+  use IO::All;
+  
+  my $matcher = qr/((?m:^#\s*use Mo(\s.*)?;.*\n))(?:#.*\n)*(?:.{400,}\n)?/;
+  
+  sub run {
+      my $self = shift;
+      my @files;
+      if (not @_ and -d 'lib') {
+          print "Searching the 'lib' directory for a Mo to inline:\n";
+          @_ = 'lib';
+      }
+      if (not @_ or @_ == 1 and $_[0] =~ /^(?:-\?|-h|--help)$/) {
+          print usage();
+          return 0;
+      }
+      for my $name (@_) {
+          die "No file or directory called '$name'"
+              unless -e $name;
+          die "'$name' is not a Perl module"
+              if -f $name and $name !~ /\.pm$/;
+          if (-f $name) {
+              push @files, $name;
+          }
+          elsif (-d $name) {
+              push @_, grep /\.pm$/, map { "$_" } io($name)->All_Files;
+          }
+      }
+  
+      die "No .pm files specified"
+          unless @files;
+  
+      for my $file (@files) {
+          my $text = io($file)->all;
+          if ($text !~ $matcher) {
+              print "Ignoring $file - No Mo to Inline!\n";
+              next;
+          }
+          $self->inline($file, 1);
+      }
+  }
+  
+  sub inline {
+      my ($self, $file, $noisy) = @_;
+      my $text = io($file)->all;
+      $text =~ s/$matcher/"$1" . &inliner($2)/eg;
+      io($file)->print($text);
+      print "Mo Inlined $file\n"
+          if $noisy;
+  }
+  
+  sub inliner {
+      my $mo = shift;
+      require Mo;
+      my @features = grep {$_ ne 'qw'} ($mo =~ /(\w+)/g);
+      for (@features) {
+          eval "require Mo::$_; 1" or die $@;
+      }
+      my $inline = '';
+      $inline .= $_ for map {
+          my $module = $_;
+          $module .= '.pm';
+          my @lines = io($INC{$module})->chomp->getlines;
+          $lines[-1];
+      } ('Mo', map { s!::!/!g; "Mo/$_" } @features);
+      return <<"...";
+  #   The following line of code was produced from the previous line by
+  #   Mo::Inline version $VERSION
+  $inline\@f=qw[@features];use strict;use warnings;
+  ...
+  }
+  
+  sub usage {
+      <<'...';
+  Usage: mo-linline <perl module files or directories>
+  
+  ...
+  }
+  
+  1;
+  
+  =head1 SYNOPSIS
+  
+  In your Mo module:
+  
+      # This is effectively your own private Mo(ose) setup
+      package MyModule::Mo;
+      # use Mo qw'build builder default import';
+      1;
+  
+  From the command line:
+  
+      > mo-inline lib/MyModule/Mo.pm
+  
+  or:
+  
+      > mo-inline lib/
+  
+  or (if you are really lazy):
+  
+      > mo-inline
+  
+  Then from another module:
+  
+      package MyModule::Foo;
+      use MyModule::Mo;       # gets build, builder and default automatically
+  
+  =head1 DESCRIPTION
+  
+  Mo is so small that you can easily inline it, along with any feature modules.
+  Mo provides a script called C<mo-inline> that will do it for you.
+  
+  All you need to do is comment out the line that uses Mo, and run C<mo-inline>
+  on the file. C<mo-inline> will find such comments and do the inlining for you.
+  It will also replace any old inlined Mo with the latest version.
+  
+  What Mo could you possibly want?
+  
+  =head1 AUTOMATIC FEATURES
+  
+  By using the L<Mo::import> feature, all uses of your Mo class will turn on all
+  the features you specified. You can override it if you want, but that will be
+  the default.
+  
+  =head1 REAL WORLD EXAMPLES
+  
+  For real world examples of Mo inlined using C<mo-inline>, see L<YAML::Mo>,
+  L<Pegex::Mo> and L<TestML::Mo>.
+MO_INLINE
+
+$fatpacked{"Mo/Moose.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'MO_MOOSE';
+  package Mo::Moose;
+  $Mo::Moose::VERSION = '0.40';$M="Mo::";
+  $VERSION='0.40';
+  *{$M.'Moose::e'}=sub{my($P,$e)=@_;$P=~s/::$//;%$e=(M=>1);require Moose;Moose->import({into=>$P});Moose::Util::MetaRole::apply_metaroles(for=>$P,class_metaroles=>{attribute=>['Attr::Trait']},)};BEGIN{package Attr::Trait;
+  $Attr::Trait::VERSION = '0.40';use Moose::Role;around _process_options=>sub{my$orig=shift;my$c=shift;my($n,$o)=@_;$o->{is}||='rw';$o->{lazy}||=1 if defined$o->{default}or defined$o->{builder};$c->$orig(@_)};$INC{'Attr/Trait.pm'}=1}
+MO_MOOSE
+
+$fatpacked{"Mo/Mouse.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'MO_MOUSE';
+  package Mo::Mouse;
+  $Mo::Mouse::VERSION = '0.40';$M="Mo::";
+  $VERSION='0.40';
+  *{$M.'Mouse::e'}=sub{my($P,$e)=@_;$P=~s/::$//;%$e=(M=>1);require Mouse;require Mouse::Util::MetaRole;Mouse->import({into=>$P});Mouse::Util::MetaRole::apply_metaroles(for=>$P,class_metaroles=>{attribute=>['Attr::Trait']},)};BEGIN{package Attr::Trait;
+  $Attr::Trait::VERSION = '0.40';use Mouse::Role;around _process_options=>sub{my$orig=shift;my$c=shift;my($n,$o)=@_;$o->{is}||='rw';$o->{lazy}||=1 if defined$o->{default}or defined$o->{builder};$c->$orig(@_)};$INC{'Attr/Trait.pm'}=1}
+MO_MOUSE
+
+$fatpacked{"Mo/build.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'MO_BUILD';
+  package Mo::build;
+  $Mo::build::VERSION = '0.40';my$M="Mo::";
+  $VERSION='0.40';
+  *{$M.'build::e'}=sub{my($P,$e)=@_;$e->{new}=sub{$c=shift;my$s=&{$M.Object::new}($c,@_);my@B;do{@B=($c.::BUILD,@B)}while($c)=@{$c.::ISA};exists&$_&&&$_($s)for@B;$s}};
+MO_BUILD
+
+$fatpacked{"Mo/builder.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'MO_BUILDER';
+  package Mo::builder;
+  $Mo::builder::VERSION = '0.40';my$M="Mo::";
+  $VERSION='0.40';
+  *{$M.'builder::e'}=sub{my($P,$e,$o)=@_;$o->{builder}=sub{my($m,$n,%a)=@_;my$b=$a{builder}or return$m;my$i=exists$a{lazy}?$a{lazy}:!${$P.':N'};$i or ${$P.':E'}{$n}=\&{$P.$b}and return$m;sub{$#_?$m->(@_):!exists$_[0]{$n}?$_[0]{$n}=$_[0]->$b:$m->(@_)}}};
+MO_BUILDER
+
+$fatpacked{"Mo/chain.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'MO_CHAIN';
+  package Mo::chain;
+  $Mo::chain::VERSION = '0.40';my$M="Mo::";
+  $VERSION='0.40';
+  *{$M.'chain::e'}=sub{my($P,$e,$o)=@_;$o->{chain}=sub{my($m,$n,%a)=@_;$a{chain}or return$m;sub{$#_?($m->(@_),return$_[0]):$m->(@_)}}};
+MO_CHAIN
+
+$fatpacked{"Mo/coerce.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'MO_COERCE';
+  package Mo::coerce;
+  $Mo::coerce::VERSION = '0.40';my$M="Mo::";
+  $VERSION='0.40';
+  *{$M.'coerce::e'}=sub{my($P,$e,$o)=@_;$o->{coerce}=sub{my($m,$n,%a)=@_;$a{coerce}or return$m;sub{$#_?$m->($_[0],$a{coerce}->($_[1])):$m->(@_)}};my$C=$e->{new}||*{$M.Object::new}{CODE};$e->{new}=sub{my$s=$C->(@_);$s->$_($s->{$_})for keys%$s;$s}};
+MO_COERCE
+
+$fatpacked{"Mo/default.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'MO_DEFAULT';
+  package Mo::default;
+  $Mo::default::VERSION = '0.40';my$M="Mo::";
+  $VERSION='0.40';
+  *{$M.'default::e'}=sub{my($P,$e,$o)=@_;$o->{default}=sub{my($m,$n,%a)=@_;exists$a{default}or return$m;my($d,$r)=$a{default};my$g='HASH'eq($r=ref$d)?sub{+{%$d}}:'ARRAY'eq$r?sub{[@$d]}:'CODE'eq$r?$d:sub{$d};my$i=exists$a{lazy}?$a{lazy}:!${$P.':N'};$i or ${$P.':E'}{$n}=$g and return$m;sub{$#_?$m->(@_):!exists$_[0]{$n}?$_[0]{$n}=$g->(@_):$m->(@_)}}};
+MO_DEFAULT
+
+$fatpacked{"Mo/exporter.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'MO_EXPORTER';
+  package Mo::exporter;
+  $Mo::exporter::VERSION = '0.40';my$M="Mo::";
+  $VERSION='0.40';
+  *{$M.'exporter::e'}=sub{my($P)=@_;if(@{$M.EXPORT}){*{$P.$_}=\&{$M.$_}for@{$M.EXPORT}}};
+MO_EXPORTER
+
+$fatpacked{"Mo/import.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'MO_IMPORT';
+  package Mo::import;
+  $Mo::import::VERSION = '0.40';my$M="Mo::";
+  $VERSION='0.40';
+  my$i=\&import;*{$M.import}=sub{(@_==2 and not$_[1])?pop@_:@_==1?push@_,grep!/import/,@f:();goto&$i};
+MO_IMPORT
+
+$fatpacked{"Mo/importer.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'MO_IMPORTER';
+  package Mo::importer;
+  $Mo::importer::VERSION = '0.40';my$M="Mo::";
+  $VERSION='0.40';
+  *{$M.'importer::e'}=sub{my($P,$e,$o,$f)=@_;(my$pkg=$P)=~s/::$//;&{$P.'importer'}($pkg,@$f)if defined&{$P.'importer'}};
+MO_IMPORTER
+
+$fatpacked{"Mo/is.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'MO_IS';
+  package Mo::is;
+  $Mo::is::VERSION = '0.40';$M="Mo::";
+  $VERSION='0.40';
+  *{$M.'is::e'}=sub{my($P,$e,$o)=@_;$o->{is}=sub{my($m,$n,%a)=@_;$a{is}or return$m;sub{$#_&&$a{is}eq'ro'&&caller ne'Mo::coerce'?die$n.' is ro':$m->(@_)}}};
+MO_IS
+
+$fatpacked{"Mo/nonlazy.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'MO_NONLAZY';
+  package Mo::nonlazy;
+  $Mo::nonlazy::VERSION = '0.40';my$M="Mo::";
+  $VERSION='0.40';
+  *{$M.'nonlazy::e'}=sub{${shift().':N'}=1};
+MO_NONLAZY
+
+$fatpacked{"Mo/option.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'MO_OPTION';
+  package Mo::option;
+  $Mo::option::VERSION = '0.40';my$M="Mo::";
+  $VERSION='0.40';
+  *{$M.'option::e'}=sub{my($P,$e,$o)=@_;$o->{option}=sub{my($m,$n,%a)=@_;$a{option}or return$m;my$n2=$n;*{$P."read_$n2"}=sub{$_[0]->{$n2}};sub{$#_?$m->(@_):$m->(@_,1);$_[0]}}};
+MO_OPTION
+
+$fatpacked{"Mo/required.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'MO_REQUIRED';
+  package Mo::required;
+  $Mo::required::VERSION = '0.40';my$M="Mo::";
+  $VERSION='0.40';
+  *{$M.'required::e'}=sub{my($P,$e,$o)=@_;$o->{required}=sub{my($m,$n,%a)=@_;if($a{required}){my$C=*{$P."new"}{CODE}||*{$M.Object::new}{CODE};no warnings 'redefine';*{$P."new"}=sub{my$s=$C->(@_);my%a=@_[1..$#_];die$n." required"if!exists$a{$n};$s}}$m}};
+MO_REQUIRED
+
+$fatpacked{"Mo/xs.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'MO_XS';
+  package Mo::xs;
+  $Mo::xs::VERSION = '0.40';my$M="Mo::";
+  $VERSION='0.40';
+  require Class::XSAccessor;*{$M.'xs::e'}=sub{my($P,$e,$o,$f)=@_;$P=~s/::$//;$e->{has}=sub{my($n,%a)=@_;Class::XSAccessor->import(class=>$P,accessors=>{$n=>$n})}if!grep!/^xs$/,@$f};
+MO_XS
 
 $fatpacked{"Pakket.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PAKKET';
   package Pakket;
@@ -4849,7 +5591,7 @@ $fatpacked{"Pakket/Scaffolder/Perl.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\
                   }
   
                   $prereq_data->{ $dist } = +{
-                      'version' => ( $dep_requirements->requirements_for_module( $dist ) || 0 ),
+                      'version' => ( $dep_requirements->requirements_for_module( $module ) || 0 ),
                   };
               }
   
@@ -6085,4351 +6827,4640 @@ $fatpacked{"Pakket/Versioning/Perl.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\
   1;
 PAKKET_VERSIONING_PERL
 
-$fatpacked{"perl/5.22.1/Cwd.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PERL_5.22.1_CWD';
-  package Cwd;
+$fatpacked{"Path/Tiny.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PATH_TINY';
+  use 5.008001;
   use strict;
-  use Exporter;
-  use vars qw(@ISA @EXPORT @EXPORT_OK $VERSION);
+  use warnings;
   
-  $VERSION = '3.62';
-  my $xs_version = $VERSION;
-  $VERSION =~ tr/_//d;
+  package Path::Tiny;
+  # ABSTRACT: File path utility
   
-  @ISA = qw/ Exporter /;
-  @EXPORT = qw(cwd getcwd fastcwd fastgetcwd);
-  push @EXPORT, qw(getdcwd) if $^O eq 'MSWin32';
-  @EXPORT_OK = qw(chdir abs_path fast_abs_path realpath fast_realpath);
+  our $VERSION = '0.098';
   
-  # sys_cwd may keep the builtin command
+  # Dependencies
+  use Config;
+  use Exporter 5.57   (qw/import/);
+  use File::Spec 0.86 ();          # shipped with 5.8.1
+  use Carp ();
   
-  # All the functionality of this module may provided by builtins,
-  # there is no sense to process the rest of the file.
-  # The best choice may be to have this in BEGIN, but how to return from BEGIN?
+  our @EXPORT    = qw/path/;
+  our @EXPORT_OK = qw/cwd rootdir tempfile tempdir/;
   
-  if ($^O eq 'os2') {
-      local $^W = 0;
+  use constant {
+      PATH     => 0,
+      CANON    => 1,
+      VOL      => 2,
+      DIR      => 3,
+      FILE     => 4,
+      TEMP     => 5,
+      IS_BSD   => ( scalar $^O =~ /bsd$/ ),
+      IS_WIN32 => ( $^O eq 'MSWin32' ),
+  };
   
-      *cwd                = defined &sys_cwd ? \&sys_cwd : \&_os2_cwd;
-      *getcwd             = \&cwd;
-      *fastgetcwd         = \&cwd;
-      *fastcwd            = \&cwd;
+  use overload (
+      q{""}    => sub    { $_[0]->[PATH] },
+      bool     => sub () { 1 },
+      fallback => 1,
+  );
   
-      *fast_abs_path      = \&sys_abspath if defined &sys_abspath;
-      *abs_path           = \&fast_abs_path;
-      *realpath           = \&fast_abs_path;
-      *fast_realpath      = \&fast_abs_path;
+  # FREEZE/THAW per Sereal/CBOR/Types::Serialiser protocol
+  sub FREEZE { return $_[0]->[PATH] }
+  sub THAW   { return path( $_[2] ) }
+  { no warnings 'once'; *TO_JSON = *FREEZE };
   
-      return 1;
+  my $HAS_UU; # has Unicode::UTF8; lazily populated
+  
+  sub _check_UU {
+      !!eval { require Unicode::UTF8; Unicode::UTF8->VERSION(0.58); 1 };
   }
   
-  # Need to look up the feature settings on VMS.  The preferred way is to use the
-  # VMS::Feature module, but that may not be available to dual life modules.
+  my $HAS_PU; # has PerlIO::utf8_strict; lazily populated
   
-  my $use_vms_feature;
+  sub _check_PU {
+      !!eval { require PerlIO::utf8_strict; PerlIO::utf8_strict->VERSION(0.003); 1 };
+  }
+  
+  my $HAS_FLOCK = $Config{d_flock} || $Config{d_fcntl_can_lock} || $Config{d_lockf};
+  
+  # notions of "root" directories differ on Win32: \\server\dir\ or C:\ or \
+  my $SLASH      = qr{[\\/]};
+  my $NOTSLASH   = qr{[^\\/]};
+  my $DRV_VOL    = qr{[a-z]:}i;
+  my $UNC_VOL    = qr{$SLASH $SLASH $NOTSLASH+ $SLASH $NOTSLASH+}x;
+  my $WIN32_ROOT = qr{(?: $UNC_VOL $SLASH | $DRV_VOL $SLASH | $SLASH )}x;
+  
+  sub _win32_vol {
+      my ( $path, $drv ) = @_;
+      require Cwd;
+      my $dcwd = eval { Cwd::getdcwd($drv) }; # C: -> C:\some\cwd
+      # getdcwd on non-existent drive returns empty string
+      # so just use the original drive Z: -> Z:
+      $dcwd = "$drv" unless defined $dcwd && length $dcwd;
+      # normalize dwcd to end with a slash: might be C:\some\cwd or D:\ or Z:
+      $dcwd =~ s{$SLASH?$}{/};
+      # make the path absolute with dcwd
+      $path =~ s{^$DRV_VOL}{$dcwd};
+      return $path;
+  }
+  
+  # This is a string test for before we have the object; see is_rootdir for well-formed
+  # object test
+  sub _is_root {
+      return IS_WIN32() ? ( $_[0] =~ /^$WIN32_ROOT$/ ) : ( $_[0] eq '/' );
+  }
+  
   BEGIN {
-      if ($^O eq 'VMS') {
-          if (eval { local $SIG{__DIE__}; require VMS::Feature; }) {
-              $use_vms_feature = 1;
-          }
-      }
+      *_same = IS_WIN32() ? sub { lc( $_[0] ) eq lc( $_[1] ) } : sub { $_[0] eq $_[1] };
   }
   
-  # Need to look up the UNIX report mode.  This may become a dynamic mode
-  # in the future.
-  sub _vms_unix_rpt {
-      my $unix_rpt;
-      if ($use_vms_feature) {
-          $unix_rpt = VMS::Feature::current("filename_unix_report");
-      } else {
-          my $env_unix_rpt = $ENV{'DECC$FILENAME_UNIX_REPORT'} || '';
-          $unix_rpt = $env_unix_rpt =~ /^[ET1]/i; 
-      }
-      return $unix_rpt;
-  }
+  # mode bits encoded for chmod in symbolic mode
+  my %MODEBITS = ( om => 0007, gm => 0070, um => 0700 ); ## no critic
+  { my $m = 0; $MODEBITS{$_} = ( 1 << $m++ ) for qw/ox ow or gx gw gr ux uw ur/ };
   
-  # Need to look up the EFS character set mode.  This may become a dynamic
-  # mode in the future.
-  sub _vms_efs {
-      my $efs;
-      if ($use_vms_feature) {
-          $efs = VMS::Feature::current("efs_charset");
-      } else {
-          my $env_efs = $ENV{'DECC$EFS_CHARSET'} || '';
-          $efs = $env_efs =~ /^[ET1]/i; 
-      }
-      return $efs;
-  }
-  
-  
-  # If loading the XS stuff doesn't work, we can fall back to pure perl
-  if(! defined &getcwd && defined &DynaLoader::boot_DynaLoader) {
-    eval {#eval is questionable since we are handling potential errors like
-          #"Cwd object version 3.48 does not match bootstrap parameter 3.50
-          #at lib/DynaLoader.pm line 216." by having this eval
-      if ( $] >= 5.006 ) {
-        require XSLoader;
-        XSLoader::load( __PACKAGE__, $xs_version);
-      } else {
-        require DynaLoader;
-        push @ISA, 'DynaLoader';
-        __PACKAGE__->bootstrap( $xs_version );
-      }
-    };
-  }
-  
-  # Big nasty table of function aliases
-  my %METHOD_MAP =
-    (
-     VMS =>
-     {
-      cwd			=> '_vms_cwd',
-      getcwd		=> '_vms_cwd',
-      fastcwd		=> '_vms_cwd',
-      fastgetcwd		=> '_vms_cwd',
-      abs_path		=> '_vms_abs_path',
-      fast_abs_path	=> '_vms_abs_path',
-     },
-  
-     MSWin32 =>
-     {
-      # We assume that &_NT_cwd is defined as an XSUB or in the core.
-      cwd			=> '_NT_cwd',
-      getcwd		=> '_NT_cwd',
-      fastcwd		=> '_NT_cwd',
-      fastgetcwd		=> '_NT_cwd',
-      abs_path		=> 'fast_abs_path',
-      realpath		=> 'fast_abs_path',
-     },
-  
-     dos => 
-     {
-      cwd			=> '_dos_cwd',
-      getcwd		=> '_dos_cwd',
-      fastgetcwd		=> '_dos_cwd',
-      fastcwd		=> '_dos_cwd',
-      abs_path		=> 'fast_abs_path',
-     },
-  
-     # QNX4.  QNX6 has a $os of 'nto'.
-     qnx =>
-     {
-      cwd			=> '_qnx_cwd',
-      getcwd		=> '_qnx_cwd',
-      fastgetcwd		=> '_qnx_cwd',
-      fastcwd		=> '_qnx_cwd',
-      abs_path		=> '_qnx_abs_path',
-      fast_abs_path	=> '_qnx_abs_path',
-     },
-  
-     cygwin =>
-     {
-      getcwd		=> 'cwd',
-      fastgetcwd		=> 'cwd',
-      fastcwd		=> 'cwd',
-      abs_path		=> 'fast_abs_path',
-      realpath		=> 'fast_abs_path',
-     },
-  
-     epoc =>
-     {
-      cwd			=> '_epoc_cwd',
-      getcwd	        => '_epoc_cwd',
-      fastgetcwd		=> '_epoc_cwd',
-      fastcwd		=> '_epoc_cwd',
-      abs_path		=> 'fast_abs_path',
-     },
-  
-     MacOS =>
-     {
-      getcwd		=> 'cwd',
-      fastgetcwd		=> 'cwd',
-      fastcwd		=> 'cwd',
-      abs_path		=> 'fast_abs_path',
-     },
-  
-     amigaos =>
-     {
-      getcwd              => '_backtick_pwd',
-      fastgetcwd          => '_backtick_pwd',
-      fastcwd             => '_backtick_pwd',
-      abs_path            => 'fast_abs_path',
-     }
-    );
-  
-  $METHOD_MAP{NT} = $METHOD_MAP{MSWin32};
-  
-  
-  # Find the pwd command in the expected locations.  We assume these
-  # are safe.  This prevents _backtick_pwd() consulting $ENV{PATH}
-  # so everything works under taint mode.
-  my $pwd_cmd;
-  if($^O ne 'MSWin32') {
-      foreach my $try ('/bin/pwd',
-  		     '/usr/bin/pwd',
-  		     '/QOpenSys/bin/pwd', # OS/400 PASE.
-  		    ) {
-  	if( -x $try ) {
-  	    $pwd_cmd = $try;
-  	    last;
-  	}
-      }
-  }
-  
-  # Android has a built-in pwd. Using $pwd_cmd will DTRT if
-  # this perl was compiled with -Dd_useshellcmds, which is the
-  # default for Android, but the block below is needed for the
-  # miniperl running on the host when cross-compiling, and
-  # potentially for native builds with -Ud_useshellcmds.
-  if ($^O =~ /android/) {
-      # If targetsh is executable, then we're either a full
-      # perl, or a miniperl for a native build.
-      if (-x $Config::Config{targetsh}) {
-          $pwd_cmd = "$Config::Config{targetsh} -c pwd"
-      }
-      else {
-          my $sh = $Config::Config{sh} || (-x '/system/bin/sh' ? '/system/bin/sh' : 'sh');
-          $pwd_cmd = "$sh -c pwd"
-      }
-  }
-  
-  my $found_pwd_cmd = defined($pwd_cmd);
-  unless ($pwd_cmd) {
-      # Isn't this wrong?  _backtick_pwd() will fail if someone has
-      # pwd in their path but it is not /bin/pwd or /usr/bin/pwd?
-      # See [perl #16774]. --jhi
-      $pwd_cmd = 'pwd';
-  }
-  
-  # Lazy-load Carp
-  sub _carp  { require Carp; Carp::carp(@_)  }
-  sub _croak { require Carp; Carp::croak(@_) }
-  
-  # The 'natural and safe form' for UNIX (pwd may be setuid root)
-  sub _backtick_pwd {
-  
-      # Localize %ENV entries in a way that won't create new hash keys.
-      # Under AmigaOS we don't want to localize as it stops perl from
-      # finding 'sh' in the PATH.
-      my @localize = grep exists $ENV{$_}, qw(PATH IFS CDPATH ENV BASH_ENV) if $^O ne "amigaos";
-      local @ENV{@localize} if @localize;
-      
-      my $cwd = `$pwd_cmd`;
-      # Belt-and-suspenders in case someone said "undef $/".
-      local $/ = "\n";
-      # `pwd` may fail e.g. if the disk is full
-      chomp($cwd) if defined $cwd;
-      $cwd;
-  }
-  
-  # Since some ports may predefine cwd internally (e.g., NT)
-  # we take care not to override an existing definition for cwd().
-  
-  unless ($METHOD_MAP{$^O}{cwd} or defined &cwd) {
-      # The pwd command is not available in some chroot(2)'ed environments
-      my $sep = $Config::Config{path_sep} || ':';
-      my $os = $^O;  # Protect $^O from tainting
-  
-  
-      # Try again to find a pwd, this time searching the whole PATH.
-      if (defined $ENV{PATH} and $os ne 'MSWin32') {  # no pwd on Windows
-  	my @candidates = split($sep, $ENV{PATH});
-  	while (!$found_pwd_cmd and @candidates) {
-  	    my $candidate = shift @candidates;
-  	    $found_pwd_cmd = 1 if -x "$candidate/pwd";
-  	}
-      }
-  
-      # MacOS has some special magic to make `pwd` work.
-      if( $os eq 'MacOS' || $found_pwd_cmd )
-      {
-  	*cwd = \&_backtick_pwd;
-      }
-      else {
-  	*cwd = \&getcwd;
-      }
-  }
-  
-  if ($^O eq 'cygwin') {
-    # We need to make sure cwd() is called with no args, because it's
-    # got an arg-less prototype and will die if args are present.
-    local $^W = 0;
-    my $orig_cwd = \&cwd;
-    *cwd = sub { &$orig_cwd() }
-  }
-  
-  
-  # set a reasonable (and very safe) default for fastgetcwd, in case it
-  # isn't redefined later (20001212 rspier)
-  *fastgetcwd = \&cwd;
-  
-  # A non-XS version of getcwd() - also used to bootstrap the perl build
-  # process, when miniperl is running and no XS loading happens.
-  sub _perl_getcwd
-  {
-      abs_path('.');
-  }
-  
-  # By John Bazik
-  #
-  # Usage: $cwd = &fastcwd;
-  #
-  # This is a faster version of getcwd.  It's also more dangerous because
-  # you might chdir out of a directory that you can't chdir back into.
-      
-  sub fastcwd_ {
-      my($odev, $oino, $cdev, $cino, $tdev, $tino);
-      my(@path, $path);
-      local(*DIR);
-  
-      my($orig_cdev, $orig_cino) = stat('.');
-      ($cdev, $cino) = ($orig_cdev, $orig_cino);
-      for (;;) {
-  	my $direntry;
-  	($odev, $oino) = ($cdev, $cino);
-  	CORE::chdir('..') || return undef;
-  	($cdev, $cino) = stat('.');
-  	last if $odev == $cdev && $oino == $cino;
-  	opendir(DIR, '.') || return undef;
-  	for (;;) {
-  	    $direntry = readdir(DIR);
-  	    last unless defined $direntry;
-  	    next if $direntry eq '.';
-  	    next if $direntry eq '..';
-  
-  	    ($tdev, $tino) = lstat($direntry);
-  	    last unless $tdev != $odev || $tino != $oino;
-  	}
-  	closedir(DIR);
-  	return undef unless defined $direntry; # should never happen
-  	unshift(@path, $direntry);
-      }
-      $path = '/' . join('/', @path);
-      if ($^O eq 'apollo') { $path = "/".$path; }
-      # At this point $path may be tainted (if tainting) and chdir would fail.
-      # Untaint it then check that we landed where we started.
-      $path =~ /^(.*)\z/s		# untaint
-  	&& CORE::chdir($1) or return undef;
-      ($cdev, $cino) = stat('.');
-      die "Unstable directory path, current directory changed unexpectedly"
-  	if $cdev != $orig_cdev || $cino != $orig_cino;
-      $path;
-  }
-  if (not defined &fastcwd) { *fastcwd = \&fastcwd_ }
-  
-  
-  # Keeps track of current working directory in PWD environment var
-  # Usage:
-  #	use Cwd 'chdir';
-  #	chdir $newdir;
-  
-  my $chdir_init = 0;
-  
-  sub chdir_init {
-      if ($ENV{'PWD'} and $^O ne 'os2' and $^O ne 'dos' and $^O ne 'MSWin32') {
-  	my($dd,$di) = stat('.');
-  	my($pd,$pi) = stat($ENV{'PWD'});
-  	if (!defined $dd or !defined $pd or $di != $pi or $dd != $pd) {
-  	    $ENV{'PWD'} = cwd();
-  	}
-      }
-      else {
-  	my $wd = cwd();
-  	$wd = Win32::GetFullPathName($wd) if $^O eq 'MSWin32';
-  	$ENV{'PWD'} = $wd;
-      }
-      # Strip an automounter prefix (where /tmp_mnt/foo/bar == /foo/bar)
-      if ($^O ne 'MSWin32' and $ENV{'PWD'} =~ m|(/[^/]+(/[^/]+/[^/]+))(.*)|s) {
-  	my($pd,$pi) = stat($2);
-  	my($dd,$di) = stat($1);
-  	if (defined $pd and defined $dd and $di == $pi and $dd == $pd) {
-  	    $ENV{'PWD'}="$2$3";
-  	}
-      }
-      $chdir_init = 1;
-  }
-  
-  sub chdir {
-      my $newdir = @_ ? shift : '';	# allow for no arg (chdir to HOME dir)
-      if ($^O eq "cygwin") {
-        $newdir =~ s|\A///+|//|;
-        $newdir =~ s|(?<=[^/])//+|/|g;
-      }
-      elsif ($^O ne 'MSWin32') {
-        $newdir =~ s|///*|/|g;
-      }
-      chdir_init() unless $chdir_init;
-      my $newpwd;
-      if ($^O eq 'MSWin32') {
-  	# get the full path name *before* the chdir()
-  	$newpwd = Win32::GetFullPathName($newdir);
-      }
-  
-      return 0 unless CORE::chdir $newdir;
-  
-      if ($^O eq 'VMS') {
-  	return $ENV{'PWD'} = $ENV{'DEFAULT'}
-      }
-      elsif ($^O eq 'MacOS') {
-  	return $ENV{'PWD'} = cwd();
-      }
-      elsif ($^O eq 'MSWin32') {
-  	$ENV{'PWD'} = $newpwd;
-  	return 1;
-      }
-  
-      if (ref $newdir eq 'GLOB') { # in case a file/dir handle is passed in
-  	$ENV{'PWD'} = cwd();
-      } elsif ($newdir =~ m#^/#s) {
-  	$ENV{'PWD'} = $newdir;
-      } else {
-  	my @curdir = split(m#/#,$ENV{'PWD'});
-  	@curdir = ('') unless @curdir;
-  	my $component;
-  	foreach $component (split(m#/#, $newdir)) {
-  	    next if $component eq '.';
-  	    pop(@curdir),next if $component eq '..';
-  	    push(@curdir,$component);
-  	}
-  	$ENV{'PWD'} = join('/',@curdir) || '/';
-      }
-      1;
-  }
-  
-  
-  sub _perl_abs_path
-  {
-      my $start = @_ ? shift : '.';
-      my($dotdots, $cwd, @pst, @cst, $dir, @tst);
-  
-      unless (@cst = stat( $start ))
-      {
-  	_carp("stat($start): $!");
-  	return '';
-      }
-  
-      unless (-d _) {
-          # Make sure we can be invoked on plain files, not just directories.
-          # NOTE that this routine assumes that '/' is the only directory separator.
-  	
-          my ($dir, $file) = $start =~ m{^(.*)/(.+)$}
-  	    or return cwd() . '/' . $start;
-  	
-  	# Can't use "-l _" here, because the previous stat was a stat(), not an lstat().
-  	if (-l $start) {
-  	    my $link_target = readlink($start);
-  	    die "Can't resolve link $start: $!" unless defined $link_target;
-  	    
-  	    require File::Spec;
-              $link_target = $dir . '/' . $link_target
-                  unless File::Spec->file_name_is_absolute($link_target);
-  	    
-  	    return abs_path($link_target);
-  	}
-  	
-  	return $dir ? abs_path($dir) . "/$file" : "/$file";
-      }
-  
-      $cwd = '';
-      $dotdots = $start;
-      do
-      {
-  	$dotdots .= '/..';
-  	@pst = @cst;
-  	local *PARENT;
-  	unless (opendir(PARENT, $dotdots))
-  	{
-  	    # probably a permissions issue.  Try the native command.
-  	    require File::Spec;
-  	    return File::Spec->rel2abs( $start, _backtick_pwd() );
-  	}
-  	unless (@cst = stat($dotdots))
-  	{
-  	    _carp("stat($dotdots): $!");
-  	    closedir(PARENT);
-  	    return '';
-  	}
-  	if ($pst[0] == $cst[0] && $pst[1] == $cst[1])
-  	{
-  	    $dir = undef;
-  	}
-  	else
-  	{
-  	    do
-  	    {
-  		unless (defined ($dir = readdir(PARENT)))
-  	        {
-  		    _carp("readdir($dotdots): $!");
-  		    closedir(PARENT);
-  		    return '';
-  		}
-  		$tst[0] = $pst[0]+1 unless (@tst = lstat("$dotdots/$dir"))
-  	    }
-  	    while ($dir eq '.' || $dir eq '..' || $tst[0] != $pst[0] ||
-  		   $tst[1] != $pst[1]);
-  	}
-  	$cwd = (defined $dir ? "$dir" : "" ) . "/$cwd" ;
-  	closedir(PARENT);
-      } while (defined $dir);
-      chop($cwd) unless $cwd eq '/'; # drop the trailing /
-      $cwd;
-  }
-  
-  
-  my $Curdir;
-  sub fast_abs_path {
-      local $ENV{PWD} = $ENV{PWD} || ''; # Guard against clobberage
-      my $cwd = getcwd();
-      require File::Spec;
-      my $path = @_ ? shift : ($Curdir ||= File::Spec->curdir);
-  
-      # Detaint else we'll explode in taint mode.  This is safe because
-      # we're not doing anything dangerous with it.
-      ($path) = $path =~ /(.*)/s;
-      ($cwd)  = $cwd  =~ /(.*)/s;
-  
-      unless (-e $path) {
-   	_croak("$path: No such file or directory");
-      }
-  
-      unless (-d _) {
-          # Make sure we can be invoked on plain files, not just directories.
-  	
-  	my ($vol, $dir, $file) = File::Spec->splitpath($path);
-  	return File::Spec->catfile($cwd, $path) unless length $dir;
-  
-  	if (-l $path) {
-  	    my $link_target = readlink($path);
-  	    die "Can't resolve link $path: $!" unless defined $link_target;
-  	    
-  	    $link_target = File::Spec->catpath($vol, $dir, $link_target)
-                  unless File::Spec->file_name_is_absolute($link_target);
-  	    
-  	    return fast_abs_path($link_target);
-  	}
-  	
-  	return $dir eq File::Spec->rootdir
-  	  ? File::Spec->catpath($vol, $dir, $file)
-  	  : fast_abs_path(File::Spec->catpath($vol, $dir, '')) . '/' . $file;
-      }
-  
-      if (!CORE::chdir($path)) {
-   	_croak("Cannot chdir to $path: $!");
-      }
-      my $realpath = getcwd();
-      if (! ((-d $cwd) && (CORE::chdir($cwd)))) {
-   	_croak("Cannot chdir back to $cwd: $!");
-      }
-      $realpath;
-  }
-  
-  # added function alias to follow principle of least surprise
-  # based on previous aliasing.  --tchrist 27-Jan-00
-  *fast_realpath = \&fast_abs_path;
-  
-  
-  # --- PORTING SECTION ---
-  
-  # VMS: $ENV{'DEFAULT'} points to default directory at all times
-  # 06-Mar-1996  Charles Bailey  bailey@newman.upenn.edu
-  # Note: Use of Cwd::chdir() causes the logical name PWD to be defined
-  #   in the process logical name table as the default device and directory
-  #   seen by Perl. This may not be the same as the default device
-  #   and directory seen by DCL after Perl exits, since the effects
-  #   the CRTL chdir() function persist only until Perl exits.
-  
-  sub _vms_cwd {
-      return $ENV{'DEFAULT'};
-  }
-  
-  sub _vms_abs_path {
-      return $ENV{'DEFAULT'} unless @_;
-      my $path = shift;
-  
-      my $efs = _vms_efs;
-      my $unix_rpt = _vms_unix_rpt;
-  
-      if (defined &VMS::Filespec::vmsrealpath) {
-          my $path_unix = 0;
-          my $path_vms = 0;
-  
-          $path_unix = 1 if ($path =~ m#(?<=\^)/#);
-          $path_unix = 1 if ($path =~ /^\.\.?$/);
-          $path_vms = 1 if ($path =~ m#[\[<\]]#);
-          $path_vms = 1 if ($path =~ /^--?$/);
-  
-          my $unix_mode = $path_unix;
-          if ($efs) {
-              # In case of a tie, the Unix report mode decides.
-              if ($path_vms == $path_unix) {
-                  $unix_mode = $unix_rpt;
-              } else {
-                  $unix_mode = 0 if $path_vms;
+  sub _symbolic_chmod {
+      my ( $mode, $symbolic ) = @_;
+      for my $clause ( split /,\s*/, $symbolic ) {
+          if ( $clause =~ m{\A([augo]+)([=+-])([rwx]+)\z} ) {
+              my ( $who, $action, $perms ) = ( $1, $2, $3 );
+              $who =~ s/a/ugo/g;
+              for my $w ( split //, $who ) {
+                  my $p = 0;
+                  $p |= $MODEBITS{"$w$_"} for split //, $perms;
+                  if ( $action eq '=' ) {
+                      $mode = ( $mode & ~$MODEBITS{"${w}m"} ) | $p;
+                  }
+                  else {
+                      $mode = $action eq "+" ? ( $mode | $p ) : ( $mode & ~$p );
+                  }
               }
           }
-  
-          if ($unix_mode) {
-              # Unix format
-              return VMS::Filespec::unixrealpath($path);
-          }
-  
-  	# VMS format
-  
-  	my $new_path = VMS::Filespec::vmsrealpath($path);
-  
-  	# Perl expects directories to be in directory format
-  	$new_path = VMS::Filespec::pathify($new_path) if -d $path;
-  	return $new_path;
-      }
-  
-      # Fallback to older algorithm if correct ones are not
-      # available.
-  
-      if (-l $path) {
-          my $link_target = readlink($path);
-          die "Can't resolve link $path: $!" unless defined $link_target;
-  
-          return _vms_abs_path($link_target);
-      }
-  
-      # may need to turn foo.dir into [.foo]
-      my $pathified = VMS::Filespec::pathify($path);
-      $path = $pathified if defined $pathified;
-  	
-      return VMS::Filespec::rmsexpand($path);
-  }
-  
-  sub _os2_cwd {
-      my $pwd = `cmd /c cd`;
-      chomp $pwd;
-      $pwd =~ s:\\:/:g ;
-      $ENV{'PWD'} = $pwd;
-      return $pwd;
-  }
-  
-  sub _win32_cwd_simple {
-      my $pwd = `cd`;
-      chomp $pwd;
-      $pwd =~ s:\\:/:g ;
-      $ENV{'PWD'} = $pwd;
-      return $pwd;
-  }
-  
-  sub _win32_cwd {
-      my $pwd;
-      $pwd = Win32::GetCwd();
-      $pwd =~ s:\\:/:g ;
-      $ENV{'PWD'} = $pwd;
-      return $pwd;
-  }
-  
-  *_NT_cwd = defined &Win32::GetCwd ? \&_win32_cwd : \&_win32_cwd_simple;
-  
-  sub _dos_cwd {
-      my $pwd;
-      if (!defined &Dos::GetCwd) {
-          chomp($pwd = `command /c cd`);
-          $pwd =~ s:\\:/:g ;
-      } else {
-          $pwd = Dos::GetCwd();
-      }
-      $ENV{'PWD'} = $pwd;
-      return $pwd;
-  }
-  
-  sub _qnx_cwd {
-  	local $ENV{PATH} = '';
-  	local $ENV{CDPATH} = '';
-  	local $ENV{ENV} = '';
-      my $pwd = `/usr/bin/fullpath -t`;
-      chomp $pwd;
-      $ENV{'PWD'} = $pwd;
-      return $pwd;
-  }
-  
-  sub _qnx_abs_path {
-  	local $ENV{PATH} = '';
-  	local $ENV{CDPATH} = '';
-  	local $ENV{ENV} = '';
-      my $path = @_ ? shift : '.';
-      local *REALPATH;
-  
-      defined( open(REALPATH, '-|') || exec '/usr/bin/fullpath', '-t', $path ) or
-        die "Can't open /usr/bin/fullpath: $!";
-      my $realpath = <REALPATH>;
-      close REALPATH;
-      chomp $realpath;
-      return $realpath;
-  }
-  
-  sub _epoc_cwd {
-      return $ENV{'PWD'} = EPOC::getcwd();
-  }
-  
-  
-  # Now that all the base-level functions are set up, alias the
-  # user-level functions to the right places
-  
-  if (exists $METHOD_MAP{$^O}) {
-    my $map = $METHOD_MAP{$^O};
-    foreach my $name (keys %$map) {
-      local $^W = 0;  # assignments trigger 'subroutine redefined' warning
-      no strict 'refs';
-      *{$name} = \&{$map->{$name}};
-    }
-  }
-  
-  # In case the XS version doesn't load.
-  *abs_path = \&_perl_abs_path unless defined &abs_path;
-  *getcwd = \&_perl_getcwd unless defined &getcwd;
-  
-  # added function alias for those of us more
-  # used to the libc function.  --tchrist 27-Jan-00
-  *realpath = \&abs_path;
-  
-  1;
-  __END__
-  
-  =head1 NAME
-  
-  Cwd - get pathname of current working directory
-  
-  =head1 SYNOPSIS
-  
-      use Cwd;
-      my $dir = getcwd;
-  
-      use Cwd 'abs_path';
-      my $abs_path = abs_path($file);
-  
-  =head1 DESCRIPTION
-  
-  This module provides functions for determining the pathname of the
-  current working directory.  It is recommended that getcwd (or another
-  *cwd() function) be used in I<all> code to ensure portability.
-  
-  By default, it exports the functions cwd(), getcwd(), fastcwd(), and
-  fastgetcwd() (and, on Win32, getdcwd()) into the caller's namespace.  
-  
-  
-  =head2 getcwd and friends
-  
-  Each of these functions are called without arguments and return the
-  absolute path of the current working directory.
-  
-  =over 4
-  
-  =item getcwd
-  
-      my $cwd = getcwd();
-  
-  Returns the current working directory.
-  
-  Exposes the POSIX function getcwd(3) or re-implements it if it's not
-  available.
-  
-  =item cwd
-  
-      my $cwd = cwd();
-  
-  The cwd() is the most natural form for the current architecture.  For
-  most systems it is identical to `pwd` (but without the trailing line
-  terminator).
-  
-  =item fastcwd
-  
-      my $cwd = fastcwd();
-  
-  A more dangerous version of getcwd(), but potentially faster.
-  
-  It might conceivably chdir() you out of a directory that it can't
-  chdir() you back into.  If fastcwd encounters a problem it will return
-  undef but will probably leave you in a different directory.  For a
-  measure of extra security, if everything appears to have worked, the
-  fastcwd() function will check that it leaves you in the same directory
-  that it started in.  If it has changed it will C<die> with the message
-  "Unstable directory path, current directory changed
-  unexpectedly".  That should never happen.
-  
-  =item fastgetcwd
-  
-    my $cwd = fastgetcwd();
-  
-  The fastgetcwd() function is provided as a synonym for cwd().
-  
-  =item getdcwd
-  
-      my $cwd = getdcwd();
-      my $cwd = getdcwd('C:');
-  
-  The getdcwd() function is also provided on Win32 to get the current working
-  directory on the specified drive, since Windows maintains a separate current
-  working directory for each drive.  If no drive is specified then the current
-  drive is assumed.
-  
-  This function simply calls the Microsoft C library _getdcwd() function.
-  
-  =back
-  
-  
-  =head2 abs_path and friends
-  
-  These functions are exported only on request.  They each take a single
-  argument and return the absolute pathname for it.  If no argument is
-  given they'll use the current working directory.
-  
-  =over 4
-  
-  =item abs_path
-  
-    my $abs_path = abs_path($file);
-  
-  Uses the same algorithm as getcwd().  Symbolic links and relative-path
-  components ("." and "..") are resolved to return the canonical
-  pathname, just like realpath(3).
-  
-  =item realpath
-  
-    my $abs_path = realpath($file);
-  
-  A synonym for abs_path().
-  
-  =item fast_abs_path
-  
-    my $abs_path = fast_abs_path($file);
-  
-  A more dangerous, but potentially faster version of abs_path.
-  
-  =back
-  
-  =head2 $ENV{PWD}
-  
-  If you ask to override your chdir() built-in function, 
-  
-    use Cwd qw(chdir);
-  
-  then your PWD environment variable will be kept up to date.  Note that
-  it will only be kept up to date if all packages which use chdir import
-  it from Cwd.
-  
-  
-  =head1 NOTES
-  
-  =over 4
-  
-  =item *
-  
-  Since the path separators are different on some operating systems ('/'
-  on Unix, ':' on MacPerl, etc...) we recommend you use the File::Spec
-  modules wherever portability is a concern.
-  
-  =item *
-  
-  Actually, on Mac OS, the C<getcwd()>, C<fastgetcwd()> and C<fastcwd()>
-  functions are all aliases for the C<cwd()> function, which, on Mac OS,
-  calls `pwd`.  Likewise, the C<abs_path()> function is an alias for
-  C<fast_abs_path()>.
-  
-  =back
-  
-  =head1 AUTHOR
-  
-  Originally by the perl5-porters.
-  
-  Maintained by Ken Williams <KWILLIAMS@cpan.org>
-  
-  =head1 COPYRIGHT
-  
-  Copyright (c) 2004 by the Perl 5 Porters.  All rights reserved.
-  
-  This program is free software; you can redistribute it and/or modify
-  it under the same terms as Perl itself.
-  
-  Portions of the C code in this library are copyright (c) 1994 by the
-  Regents of the University of California.  All rights reserved.  The
-  license on this code is compatible with the licensing of the rest of
-  the distribution - please see the source code in F<Cwd.xs> for the
-  details.
-  
-  =head1 SEE ALSO
-  
-  L<File::chdir>
-  
-  =cut
-PERL_5.22.1_CWD
-
-$fatpacked{"perl/5.22.1/File/Spec.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PERL_5.22.1_FILE_SPEC';
-  package File::Spec;
-  
-  use strict;
-  use vars qw(@ISA $VERSION);
-  
-  $VERSION = '3.62';
-  $VERSION =~ tr/_//d;
-  
-  my %module = (MacOS   => 'Mac',
-  	      MSWin32 => 'Win32',
-  	      os2     => 'OS2',
-  	      VMS     => 'VMS',
-  	      epoc    => 'Epoc',
-  	      NetWare => 'Win32', # Yes, File::Spec::Win32 works on NetWare.
-  	      symbian => 'Win32', # Yes, File::Spec::Win32 works on symbian.
-  	      dos     => 'OS2',   # Yes, File::Spec::OS2 works on DJGPP.
-  	      cygwin  => 'Cygwin',
-  	      amigaos => 'AmigaOS');
-  
-  
-  my $module = $module{$^O} || 'Unix';
-  
-  require "File/Spec/$module.pm";
-  @ISA = ("File::Spec::$module");
-  
-  1;
-  
-  __END__
-  
-  =head1 NAME
-  
-  File::Spec - portably perform operations on file names
-  
-  =head1 SYNOPSIS
-  
-  	use File::Spec;
-  
-  	$x=File::Spec->catfile('a', 'b', 'c');
-  
-  which returns 'a/b/c' under Unix. Or:
-  
-  	use File::Spec::Functions;
-  
-  	$x = catfile('a', 'b', 'c');
-  
-  =head1 DESCRIPTION
-  
-  This module is designed to support operations commonly performed on file
-  specifications (usually called "file names", but not to be confused with the
-  contents of a file, or Perl's file handles), such as concatenating several
-  directory and file names into a single path, or determining whether a path
-  is rooted. It is based on code directly taken from MakeMaker 5.17, code
-  written by Andreas KE<ouml>nig, Andy Dougherty, Charles Bailey, Ilya
-  Zakharevich, Paul Schinder, and others.
-  
-  Since these functions are different for most operating systems, each set of
-  OS specific routines is available in a separate module, including:
-  
-  	File::Spec::Unix
-  	File::Spec::Mac
-  	File::Spec::OS2
-  	File::Spec::Win32
-  	File::Spec::VMS
-  
-  The module appropriate for the current OS is automatically loaded by
-  File::Spec. Since some modules (like VMS) make use of facilities available
-  only under that OS, it may not be possible to load all modules under all
-  operating systems.
-  
-  Since File::Spec is object oriented, subroutines should not be called directly,
-  as in:
-  
-  	File::Spec::catfile('a','b');
-  
-  but rather as class methods:
-  
-  	File::Spec->catfile('a','b');
-  
-  For simple uses, L<File::Spec::Functions> provides convenient functional
-  forms of these methods.
-  
-  =head1 METHODS
-  
-  =over 2
-  
-  =item canonpath
-  X<canonpath>
-  
-  No physical check on the filesystem, but a logical cleanup of a
-  path.
-  
-      $cpath = File::Spec->canonpath( $path ) ;
-  
-  Note that this does *not* collapse F<x/../y> sections into F<y>.  This
-  is by design.  If F</foo> on your system is a symlink to F</bar/baz>,
-  then F</foo/../quux> is actually F</bar/quux>, not F</quux> as a naive
-  F<../>-removal would give you.  If you want to do this kind of
-  processing, you probably want C<Cwd>'s C<realpath()> function to
-  actually traverse the filesystem cleaning up paths like this.
-  
-  =item catdir
-  X<catdir>
-  
-  Concatenate two or more directory names to form a complete path ending
-  with a directory. But remove the trailing slash from the resulting
-  string, because it doesn't look good, isn't necessary and confuses
-  OS/2. Of course, if this is the root directory, don't cut off the
-  trailing slash :-)
-  
-      $path = File::Spec->catdir( @directories );
-  
-  =item catfile
-  X<catfile>
-  
-  Concatenate one or more directory names and a filename to form a
-  complete path ending with a filename
-  
-      $path = File::Spec->catfile( @directories, $filename );
-  
-  =item curdir
-  X<curdir>
-  
-  Returns a string representation of the current directory.
-  
-      $curdir = File::Spec->curdir();
-  
-  =item devnull
-  X<devnull>
-  
-  Returns a string representation of the null device.
-  
-      $devnull = File::Spec->devnull();
-  
-  =item rootdir
-  X<rootdir>
-  
-  Returns a string representation of the root directory.
-  
-      $rootdir = File::Spec->rootdir();
-  
-  =item tmpdir
-  X<tmpdir>
-  
-  Returns a string representation of the first writable directory from a
-  list of possible temporary directories.  Returns the current directory
-  if no writable temporary directories are found.  The list of directories
-  checked depends on the platform; e.g. File::Spec::Unix checks C<$ENV{TMPDIR}>
-  (unless taint is on) and F</tmp>.
-  
-      $tmpdir = File::Spec->tmpdir();
-  
-  =item updir
-  X<updir>
-  
-  Returns a string representation of the parent directory.
-  
-      $updir = File::Spec->updir();
-  
-  =item no_upwards
-  
-  Given a list of file names, strip out those that refer to a parent
-  directory. (Does not strip symlinks, only '.', '..', and equivalents.)
-  
-      @paths = File::Spec->no_upwards( @paths );
-  
-  =item case_tolerant
-  
-  Returns a true or false value indicating, respectively, that alphabetic
-  case is not or is significant when comparing file specifications.
-  Cygwin and Win32 accept an optional drive argument.
-  
-      $is_case_tolerant = File::Spec->case_tolerant();
-  
-  =item file_name_is_absolute
-  
-  Takes as its argument a path, and returns true if it is an absolute path.
-  
-      $is_absolute = File::Spec->file_name_is_absolute( $path );
-  
-  This does not consult the local filesystem on Unix, Win32, OS/2, or
-  Mac OS (Classic).  It does consult the working environment for VMS
-  (see L<File::Spec::VMS/file_name_is_absolute>).
-  
-  =item path
-  X<path>
-  
-  Takes no argument.  Returns the environment variable C<PATH> (or the local
-  platform's equivalent) as a list.
-  
-      @PATH = File::Spec->path();
-  
-  =item join
-  X<join, path>
-  
-  join is the same as catfile.
-  
-  =item splitpath
-  X<splitpath> X<split, path>
-  
-  Splits a path in to volume, directory, and filename portions. On systems
-  with no concept of volume, returns '' for volume. 
-  
-      ($volume,$directories,$file) =
-                         File::Spec->splitpath( $path );
-      ($volume,$directories,$file) =
-                         File::Spec->splitpath( $path, $no_file );
-  
-  For systems with no syntax differentiating filenames from directories, 
-  assumes that the last file is a path unless C<$no_file> is true or a
-  trailing separator or F</.> or F</..> is present. On Unix, this means that C<$no_file>
-  true makes this return ( '', $path, '' ).
-  
-  The directory portion may or may not be returned with a trailing '/'.
-  
-  The results can be passed to L</catpath()> to get back a path equivalent to
-  (usually identical to) the original path.
-  
-  =item splitdir
-  X<splitdir> X<split, dir>
-  
-  The opposite of L</catdir>.
-  
-      @dirs = File::Spec->splitdir( $directories );
-  
-  C<$directories> must be only the directory portion of the path on systems 
-  that have the concept of a volume or that have path syntax that differentiates
-  files from directories.
-  
-  Unlike just splitting the directories on the separator, empty
-  directory names (C<''>) can be returned, because these are significant
-  on some OSes.
-  
-  =item catpath()
-  
-  Takes volume, directory and file portions and returns an entire path. Under
-  Unix, C<$volume> is ignored, and directory and file are concatenated.  A '/' is
-  inserted if need be.  On other OSes, C<$volume> is significant.
-  
-      $full_path = File::Spec->catpath( $volume, $directory, $file );
-  
-  =item abs2rel
-  X<abs2rel> X<absolute, path> X<relative, path>
-  
-  Takes a destination path and an optional base path returns a relative path
-  from the base path to the destination path:
-  
-      $rel_path = File::Spec->abs2rel( $path ) ;
-      $rel_path = File::Spec->abs2rel( $path, $base ) ;
-  
-  If C<$base> is not present or '', then L<Cwd::cwd()|Cwd> is used. If C<$base> is
-  relative, then it is converted to absolute form using
-  L</rel2abs()>. This means that it is taken to be relative to
-  L<Cwd::cwd()|Cwd>.
-  
-  On systems with the concept of volume, if C<$path> and C<$base> appear to be
-  on two different volumes, we will not attempt to resolve the two
-  paths, and we will instead simply return C<$path>.  Note that previous
-  versions of this module ignored the volume of C<$base>, which resulted in
-  garbage results part of the time.
-  
-  On systems that have a grammar that indicates filenames, this ignores the 
-  C<$base> filename as well. Otherwise all path components are assumed to be
-  directories.
-  
-  If C<$path> is relative, it is converted to absolute form using L</rel2abs()>.
-  This means that it is taken to be relative to L<Cwd::cwd()|Cwd>.
-  
-  No checks against the filesystem are made.  On VMS, there is
-  interaction with the working environment, as logicals and
-  macros are expanded.
-  
-  Based on code written by Shigio Yamaguchi.
-  
-  =item rel2abs()
-  X<rel2abs> X<absolute, path> X<relative, path>
-  
-  Converts a relative path to an absolute path. 
-  
-      $abs_path = File::Spec->rel2abs( $path ) ;
-      $abs_path = File::Spec->rel2abs( $path, $base ) ;
-  
-  If C<$base> is not present or '', then L<Cwd::cwd()|Cwd> is used. If C<$base> is relative,
-  then it is converted to absolute form using L</rel2abs()>. This means that it
-  is taken to be relative to L<Cwd::cwd()|Cwd>.
-  
-  On systems with the concept of volume, if C<$path> and C<$base> appear to be
-  on two different volumes, we will not attempt to resolve the two
-  paths, and we will instead simply return C<$path>.  Note that previous
-  versions of this module ignored the volume of C<$base>, which resulted in
-  garbage results part of the time.
-  
-  On systems that have a grammar that indicates filenames, this ignores the 
-  C<$base> filename as well. Otherwise all path components are assumed to be
-  directories.
-  
-  If C<$path> is absolute, it is cleaned up and returned using L</canonpath>.
-  
-  No checks against the filesystem are made.  On VMS, there is
-  interaction with the working environment, as logicals and
-  macros are expanded.
-  
-  Based on code written by Shigio Yamaguchi.
-  
-  =back
-  
-  For further information, please see L<File::Spec::Unix>,
-  L<File::Spec::Mac>, L<File::Spec::OS2>, L<File::Spec::Win32>, or
-  L<File::Spec::VMS>.
-  
-  =head1 SEE ALSO
-  
-  L<File::Spec::Unix>, L<File::Spec::Mac>, L<File::Spec::OS2>,
-  L<File::Spec::Win32>, L<File::Spec::VMS>, L<File::Spec::Functions>,
-  L<ExtUtils::MakeMaker>
-  
-  =head1 AUTHOR
-  
-  Currently maintained by Ken Williams C<< <KWILLIAMS@cpan.org> >>.
-  
-  The vast majority of the code was written by
-  Kenneth Albanowski C<< <kjahds@kjahds.com> >>,
-  Andy Dougherty C<< <doughera@lafayette.edu> >>,
-  Andreas KE<ouml>nig C<< <A.Koenig@franz.ww.TU-Berlin.DE> >>,
-  Tim Bunce C<< <Tim.Bunce@ig.co.uk> >>.
-  VMS support by Charles Bailey C<< <bailey@newman.upenn.edu> >>.
-  OS/2 support by Ilya Zakharevich C<< <ilya@math.ohio-state.edu> >>.
-  Mac support by Paul Schinder C<< <schinder@pobox.com> >>, and
-  Thomas Wegner C<< <wegner_thomas@yahoo.com> >>.
-  abs2rel() and rel2abs() written by Shigio Yamaguchi C<< <shigio@tamacom.com> >>,
-  modified by Barrie Slaymaker C<< <barries@slaysys.com> >>.
-  splitpath(), splitdir(), catpath() and catdir() by Barrie Slaymaker.
-  
-  =head1 COPYRIGHT
-  
-  Copyright (c) 2004-2013 by the Perl 5 Porters.  All rights reserved.
-  
-  This program is free software; you can redistribute it and/or modify
-  it under the same terms as Perl itself.
-  
-  =cut
-PERL_5.22.1_FILE_SPEC
-
-$fatpacked{"perl/5.22.1/File/Spec/AmigaOS.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PERL_5.22.1_FILE_SPEC_AMIGAOS';
-  package File::Spec::AmigaOS;
-  
-  use strict;
-  use vars qw(@ISA $VERSION);
-  require File::Spec::Unix;
-  
-  $VERSION = '3.62';
-  $VERSION =~ tr/_//d;
-  
-  @ISA = qw(File::Spec::Unix);
-  
-  =head1 NAME
-  
-  File::Spec::AmigaOS - File::Spec for AmigaOS
-  
-  =head1 SYNOPSIS
-  
-   require File::Spec::AmigaOS; # Done automatically by File::Spec if needed
-  
-  =head1 DESCRIPTION
-  
-  Methods for manipulating file specifications.
-  
-  =head1 METHODS
-  
-  =over 2
-  
-  =item tmpdir
-  
-  Returns $ENV{TMPDIR} or if that is unset, "/t".
-  
-  =cut
-  
-  my $tmpdir;
-  sub tmpdir {
-    return $tmpdir if defined $tmpdir;
-    $tmpdir = $_[0]->_tmpdir( $ENV{TMPDIR}, "/t" );
-  }
-  
-  =item file_name_is_absolute
-  
-  Returns true if there's a colon in the file name,
-  or if it begins with a slash.
-  
-  =cut
-  
-  sub file_name_is_absolute {
-    my ($self, $file) = @_;
-  
-    # Not 100% robust as a "/" must not preceded a ":"
-    # but this cannot happen in a well formed path.
-    return $file =~ m{^/|:}s;
-  }
-  
-  =back
-  
-  All the other methods are from L<File::Spec::Unix>.
-  
-  =cut
-  
-  1;
-PERL_5.22.1_FILE_SPEC_AMIGAOS
-
-$fatpacked{"perl/5.22.1/File/Spec/Cygwin.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PERL_5.22.1_FILE_SPEC_CYGWIN';
-  package File::Spec::Cygwin;
-  
-  use strict;
-  use vars qw(@ISA $VERSION);
-  require File::Spec::Unix;
-  
-  $VERSION = '3.62';
-  $VERSION =~ tr/_//d;
-  
-  @ISA = qw(File::Spec::Unix);
-  
-  =head1 NAME
-  
-  File::Spec::Cygwin - methods for Cygwin file specs
-  
-  =head1 SYNOPSIS
-  
-   require File::Spec::Cygwin; # Done internally by File::Spec if needed
-  
-  =head1 DESCRIPTION
-  
-  See L<File::Spec> and L<File::Spec::Unix>.  This package overrides the
-  implementation of these methods, not the semantics.
-  
-  This module is still in beta.  Cygwin-knowledgeable folks are invited
-  to offer patches and suggestions.
-  
-  =cut
-  
-  =pod
-  
-  =over 4
-  
-  =item canonpath
-  
-  Any C<\> (backslashes) are converted to C</> (forward slashes),
-  and then File::Spec::Unix canonpath() is called on the result.
-  
-  =cut
-  
-  sub canonpath {
-      my($self,$path) = @_;
-      return unless defined $path;
-  
-      $path =~ s|\\|/|g;
-  
-      # Handle network path names beginning with double slash
-      my $node = '';
-      if ( $path =~ s@^(//[^/]+)(?:/|\z)@/@s ) {
-          $node = $1;
-      }
-      return $node . $self->SUPER::canonpath($path);
-  }
-  
-  sub catdir {
-      my $self = shift;
-      return unless @_;
-  
-      # Don't create something that looks like a //network/path
-      if ($_[0] and ($_[0] eq '/' or $_[0] eq '\\')) {
-          shift;
-          return $self->SUPER::catdir('', @_);
-      }
-  
-      $self->SUPER::catdir(@_);
-  }
-  
-  =pod
-  
-  =item file_name_is_absolute
-  
-  True is returned if the file name begins with C<drive_letter:>,
-  and if not, File::Spec::Unix file_name_is_absolute() is called.
-  
-  =cut
-  
-  
-  sub file_name_is_absolute {
-      my ($self,$file) = @_;
-      return 1 if $file =~ m{^([a-z]:)?[\\/]}is; # C:/test
-      return $self->SUPER::file_name_is_absolute($file);
-  }
-  
-  =item tmpdir (override)
-  
-  Returns a string representation of the first existing directory
-  from the following list:
-  
-      $ENV{TMPDIR}
-      /tmp
-      $ENV{'TMP'}
-      $ENV{'TEMP'}
-      C:/temp
-  
-  If running under taint mode, and if the environment
-  variables are tainted, they are not used.
-  
-  =cut
-  
-  sub tmpdir {
-      my $cached = $_[0]->_cached_tmpdir(qw 'TMPDIR TMP TEMP');
-      return $cached if defined $cached;
-      $_[0]->_cache_tmpdir(
-          $_[0]->_tmpdir(
-              $ENV{TMPDIR}, "/tmp", $ENV{'TMP'}, $ENV{'TEMP'}, 'C:/temp'
-          ),
-          qw 'TMPDIR TMP TEMP'
-      );
-  }
-  
-  =item case_tolerant
-  
-  Override Unix. Cygwin case-tolerance depends on managed mount settings and
-  as with MsWin32 on GetVolumeInformation() $ouFsFlags == FS_CASE_SENSITIVE,
-  indicating the case significance when comparing file specifications.
-  Default: 1
-  
-  =cut
-  
-  sub case_tolerant {
-    return 1 unless $^O eq 'cygwin'
-      and defined &Cygwin::mount_flags;
-  
-    my $drive = shift;
-    if (! $drive) {
-        my @flags = split(/,/, Cygwin::mount_flags('/cygwin'));
-        my $prefix = pop(@flags);
-        if (! $prefix || $prefix eq 'cygdrive') {
-            $drive = '/cygdrive/c';
-        } elsif ($prefix eq '/') {
-            $drive = '/c';
-        } else {
-            $drive = "$prefix/c";
-        }
-    }
-    my $mntopts = Cygwin::mount_flags($drive);
-    if ($mntopts and ($mntopts =~ /,managed/)) {
-      return 0;
-    }
-    eval { require Win32API::File; } or return 1;
-    my $osFsType = "\0"x256;
-    my $osVolName = "\0"x256;
-    my $ouFsFlags = 0;
-    Win32API::File::GetVolumeInformation($drive, $osVolName, 256, [], [], $ouFsFlags, $osFsType, 256 );
-    if ($ouFsFlags & Win32API::File::FS_CASE_SENSITIVE()) { return 0; }
-    else { return 1; }
-  }
-  
-  =back
-  
-  =head1 COPYRIGHT
-  
-  Copyright (c) 2004,2007 by the Perl 5 Porters.  All rights reserved.
-  
-  This program is free software; you can redistribute it and/or modify
-  it under the same terms as Perl itself.
-  
-  =cut
-  
-  1;
-PERL_5.22.1_FILE_SPEC_CYGWIN
-
-$fatpacked{"perl/5.22.1/File/Spec/Epoc.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PERL_5.22.1_FILE_SPEC_EPOC';
-  package File::Spec::Epoc;
-  
-  use strict;
-  use vars qw($VERSION @ISA);
-  
-  $VERSION = '3.62';
-  $VERSION =~ tr/_//d;
-  
-  require File::Spec::Unix;
-  @ISA = qw(File::Spec::Unix);
-  
-  =head1 NAME
-  
-  File::Spec::Epoc - methods for Epoc file specs
-  
-  =head1 SYNOPSIS
-  
-   require File::Spec::Epoc; # Done internally by File::Spec if needed
-  
-  =head1 DESCRIPTION
-  
-  See File::Spec::Unix for a documentation of the methods provided
-  there.  This package overrides the implementation of these methods, not
-  the semantics.
-  
-  This package is still a work in progress. ;-)
-  
-  =cut
-  
-  sub case_tolerant {
-      return 1;
-  }
-  
-  =pod
-  
-  =over 4
-  
-  =item canonpath()
-  
-  No physical check on the filesystem, but a logical cleanup of a
-  path.  On UNIX eliminated successive slashes and successive "/.".
-  
-  =back
-  
-  =cut
-  
-  sub canonpath {
-      my ($self,$path) = @_;
-      return unless defined $path;
-  
-      $path =~ s|/+|/|g;                             # xx////xx  -> xx/xx
-      $path =~ s|(/\.)+/|/|g;                        # xx/././xx -> xx/xx
-      $path =~ s|^(\./)+||s unless $path eq "./";    # ./xx      -> xx
-      $path =~ s|^/(\.\./)+|/|s;                     # /../../xx -> xx
-      $path =~  s|/\Z(?!\n)|| unless $path eq "/";          # xx/       -> xx
-      return $path;
-  }
-  
-  =pod
-  
-  =head1 AUTHOR
-  
-  o.flebbe@gmx.de
-  
-  =head1 COPYRIGHT
-  
-  Copyright (c) 2004 by the Perl 5 Porters.  All rights reserved.
-  
-  This program is free software; you can redistribute it and/or modify
-  it under the same terms as Perl itself.
-  
-  =head1 SEE ALSO
-  
-  See L<File::Spec> and L<File::Spec::Unix>.  This package overrides the
-  implementation of these methods, not the semantics.
-  
-  =cut
-  
-  1;
-PERL_5.22.1_FILE_SPEC_EPOC
-
-$fatpacked{"perl/5.22.1/File/Spec/Functions.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PERL_5.22.1_FILE_SPEC_FUNCTIONS';
-  package File::Spec::Functions;
-  
-  use File::Spec;
-  use strict;
-  
-  use vars qw(@ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $VERSION);
-  
-  $VERSION = '3.62';
-  $VERSION =~ tr/_//d;
-  
-  require Exporter;
-  
-  @ISA = qw(Exporter);
-  
-  @EXPORT = qw(
-  	canonpath
-  	catdir
-  	catfile
-  	curdir
-  	rootdir
-  	updir
-  	no_upwards
-  	file_name_is_absolute
-  	path
-  );
-  
-  @EXPORT_OK = qw(
-  	devnull
-  	tmpdir
-  	splitpath
-  	splitdir
-  	catpath
-  	abs2rel
-  	rel2abs
-  	case_tolerant
-  );
-  
-  %EXPORT_TAGS = ( ALL => [ @EXPORT_OK, @EXPORT ] );
-  
-  require File::Spec::Unix;
-  my %udeps = (
-      canonpath => [],
-      catdir => [qw(canonpath)],
-      catfile => [qw(canonpath catdir)],
-      case_tolerant => [],
-      curdir => [],
-      devnull => [],
-      rootdir => [],
-      updir => [],
-  );
-  
-  foreach my $meth (@EXPORT, @EXPORT_OK) {
-      my $sub = File::Spec->can($meth);
-      no strict 'refs';
-      if (exists($udeps{$meth}) && $sub == File::Spec::Unix->can($meth) &&
-  	    !(grep {
-  		File::Spec->can($_) != File::Spec::Unix->can($_)
-  	    } @{$udeps{$meth}}) &&
-  	    defined(&{"File::Spec::Unix::_fn_$meth"})) {
-  	*{$meth} = \&{"File::Spec::Unix::_fn_$meth"};
-      } else {
-  	*{$meth} = sub {&$sub('File::Spec', @_)};
-      }
-  }
-  
-  
-  1;
-  __END__
-  
-  =head1 NAME
-  
-  File::Spec::Functions - portably perform operations on file names
-  
-  =head1 SYNOPSIS
-  
-  	use File::Spec::Functions;
-  	$x = catfile('a','b');
-  
-  =head1 DESCRIPTION
-  
-  This module exports convenience functions for all of the class methods
-  provided by File::Spec.
-  
-  For a reference of available functions, please consult L<File::Spec::Unix>,
-  which contains the entire set, and which is inherited by the modules for
-  other platforms. For further information, please see L<File::Spec::Mac>,
-  L<File::Spec::OS2>, L<File::Spec::Win32>, or L<File::Spec::VMS>.
-  
-  =head2 Exports
-  
-  The following functions are exported by default.
-  
-  	canonpath
-  	catdir
-  	catfile
-  	curdir
-  	rootdir
-  	updir
-  	no_upwards
-  	file_name_is_absolute
-  	path
-  
-  
-  The following functions are exported only by request.
-  
-  	devnull
-  	tmpdir
-  	splitpath
-  	splitdir
-  	catpath
-  	abs2rel
-  	rel2abs
-  	case_tolerant
-  
-  All the functions may be imported using the C<:ALL> tag.
-  
-  =head1 COPYRIGHT
-  
-  Copyright (c) 2004 by the Perl 5 Porters.  All rights reserved.
-  
-  This program is free software; you can redistribute it and/or modify
-  it under the same terms as Perl itself.
-  
-  =head1 SEE ALSO
-  
-  File::Spec, File::Spec::Unix, File::Spec::Mac, File::Spec::OS2,
-  File::Spec::Win32, File::Spec::VMS, ExtUtils::MakeMaker
-  
-  =cut
-  
-PERL_5.22.1_FILE_SPEC_FUNCTIONS
-
-$fatpacked{"perl/5.22.1/File/Spec/Mac.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PERL_5.22.1_FILE_SPEC_MAC';
-  package File::Spec::Mac;
-  
-  use strict;
-  use vars qw(@ISA $VERSION);
-  require File::Spec::Unix;
-  
-  $VERSION = '3.62';
-  $VERSION =~ tr/_//d;
-  
-  @ISA = qw(File::Spec::Unix);
-  
-  my $macfiles;
-  if ($^O eq 'MacOS') {
-  	$macfiles = eval { require Mac::Files };
-  }
-  
-  sub case_tolerant { 1 }
-  
-  
-  =head1 NAME
-  
-  File::Spec::Mac - File::Spec for Mac OS (Classic)
-  
-  =head1 SYNOPSIS
-  
-   require File::Spec::Mac; # Done internally by File::Spec if needed
-  
-  =head1 DESCRIPTION
-  
-  Methods for manipulating file specifications.
-  
-  =head1 METHODS
-  
-  =over 2
-  
-  =item canonpath
-  
-  On Mac OS, there's nothing to be done. Returns what it's given.
-  
-  =cut
-  
-  sub canonpath {
-      my ($self,$path) = @_;
-      return $path;
-  }
-  
-  =item catdir()
-  
-  Concatenate two or more directory names to form a path separated by colons
-  (":") ending with a directory. Resulting paths are B<relative> by default,
-  but can be forced to be absolute (but avoid this, see below). Automatically
-  puts a trailing ":" on the end of the complete path, because that's what's
-  done in MacPerl's environment and helps to distinguish a file path from a
-  directory path.
-  
-  B<IMPORTANT NOTE:> Beginning with version 1.3 of this module, the resulting
-  path is relative by default and I<not> absolute. This decision was made due
-  to portability reasons. Since C<File::Spec-E<gt>catdir()> returns relative paths
-  on all other operating systems, it will now also follow this convention on Mac
-  OS. Note that this may break some existing scripts.
-  
-  The intended purpose of this routine is to concatenate I<directory names>.
-  But because of the nature of Macintosh paths, some additional possibilities
-  are allowed to make using this routine give reasonable results for some
-  common situations. In other words, you are also allowed to concatenate
-  I<paths> instead of directory names (strictly speaking, a string like ":a"
-  is a path, but not a name, since it contains a punctuation character ":").
-  
-  So, beside calls like
-  
-      catdir("a") = ":a:"
-      catdir("a","b") = ":a:b:"
-      catdir() = ""                    (special case)
-  
-  calls like the following
-  
-      catdir(":a:") = ":a:"
-      catdir(":a","b") = ":a:b:"
-      catdir(":a:","b") = ":a:b:"
-      catdir(":a:",":b:") = ":a:b:"
-      catdir(":") = ":"
-  
-  are allowed.
-  
-  Here are the rules that are used in C<catdir()>; note that we try to be as
-  compatible as possible to Unix:
-  
-  =over 2
-  
-  =item 1.
-  
-  The resulting path is relative by default, i.e. the resulting path will have a
-  leading colon.
-  
-  =item 2.
-  
-  A trailing colon is added automatically to the resulting path, to denote a
-  directory.
-  
-  =item 3.
-  
-  Generally, each argument has one leading ":" and one trailing ":"
-  removed (if any). They are then joined together by a ":". Special
-  treatment applies for arguments denoting updir paths like "::lib:",
-  see (4), or arguments consisting solely of colons ("colon paths"),
-  see (5).
-  
-  =item 4.
-  
-  When an updir path like ":::lib::" is passed as argument, the number
-  of directories to climb up is handled correctly, not removing leading
-  or trailing colons when necessary. E.g.
-  
-      catdir(":::a","::b","c")    = ":::a::b:c:"
-      catdir(":::a::","::b","c")  = ":::a:::b:c:"
-  
-  =item 5.
-  
-  Adding a colon ":" or empty string "" to a path at I<any> position
-  doesn't alter the path, i.e. these arguments are ignored. (When a ""
-  is passed as the first argument, it has a special meaning, see
-  (6)). This way, a colon ":" is handled like a "." (curdir) on Unix,
-  while an empty string "" is generally ignored (see
-  C<Unix-E<gt>canonpath()> ). Likewise, a "::" is handled like a ".."
-  (updir), and a ":::" is handled like a "../.." etc.  E.g.
-  
-      catdir("a",":",":","b")   = ":a:b:"
-      catdir("a",":","::",":b") = ":a::b:"
-  
-  =item 6.
-  
-  If the first argument is an empty string "" or is a volume name, i.e. matches
-  the pattern /^[^:]+:/, the resulting path is B<absolute>.
-  
-  =item 7.
-  
-  Passing an empty string "" as the first argument to C<catdir()> is
-  like passingC<File::Spec-E<gt>rootdir()> as the first argument, i.e.
-  
-      catdir("","a","b")          is the same as
-  
-      catdir(rootdir(),"a","b").
-  
-  This is true on Unix, where C<catdir("","a","b")> yields "/a/b" and
-  C<rootdir()> is "/". Note that C<rootdir()> on Mac OS is the startup
-  volume, which is the closest in concept to Unix' "/". This should help
-  to run existing scripts originally written for Unix.
-  
-  =item 8.
-  
-  For absolute paths, some cleanup is done, to ensure that the volume
-  name isn't immediately followed by updirs. This is invalid, because
-  this would go beyond "root". Generally, these cases are handled like
-  their Unix counterparts:
-  
-   Unix:
-      Unix->catdir("","")                 =  "/"
-      Unix->catdir("",".")                =  "/"
-      Unix->catdir("","..")               =  "/"        # can't go
-                                                        # beyond root
-      Unix->catdir("",".","..","..","a")  =  "/a"
-   Mac:
-      Mac->catdir("","")                  =  rootdir()  # (e.g. "HD:")
-      Mac->catdir("",":")                 =  rootdir()
-      Mac->catdir("","::")                =  rootdir()  # can't go
-                                                        # beyond root
-      Mac->catdir("",":","::","::","a")   =  rootdir() . "a:"
-                                                      # (e.g. "HD:a:")
-  
-  However, this approach is limited to the first arguments following
-  "root" (again, see C<Unix-E<gt>canonpath()> ). If there are more
-  arguments that move up the directory tree, an invalid path going
-  beyond root can be created.
-  
-  =back
-  
-  As you've seen, you can force C<catdir()> to create an absolute path
-  by passing either an empty string or a path that begins with a volume
-  name as the first argument. However, you are strongly encouraged not
-  to do so, since this is done only for backward compatibility. Newer
-  versions of File::Spec come with a method called C<catpath()> (see
-  below), that is designed to offer a portable solution for the creation
-  of absolute paths.  It takes volume, directory and file portions and
-  returns an entire path. While C<catdir()> is still suitable for the
-  concatenation of I<directory names>, you are encouraged to use
-  C<catpath()> to concatenate I<volume names> and I<directory
-  paths>. E.g.
-  
-      $dir      = File::Spec->catdir("tmp","sources");
-      $abs_path = File::Spec->catpath("MacintoshHD:", $dir,"");
-  
-  yields
-  
-      "MacintoshHD:tmp:sources:" .
-  
-  =cut
-  
-  sub catdir {
-  	my $self = shift;
-  	return '' unless @_;
-  	my @args = @_;
-  	my $first_arg;
-  	my $relative;
-  
-  	# take care of the first argument
-  
-  	if ($args[0] eq '')  { # absolute path, rootdir
-  		shift @args;
-  		$relative = 0;
-  		$first_arg = $self->rootdir;
-  
-  	} elsif ($args[0] =~ /^[^:]+:/) { # absolute path, volume name
-  		$relative = 0;
-  		$first_arg = shift @args;
-  		# add a trailing ':' if need be (may be it's a path like HD:dir)
-  		$first_arg = "$first_arg:" unless ($first_arg =~ /:\Z(?!\n)/);
-  
-  	} else { # relative path
-  		$relative = 1;
-  		if ( $args[0] =~ /^::+\Z(?!\n)/ ) {
-  			# updir colon path ('::', ':::' etc.), don't shift
-  			$first_arg = ':';
-  		} elsif ($args[0] eq ':') {
-  			$first_arg = shift @args;
-  		} else {
-  			# add a trailing ':' if need be
-  			$first_arg = shift @args;
-  			$first_arg = "$first_arg:" unless ($first_arg =~ /:\Z(?!\n)/);
-  		}
-  	}
-  
-  	# For all other arguments,
-  	# (a) ignore arguments that equal ':' or '',
-  	# (b) handle updir paths specially:
-  	#     '::' 			-> concatenate '::'
-  	#     '::' . '::' 	-> concatenate ':::' etc.
-  	# (c) add a trailing ':' if need be
-  
-  	my $result = $first_arg;
-  	while (@args) {
-  		my $arg = shift @args;
-  		unless (($arg eq '') || ($arg eq ':')) {
-  			if ($arg =~ /^::+\Z(?!\n)/ ) { # updir colon path like ':::'
-  				my $updir_count = length($arg) - 1;
-  				while ((@args) && ($args[0] =~ /^::+\Z(?!\n)/) ) { # while updir colon path
-  					$arg = shift @args;
-  					$updir_count += (length($arg) - 1);
-  				}
-  				$arg = (':' x $updir_count);
-  			} else {
-  				$arg =~ s/^://s; # remove a leading ':' if any
-  				$arg = "$arg:" unless ($arg =~ /:\Z(?!\n)/); # ensure trailing ':'
-  			}
-  			$result .= $arg;
-  		}#unless
-  	}
-  
-  	if ( ($relative) && ($result !~ /^:/) ) {
-  		# add a leading colon if need be
-  		$result = ":$result";
-  	}
-  
-  	unless ($relative) {
-  		# remove updirs immediately following the volume name
-  		$result =~ s/([^:]+:)(:*)(.*)\Z(?!\n)/$1$3/;
-  	}
-  
-  	return $result;
-  }
-  
-  =item catfile
-  
-  Concatenate one or more directory names and a filename to form a
-  complete path ending with a filename. Resulting paths are B<relative>
-  by default, but can be forced to be absolute (but avoid this).
-  
-  B<IMPORTANT NOTE:> Beginning with version 1.3 of this module, the
-  resulting path is relative by default and I<not> absolute. This
-  decision was made due to portability reasons. Since
-  C<File::Spec-E<gt>catfile()> returns relative paths on all other
-  operating systems, it will now also follow this convention on Mac OS.
-  Note that this may break some existing scripts.
-  
-  The last argument is always considered to be the file portion. Since
-  C<catfile()> uses C<catdir()> (see above) for the concatenation of the
-  directory portions (if any), the following with regard to relative and
-  absolute paths is true:
-  
-      catfile("")     = ""
-      catfile("file") = "file"
-  
-  but
-  
-      catfile("","")        = rootdir()         # (e.g. "HD:")
-      catfile("","file")    = rootdir() . file  # (e.g. "HD:file")
-      catfile("HD:","file") = "HD:file"
-  
-  This means that C<catdir()> is called only when there are two or more
-  arguments, as one might expect.
-  
-  Note that the leading ":" is removed from the filename, so that
-  
-      catfile("a","b","file")  = ":a:b:file"    and
-  
-      catfile("a","b",":file") = ":a:b:file"
-  
-  give the same answer.
-  
-  To concatenate I<volume names>, I<directory paths> and I<filenames>,
-  you are encouraged to use C<catpath()> (see below).
-  
-  =cut
-  
-  sub catfile {
-      my $self = shift;
-      return '' unless @_;
-      my $file = pop @_;
-      return $file unless @_;
-      my $dir = $self->catdir(@_);
-      $file =~ s/^://s;
-      return $dir.$file;
-  }
-  
-  =item curdir
-  
-  Returns a string representing the current directory. On Mac OS, this is ":".
-  
-  =cut
-  
-  sub curdir {
-      return ":";
-  }
-  
-  =item devnull
-  
-  Returns a string representing the null device. On Mac OS, this is "Dev:Null".
-  
-  =cut
-  
-  sub devnull {
-      return "Dev:Null";
-  }
-  
-  =item rootdir
-  
-  Returns a string representing the root directory.  Under MacPerl,
-  returns the name of the startup volume, since that's the closest in
-  concept, although other volumes aren't rooted there. The name has a
-  trailing ":", because that's the correct specification for a volume
-  name on Mac OS.
-  
-  If Mac::Files could not be loaded, the empty string is returned.
-  
-  =cut
-  
-  sub rootdir {
-  #
-  #  There's no real root directory on Mac OS. The name of the startup
-  #  volume is returned, since that's the closest in concept.
-  #
-      return '' unless $macfiles;
-      my $system = Mac::Files::FindFolder(&Mac::Files::kOnSystemDisk,
-  	&Mac::Files::kSystemFolderType);
-      $system =~ s/:.*\Z(?!\n)/:/s;
-      return $system;
-  }
-  
-  =item tmpdir
-  
-  Returns the contents of $ENV{TMPDIR}, if that directory exits or the
-  current working directory otherwise. Under MacPerl, $ENV{TMPDIR} will
-  contain a path like "MacintoshHD:Temporary Items:", which is a hidden
-  directory on your startup volume.
-  
-  =cut
-  
-  sub tmpdir {
-      my $cached = $_[0]->_cached_tmpdir('TMPDIR');
-      return $cached if defined $cached;
-      $_[0]->_cache_tmpdir($_[0]->_tmpdir( $ENV{TMPDIR} ), 'TMPDIR');
-  }
-  
-  =item updir
-  
-  Returns a string representing the parent directory. On Mac OS, this is "::".
-  
-  =cut
-  
-  sub updir {
-      return "::";
-  }
-  
-  =item file_name_is_absolute
-  
-  Takes as argument a path and returns true, if it is an absolute path.
-  If the path has a leading ":", it's a relative path. Otherwise, it's an
-  absolute path, unless the path doesn't contain any colons, i.e. it's a name
-  like "a". In this particular case, the path is considered to be relative
-  (i.e. it is considered to be a filename). Use ":" in the appropriate place
-  in the path if you want to distinguish unambiguously. As a special case,
-  the filename '' is always considered to be absolute. Note that with version
-  1.2 of File::Spec::Mac, this does no longer consult the local filesystem.
-  
-  E.g.
-  
-      File::Spec->file_name_is_absolute("a");         # false (relative)
-      File::Spec->file_name_is_absolute(":a:b:");     # false (relative)
-      File::Spec->file_name_is_absolute("MacintoshHD:");
-                                                      # true (absolute)
-      File::Spec->file_name_is_absolute("");          # true (absolute)
-  
-  
-  =cut
-  
-  sub file_name_is_absolute {
-      my ($self,$file) = @_;
-      if ($file =~ /:/) {
-  	return (! ($file =~ m/^:/s) );
-      } elsif ( $file eq '' ) {
-          return 1 ;
-      } else {
-  	return 0; # i.e. a file like "a"
-      }
-  }
-  
-  =item path
-  
-  Returns the null list for the MacPerl application, since the concept is
-  usually meaningless under Mac OS. But if you're using the MacPerl tool under
-  MPW, it gives back $ENV{Commands} suitably split, as is done in
-  :lib:ExtUtils:MM_Mac.pm.
-  
-  =cut
-  
-  sub path {
-  #
-  #  The concept is meaningless under the MacPerl application.
-  #  Under MPW, it has a meaning.
-  #
-      return unless exists $ENV{Commands};
-      return split(/,/, $ENV{Commands});
-  }
-  
-  =item splitpath
-  
-      ($volume,$directories,$file) = File::Spec->splitpath( $path );
-      ($volume,$directories,$file) = File::Spec->splitpath( $path,
-                                                            $no_file );
-  
-  Splits a path into volume, directory, and filename portions.
-  
-  On Mac OS, assumes that the last part of the path is a filename unless
-  $no_file is true or a trailing separator ":" is present.
-  
-  The volume portion is always returned with a trailing ":". The directory portion
-  is always returned with a leading (to denote a relative path) and a trailing ":"
-  (to denote a directory). The file portion is always returned I<without> a leading ":".
-  Empty portions are returned as empty string ''.
-  
-  The results can be passed to C<catpath()> to get back a path equivalent to
-  (usually identical to) the original path.
-  
-  
-  =cut
-  
-  sub splitpath {
-      my ($self,$path, $nofile) = @_;
-      my ($volume,$directory,$file);
-  
-      if ( $nofile ) {
-          ( $volume, $directory ) = $path =~ m|^((?:[^:]+:)?)(.*)|s;
-      }
-      else {
-          $path =~
-              m|^( (?: [^:]+: )? )
-                 ( (?: .*: )? )
-                 ( .* )
-               |xs;
-          $volume    = $1;
-          $directory = $2;
-          $file      = $3;
-      }
-  
-      $volume = '' unless defined($volume);
-  	$directory = ":$directory" if ( $volume && $directory ); # take care of "HD::dir"
-      if ($directory) {
-          # Make sure non-empty directories begin and end in ':'
-          $directory .= ':' unless (substr($directory,-1) eq ':');
-          $directory = ":$directory" unless (substr($directory,0,1) eq ':');
-      } else {
-  	$directory = '';
-      }
-      $file = '' unless defined($file);
-  
-      return ($volume,$directory,$file);
-  }
-  
-  
-  =item splitdir
-  
-  The opposite of C<catdir()>.
-  
-      @dirs = File::Spec->splitdir( $directories );
-  
-  $directories should be only the directory portion of the path on systems
-  that have the concept of a volume or that have path syntax that differentiates
-  files from directories. Consider using C<splitpath()> otherwise.
-  
-  Unlike just splitting the directories on the separator, empty directory names
-  (C<"">) can be returned. Since C<catdir()> on Mac OS always appends a trailing
-  colon to distinguish a directory path from a file path, a single trailing colon
-  will be ignored, i.e. there's no empty directory name after it.
-  
-  Hence, on Mac OS, both
-  
-      File::Spec->splitdir( ":a:b::c:" );    and
-      File::Spec->splitdir( ":a:b::c" );
-  
-  yield:
-  
-      ( "a", "b", "::", "c")
-  
-  while
-  
-      File::Spec->splitdir( ":a:b::c::" );
-  
-  yields:
-  
-      ( "a", "b", "::", "c", "::")
-  
-  
-  =cut
-  
-  sub splitdir {
-  	my ($self, $path) = @_;
-  	my @result = ();
-  	my ($head, $sep, $tail, $volume, $directories);
-  
-  	return @result if ( (!defined($path)) || ($path eq '') );
-  	return (':') if ($path eq ':');
-  
-  	( $volume, $sep, $directories ) = $path =~ m|^((?:[^:]+:)?)(:*)(.*)|s;
-  
-  	# deprecated, but handle it correctly
-  	if ($volume) {
-  		push (@result, $volume);
-  		$sep .= ':';
-  	}
-  
-  	while ($sep || $directories) {
-  		if (length($sep) > 1) {
-  			my $updir_count = length($sep) - 1;
-  			for (my $i=0; $i<$updir_count; $i++) {
-  				# push '::' updir_count times;
-  				# simulate Unix '..' updirs
-  				push (@result, '::');
-  			}
-  		}
-  		$sep = '';
-  		if ($directories) {
-  			( $head, $sep, $tail ) = $directories =~ m|^((?:[^:]+)?)(:*)(.*)|s;
-  			push (@result, $head);
-  			$directories = $tail;
-  		}
-  	}
-  	return @result;
-  }
-  
-  
-  =item catpath
-  
-      $path = File::Spec->catpath($volume,$directory,$file);
-  
-  Takes volume, directory and file portions and returns an entire path. On Mac OS,
-  $volume, $directory and $file are concatenated.  A ':' is inserted if need be. You
-  may pass an empty string for each portion. If all portions are empty, the empty
-  string is returned. If $volume is empty, the result will be a relative path,
-  beginning with a ':'. If $volume and $directory are empty, a leading ":" (if any)
-  is removed form $file and the remainder is returned. If $file is empty, the
-  resulting path will have a trailing ':'.
-  
-  
-  =cut
-  
-  sub catpath {
-      my ($self,$volume,$directory,$file) = @_;
-  
-      if ( (! $volume) && (! $directory) ) {
-  	$file =~ s/^:// if $file;
-  	return $file ;
-      }
-  
-      # We look for a volume in $volume, then in $directory, but not both
-  
-      my ($dir_volume, $dir_dirs) = $self->splitpath($directory, 1);
-  
-      $volume = $dir_volume unless length $volume;
-      my $path = $volume; # may be ''
-      $path .= ':' unless (substr($path, -1) eq ':'); # ensure trailing ':'
-  
-      if ($directory) {
-  	$directory = $dir_dirs if $volume;
-  	$directory =~ s/^://; # remove leading ':' if any
-  	$path .= $directory;
-  	$path .= ':' unless (substr($path, -1) eq ':'); # ensure trailing ':'
-      }
-  
-      if ($file) {
-  	$file =~ s/^://; # remove leading ':' if any
-  	$path .= $file;
-      }
-  
-      return $path;
-  }
-  
-  =item abs2rel
-  
-  Takes a destination path and an optional base path and returns a relative path
-  from the base path to the destination path:
-  
-      $rel_path = File::Spec->abs2rel( $path ) ;
-      $rel_path = File::Spec->abs2rel( $path, $base ) ;
-  
-  Note that both paths are assumed to have a notation that distinguishes a
-  directory path (with trailing ':') from a file path (without trailing ':').
-  
-  If $base is not present or '', then the current working directory is used.
-  If $base is relative, then it is converted to absolute form using C<rel2abs()>.
-  This means that it is taken to be relative to the current working directory.
-  
-  If $path and $base appear to be on two different volumes, we will not
-  attempt to resolve the two paths, and we will instead simply return
-  $path.  Note that previous versions of this module ignored the volume
-  of $base, which resulted in garbage results part of the time.
-  
-  If $base doesn't have a trailing colon, the last element of $base is
-  assumed to be a filename.  This filename is ignored.  Otherwise all path
-  components are assumed to be directories.
-  
-  If $path is relative, it is converted to absolute form using C<rel2abs()>.
-  This means that it is taken to be relative to the current working directory.
-  
-  Based on code written by Shigio Yamaguchi.
-  
-  
-  =cut
-  
-  # maybe this should be done in canonpath() ?
-  sub _resolve_updirs {
-  	my $path = shift @_;
-  	my $proceed;
-  
-  	# resolve any updirs, e.g. "HD:tmp::file" -> "HD:file"
-  	do {
-  		$proceed = ($path =~ s/^(.*):[^:]+::(.*?)\z/$1:$2/);
-  	} while ($proceed);
-  
-  	return $path;
-  }
-  
-  
-  sub abs2rel {
-      my($self,$path,$base) = @_;
-  
-      # Clean up $path
-      if ( ! $self->file_name_is_absolute( $path ) ) {
-          $path = $self->rel2abs( $path ) ;
-      }
-  
-      # Figure out the effective $base and clean it up.
-      if ( !defined( $base ) || $base eq '' ) {
-  	$base = $self->_cwd();
-      }
-      elsif ( ! $self->file_name_is_absolute( $base ) ) {
-          $base = $self->rel2abs( $base ) ;
-  	$base = _resolve_updirs( $base ); # resolve updirs in $base
-      }
-      else {
-  	$base = _resolve_updirs( $base );
-      }
-  
-      # Split up paths - ignore $base's file
-      my ( $path_vol, $path_dirs, $path_file ) =  $self->splitpath( $path );
-      my ( $base_vol, $base_dirs )             =  $self->splitpath( $base );
-  
-      return $path unless lc( $path_vol ) eq lc( $base_vol );
-  
-      # Now, remove all leading components that are the same
-      my @pathchunks = $self->splitdir( $path_dirs );
-      my @basechunks = $self->splitdir( $base_dirs );
-  	
-      while ( @pathchunks &&
-  	    @basechunks &&
-  	    lc( $pathchunks[0] ) eq lc( $basechunks[0] ) ) {
-          shift @pathchunks ;
-          shift @basechunks ;
-      }
-  
-      # @pathchunks now has the directories to descend in to.
-      # ensure relative path, even if @pathchunks is empty
-      $path_dirs = $self->catdir( ':', @pathchunks );
-  
-      # @basechunks now contains the number of directories to climb out of.
-      $base_dirs = (':' x @basechunks) . ':' ;
-  
-      return $self->catpath( '', $self->catdir( $base_dirs, $path_dirs ), $path_file ) ;
-  }
-  
-  =item rel2abs
-  
-  Converts a relative path to an absolute path:
-  
-      $abs_path = File::Spec->rel2abs( $path ) ;
-      $abs_path = File::Spec->rel2abs( $path, $base ) ;
-  
-  Note that both paths are assumed to have a notation that distinguishes a
-  directory path (with trailing ':') from a file path (without trailing ':').
-  
-  If $base is not present or '', then $base is set to the current working
-  directory. If $base is relative, then it is converted to absolute form
-  using C<rel2abs()>. This means that it is taken to be relative to the
-  current working directory.
-  
-  If $base doesn't have a trailing colon, the last element of $base is
-  assumed to be a filename.  This filename is ignored.  Otherwise all path
-  components are assumed to be directories.
-  
-  If $path is already absolute, it is returned and $base is ignored.
-  
-  Based on code written by Shigio Yamaguchi.
-  
-  =cut
-  
-  sub rel2abs {
-      my ($self,$path,$base) = @_;
-  
-      if ( ! $self->file_name_is_absolute($path) ) {
-          # Figure out the effective $base and clean it up.
-          if ( !defined( $base ) || $base eq '' ) {
-  	    $base = $self->_cwd();
-          }
-          elsif ( ! $self->file_name_is_absolute($base) ) {
-              $base = $self->rel2abs($base) ;
-          }
-  
-  	# Split up paths
-  
-  	# ignore $path's volume
-          my ( $path_dirs, $path_file ) = ($self->splitpath($path))[1,2] ;
-  
-          # ignore $base's file part
-  	my ( $base_vol, $base_dirs ) = $self->splitpath($base) ;
-  
-  	# Glom them together
-  	$path_dirs = ':' if ($path_dirs eq '');
-  	$base_dirs =~ s/:$//; # remove trailing ':', if any
-  	$base_dirs = $base_dirs . $path_dirs;
-  
-          $path = $self->catpath( $base_vol, $base_dirs, $path_file );
-      }
-      return $path;
-  }
-  
-  
-  =back
-  
-  =head1 AUTHORS
-  
-  See the authors list in I<File::Spec>. Mac OS support by Paul Schinder
-  <schinder@pobox.com> and Thomas Wegner <wegner_thomas@yahoo.com>.
-  
-  =head1 COPYRIGHT
-  
-  Copyright (c) 2004 by the Perl 5 Porters.  All rights reserved.
-  
-  This program is free software; you can redistribute it and/or modify
-  it under the same terms as Perl itself.
-  
-  =head1 SEE ALSO
-  
-  See L<File::Spec> and L<File::Spec::Unix>.  This package overrides the
-  implementation of these methods, not the semantics.
-  
-  =cut
-  
-  1;
-PERL_5.22.1_FILE_SPEC_MAC
-
-$fatpacked{"perl/5.22.1/File/Spec/OS2.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PERL_5.22.1_FILE_SPEC_OS2';
-  package File::Spec::OS2;
-  
-  use strict;
-  use vars qw(@ISA $VERSION);
-  require File::Spec::Unix;
-  
-  $VERSION = '3.62';
-  $VERSION =~ tr/_//d;
-  
-  @ISA = qw(File::Spec::Unix);
-  
-  sub devnull {
-      return "/dev/nul";
-  }
-  
-  sub case_tolerant {
-      return 1;
-  }
-  
-  sub file_name_is_absolute {
-      my ($self,$file) = @_;
-      return scalar($file =~ m{^([a-z]:)?[\\/]}is);
-  }
-  
-  sub path {
-      my $path = $ENV{PATH};
-      $path =~ s:\\:/:g;
-      my @path = split(';',$path);
-      foreach (@path) { $_ = '.' if $_ eq '' }
-      return @path;
-  }
-  
-  sub _cwd {
-      # In OS/2 the "require Cwd" is unnecessary bloat.
-      return Cwd::sys_cwd();
-  }
-  
-  sub tmpdir {
-      my $cached = $_[0]->_cached_tmpdir(qw 'TMPDIR TEMP TMP');
-      return $cached if defined $cached;
-      my @d = @ENV{qw(TMPDIR TEMP TMP)};	# function call could autovivivy
-      $_[0]->_cache_tmpdir(
-  	$_[0]->_tmpdir( @d, '/tmp', '/' ), qw 'TMPDIR TEMP TMP'
-      );
-  }
-  
-  sub catdir {
-      my $self = shift;
-      my @args = @_;
-      foreach (@args) {
-  	tr[\\][/];
-          # append a backslash to each argument unless it has one there
-          $_ .= "/" unless m{/$};
-      }
-      return $self->canonpath(join('', @args));
-  }
-  
-  sub canonpath {
-      my ($self,$path) = @_;
-      return unless defined $path;
-  
-      $path =~ s/^([a-z]:)/\l$1/s;
-      $path =~ s|\\|/|g;
-      $path =~ s|([^/])/+|$1/|g;                  # xx////xx  -> xx/xx
-      $path =~ s|(/\.)+/|/|g;                     # xx/././xx -> xx/xx
-      $path =~ s|^(\./)+(?=[^/])||s;		# ./xx      -> xx
-      $path =~ s|/\Z(?!\n)||
-               unless $path =~ m#^([a-z]:)?/\Z(?!\n)#si;# xx/       -> xx
-      $path =~ s{^/\.\.$}{/};                     # /..    -> /
-      1 while $path =~ s{^/\.\.}{};               # /../xx -> /xx
-      return $path;
-  }
-  
-  
-  sub splitpath {
-      my ($self,$path, $nofile) = @_;
-      my ($volume,$directory,$file) = ('','','');
-      if ( $nofile ) {
-          $path =~ 
-              m{^( (?:[a-zA-Z]:|(?:\\\\|//)[^\\/]+[\\/][^\\/]+)? ) 
-                   (.*)
-               }xs;
-          $volume    = $1;
-          $directory = $2;
-      }
-      else {
-          $path =~ 
-              m{^ ( (?: [a-zA-Z]: |
-                        (?:\\\\|//)[^\\/]+[\\/][^\\/]+
-                    )?
-                  )
-                  ( (?:.*[\\\\/](?:\.\.?\Z(?!\n))?)? )
-                  (.*)
-               }xs;
-          $volume    = $1;
-          $directory = $2;
-          $file      = $3;
-      }
-  
-      return ($volume,$directory,$file);
-  }
-  
-  
-  sub splitdir {
-      my ($self,$directories) = @_ ;
-      split m|[\\/]|, $directories, -1;
-  }
-  
-  
-  sub catpath {
-      my ($self,$volume,$directory,$file) = @_;
-  
-      # If it's UNC, make sure the glue separator is there, reusing
-      # whatever separator is first in the $volume
-      $volume .= $1
-          if ( $volume =~ m@^([\\/])[\\/][^\\/]+[\\/][^\\/]+\Z(?!\n)@s &&
-               $directory =~ m@^[^\\/]@s
-             ) ;
-  
-      $volume .= $directory ;
-  
-      # If the volume is not just A:, make sure the glue separator is 
-      # there, reusing whatever separator is first in the $volume if possible.
-      if ( $volume !~ m@^[a-zA-Z]:\Z(?!\n)@s &&
-           $volume =~ m@[^\\/]\Z(?!\n)@      &&
-           $file   =~ m@[^\\/]@
-         ) {
-          $volume =~ m@([\\/])@ ;
-          my $sep = $1 ? $1 : '/' ;
-          $volume .= $sep ;
-      }
-  
-      $volume .= $file ;
-  
-      return $volume ;
-  }
-  
-  
-  sub abs2rel {
-      my($self,$path,$base) = @_;
-  
-      # Clean up $path
-      if ( ! $self->file_name_is_absolute( $path ) ) {
-          $path = $self->rel2abs( $path ) ;
-      } else {
-          $path = $self->canonpath( $path ) ;
-      }
-  
-      # Figure out the effective $base and clean it up.
-      if ( !defined( $base ) || $base eq '' ) {
-  	$base = $self->_cwd();
-      } elsif ( ! $self->file_name_is_absolute( $base ) ) {
-          $base = $self->rel2abs( $base ) ;
-      } else {
-          $base = $self->canonpath( $base ) ;
-      }
-  
-      # Split up paths
-      my ( $path_volume, $path_directories, $path_file ) = $self->splitpath( $path, 1 ) ;
-      my ( $base_volume, $base_directories ) = $self->splitpath( $base, 1 ) ;
-      return $path unless $path_volume eq $base_volume;
-  
-      # Now, remove all leading components that are the same
-      my @pathchunks = $self->splitdir( $path_directories );
-      my @basechunks = $self->splitdir( $base_directories );
-  
-      while ( @pathchunks && 
-              @basechunks && 
-              lc( $pathchunks[0] ) eq lc( $basechunks[0] ) 
-            ) {
-          shift @pathchunks ;
-          shift @basechunks ;
-      }
-  
-      # No need to catdir, we know these are well formed.
-      $path_directories = CORE::join( '/', @pathchunks );
-      $base_directories = CORE::join( '/', @basechunks );
-  
-      # $base_directories now contains the directories the resulting relative
-      # path must ascend out of before it can descend to $path_directory.  So, 
-      # replace all names with $parentDir
-  
-      #FA Need to replace between backslashes...
-      $base_directories =~ s|[^\\/]+|..|g ;
-  
-      # Glue the two together, using a separator if necessary, and preventing an
-      # empty result.
-  
-      #FA Must check that new directories are not empty.
-      if ( $path_directories ne '' && $base_directories ne '' ) {
-          $path_directories = "$base_directories/$path_directories" ;
-      } else {
-          $path_directories = "$base_directories$path_directories" ;
-      }
-  
-      return $self->canonpath( 
-          $self->catpath( "", $path_directories, $path_file ) 
-      ) ;
-  }
-  
-  
-  sub rel2abs {
-      my ($self,$path,$base ) = @_;
-  
-      if ( ! $self->file_name_is_absolute( $path ) ) {
-  
-          if ( !defined( $base ) || $base eq '' ) {
-  	    $base = $self->_cwd();
-          }
-          elsif ( ! $self->file_name_is_absolute( $base ) ) {
-              $base = $self->rel2abs( $base ) ;
-          }
           else {
-              $base = $self->canonpath( $base ) ;
+              Carp::croak("Invalid mode clause '$clause' for chmod()");
           }
-  
-          my ( $path_directories, $path_file ) =
-              ($self->splitpath( $path, 1 ))[1,2] ;
-  
-          my ( $base_volume, $base_directories ) =
-              $self->splitpath( $base, 1 ) ;
-  
-          $path = $self->catpath( 
-              $base_volume, 
-              $self->catdir( $base_directories, $path_directories ), 
-              $path_file
-          ) ;
       }
-  
-      return $self->canonpath( $path ) ;
+      return $mode;
   }
   
-  1;
-  __END__
+  # flock doesn't work on NFS on BSD.  Since program authors often can't control
+  # or detect that, we warn once instead of being fatal if we can detect it and
+  # people who need it strict can fatalize the 'flock' category
   
-  =head1 NAME
+  #<<< No perltidy
+  { package flock; use if Path::Tiny::IS_BSD(), 'warnings::register' }
+  #>>>
   
-  File::Spec::OS2 - methods for OS/2 file specs
+  my $WARNED_BSD_NFS = 0;
   
-  =head1 SYNOPSIS
-  
-   require File::Spec::OS2; # Done internally by File::Spec if needed
-  
-  =head1 DESCRIPTION
-  
-  See L<File::Spec> and L<File::Spec::Unix>.  This package overrides the
-  implementation of these methods, not the semantics.
-  
-  Amongst the changes made for OS/2 are...
-  
-  =over 4
-  
-  =item tmpdir
-  
-  Modifies the list of places temp directory information is looked for.
-  
-      $ENV{TMPDIR}
-      $ENV{TEMP}
-      $ENV{TMP}
-      /tmp
-      /
-  
-  =item splitpath
-  
-  Volumes can be drive letters or UNC sharenames (\\server\share).
-  
-  =back
-  
-  =head1 COPYRIGHT
-  
-  Copyright (c) 2004 by the Perl 5 Porters.  All rights reserved.
-  
-  This program is free software; you can redistribute it and/or modify
-  it under the same terms as Perl itself.
-  
-  =cut
-PERL_5.22.1_FILE_SPEC_OS2
-
-$fatpacked{"perl/5.22.1/File/Spec/Unix.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PERL_5.22.1_FILE_SPEC_UNIX';
-  package File::Spec::Unix;
-  
-  use strict;
-  use vars qw($VERSION);
-  
-  $VERSION = '3.62';
-  my $xs_version = $VERSION;
-  $VERSION =~ tr/_//d;
-  
-  #dont try to load XSLoader and DynaLoader only to ultimately fail on miniperl
-  if(!defined &canonpath && defined &DynaLoader::boot_DynaLoader) {
-    eval {#eval is questionable since we are handling potential errors like
-          #"Cwd object version 3.48 does not match bootstrap parameter 3.50
-          #at lib/DynaLoader.pm line 216." by having this eval
-      if ( $] >= 5.006 ) {
-  	require XSLoader;
-  	XSLoader::load("Cwd", $xs_version);
-      } else {
-  	require Cwd;
+  sub _throw {
+      my ( $self, $function, $file, $msg ) = @_;
+      if (   IS_BSD()
+          && $function =~ /^flock/
+          && $! =~ /operation not supported/i
+          && !warnings::fatal_enabled('flock') )
+      {
+          if ( !$WARNED_BSD_NFS ) {
+              warnings::warn( flock => "No flock for NFS on BSD: continuing in unsafe mode" );
+              $WARNED_BSD_NFS++;
+          }
       }
-    };
-  }
-  
-  =head1 NAME
-  
-  File::Spec::Unix - File::Spec for Unix, base for other File::Spec modules
-  
-  =head1 SYNOPSIS
-  
-   require File::Spec::Unix; # Done automatically by File::Spec
-  
-  =head1 DESCRIPTION
-  
-  Methods for manipulating file specifications.  Other File::Spec
-  modules, such as File::Spec::Mac, inherit from File::Spec::Unix and
-  override specific methods.
-  
-  =head1 METHODS
-  
-  =over 2
-  
-  =item canonpath()
-  
-  No physical check on the filesystem, but a logical cleanup of a
-  path. On UNIX eliminates successive slashes and successive "/.".
-  
-      $cpath = File::Spec->canonpath( $path ) ;
-  
-  Note that this does *not* collapse F<x/../y> sections into F<y>.  This
-  is by design.  If F</foo> on your system is a symlink to F</bar/baz>,
-  then F</foo/../quux> is actually F</bar/quux>, not F</quux> as a naive
-  F<../>-removal would give you.  If you want to do this kind of
-  processing, you probably want C<Cwd>'s C<realpath()> function to
-  actually traverse the filesystem cleaning up paths like this.
-  
-  =cut
-  
-  sub _pp_canonpath {
-      my ($self,$path) = @_;
-      return unless defined $path;
-      
-      # Handle POSIX-style node names beginning with double slash (qnx, nto)
-      # (POSIX says: "a pathname that begins with two successive slashes
-      # may be interpreted in an implementation-defined manner, although
-      # more than two leading slashes shall be treated as a single slash.")
-      my $node = '';
-      my $double_slashes_special = $^O eq 'qnx' || $^O eq 'nto';
-  
-  
-      if ( $double_slashes_special
-           && ( $path =~ s{^(//[^/]+)/?\z}{}s || $path =~ s{^(//[^/]+)/}{/}s ) ) {
-        $node = $1;
+      else {
+          $msg = $! unless defined $msg;
+          Path::Tiny::Error->throw( $function, ( defined $file ? $file : $self->[PATH] ),
+              $msg );
       }
-      # This used to be
-      # $path =~ s|/+|/|g unless ($^O eq 'cygwin');
-      # but that made tests 29, 30, 35, 46, and 213 (as of #13272) to fail
-      # (Mainly because trailing "" directories didn't get stripped).
-      # Why would cygwin avoid collapsing multiple slashes into one? --jhi
-      $path =~ s|/{2,}|/|g;                            # xx////xx  -> xx/xx
-      $path =~ s{(?:/\.)+(?:/|\z)}{/}g;                # xx/././xx -> xx/xx
-      $path =~ s|^(?:\./)+||s unless $path eq "./";    # ./xx      -> xx
-      $path =~ s|^/(?:\.\./)+|/|;                      # /../../xx -> xx
-      $path =~ s|^/\.\.$|/|;                         # /..       -> /
-      $path =~ s|/\z|| unless $path eq "/";          # xx/       -> xx
-      return "$node$path";
+      return;
   }
-  *canonpath = \&_pp_canonpath unless defined &canonpath;
   
-  =item catdir()
-  
-  Concatenate two or more directory names to form a complete path ending
-  with a directory. But remove the trailing slash from the resulting
-  string, because it doesn't look good, isn't necessary and confuses
-  OS2. Of course, if this is the root directory, don't cut off the
-  trailing slash :-)
-  
-  =cut
-  
-  sub _pp_catdir {
-      my $self = shift;
-  
-      $self->canonpath(join('/', @_, '')); # '' because need a trailing '/'
-  }
-  *catdir = \&_pp_catdir unless defined &catdir;
-  
-  =item catfile
-  
-  Concatenate one or more directory names and a filename to form a
-  complete path ending with a filename
-  
-  =cut
-  
-  sub _pp_catfile {
-      my $self = shift;
-      my $file = $self->canonpath(pop @_);
-      return $file unless @_;
-      my $dir = $self->catdir(@_);
-      $dir .= "/" unless substr($dir,-1) eq "/";
-      return $dir.$file;
-  }
-  *catfile = \&_pp_catfile unless defined &catfile;
-  
-  =item curdir
-  
-  Returns a string representation of the current directory.  "." on UNIX.
-  
-  =cut
-  
-  sub curdir { '.' }
-  use constant _fn_curdir => ".";
-  
-  =item devnull
-  
-  Returns a string representation of the null device. "/dev/null" on UNIX.
-  
-  =cut
-  
-  sub devnull { '/dev/null' }
-  use constant _fn_devnull => "/dev/null";
-  
-  =item rootdir
-  
-  Returns a string representation of the root directory.  "/" on UNIX.
-  
-  =cut
-  
-  sub rootdir { '/' }
-  use constant _fn_rootdir => "/";
-  
-  =item tmpdir
-  
-  Returns a string representation of the first writable directory from
-  the following list or the current directory if none from the list are
-  writable:
-  
-      $ENV{TMPDIR}
-      /tmp
-  
-  If running under taint mode, and if $ENV{TMPDIR}
-  is tainted, it is not used.
-  
-  =cut
-  
-  my ($tmpdir, %tmpenv);
-  # Cache and return the calculated tmpdir, recording which env vars
-  # determined it.
-  sub _cache_tmpdir {
-      @tmpenv{@_[2..$#_]} = @ENV{@_[2..$#_]};
-      return $tmpdir = $_[1];
-  }
-  # Retrieve the cached tmpdir, checking first whether relevant env vars have
-  # changed and invalidated the cache.
-  sub _cached_tmpdir {
-      shift;
-      local $^W;
-      return if grep $ENV{$_} ne $tmpenv{$_}, @_;
-      return $tmpdir;
-  }
-  sub _tmpdir {
-      my $self = shift;
-      my @dirlist = @_;
-      my $taint = do { no strict 'refs'; ${"\cTAINT"} };
-      if ($taint) { # Check for taint mode on perl >= 5.8.0
-  	require Scalar::Util;
-  	@dirlist = grep { ! Scalar::Util::tainted($_) } @dirlist;
+  # cheapo option validation
+  sub _get_args {
+      my ( $raw, @valid ) = @_;
+      if ( defined($raw) && ref($raw) ne 'HASH' ) {
+          my ( undef, undef, undef, $called_as ) = caller(1);
+          $called_as =~ s{^.*::}{};
+          Carp::croak("Options for $called_as must be a hash reference");
       }
-      elsif ($] < 5.007) { # No ${^TAINT} before 5.8
-  	@dirlist = grep { eval { eval('1'.substr $_,0,0) } } @dirlist;
+      my $cooked = {};
+      for my $k (@valid) {
+          $cooked->{$k} = delete $raw->{$k} if exists $raw->{$k};
       }
-      
-      foreach (@dirlist) {
-  	next unless defined && -d && -w _;
-  	$tmpdir = $_;
-  	last;
+      if ( keys %$raw ) {
+          my ( undef, undef, undef, $called_as ) = caller(1);
+          $called_as =~ s{^.*::}{};
+          Carp::croak( "Invalid option(s) for $called_as: " . join( ", ", keys %$raw ) );
       }
-      $tmpdir = $self->curdir unless defined $tmpdir;
-      $tmpdir = defined $tmpdir && $self->canonpath($tmpdir);
-      if ( !$self->file_name_is_absolute($tmpdir) ) {
-          # See [perl #120593] for the full details
-          # If possible, return a full path, rather than '.' or 'lib', but
-          # jump through some hoops to avoid returning a tainted value.
-          ($tmpdir) = grep {
-              $taint     ? ! Scalar::Util::tainted($_) :
-              $] < 5.007 ? eval { eval('1'.substr $_,0,0) } : 1
-          } $self->rel2abs($tmpdir), $tmpdir;
-      }
-      return $tmpdir;
+      return $cooked;
   }
   
-  sub tmpdir {
-      my $cached = $_[0]->_cached_tmpdir('TMPDIR');
-      return $cached if defined $cached;
-      $_[0]->_cache_tmpdir($_[0]->_tmpdir( $ENV{TMPDIR}, "/tmp" ), 'TMPDIR');
-  }
+  #--------------------------------------------------------------------------#
+  # Constructors
+  #--------------------------------------------------------------------------#
   
-  =item updir
-  
-  Returns a string representation of the parent directory.  ".." on UNIX.
-  
-  =cut
-  
-  sub updir { '..' }
-  use constant _fn_updir => "..";
-  
-  =item no_upwards
-  
-  Given a list of file names, strip out those that refer to a parent
-  directory. (Does not strip symlinks, only '.', '..', and equivalents.)
-  
-  =cut
-  
-  sub no_upwards {
-      my $self = shift;
-      return grep(!/^\.{1,2}\z/s, @_);
-  }
-  
-  =item case_tolerant
-  
-  Returns a true or false value indicating, respectively, that alphabetic
-  is not or is significant when comparing file specifications.
-  
-  =cut
-  
-  sub case_tolerant { 0 }
-  use constant _fn_case_tolerant => 0;
-  
-  =item file_name_is_absolute
-  
-  Takes as argument a path and returns true if it is an absolute path.
-  
-  This does not consult the local filesystem on Unix, Win32, OS/2 or Mac 
-  OS (Classic).  It does consult the working environment for VMS (see
-  L<File::Spec::VMS/file_name_is_absolute>).
-  
-  =cut
-  
-  sub file_name_is_absolute {
-      my ($self,$file) = @_;
-      return scalar($file =~ m:^/:s);
-  }
-  
-  =item path
-  
-  Takes no argument, returns the environment variable PATH as an array.
-  
-  =cut
+  #pod =construct path
+  #pod
+  #pod     $path = path("foo/bar");
+  #pod     $path = path("/tmp", "file.txt"); # list
+  #pod     $path = path(".");                # cwd
+  #pod     $path = path("~user/file.txt");   # tilde processing
+  #pod
+  #pod Constructs a C<Path::Tiny> object.  It doesn't matter if you give a file or
+  #pod directory path.  It's still up to you to call directory-like methods only on
+  #pod directories and file-like methods only on files.  This function is exported
+  #pod automatically by default.
+  #pod
+  #pod The first argument must be defined and have non-zero length or an exception
+  #pod will be thrown.  This prevents subtle, dangerous errors with code like
+  #pod C<< path( maybe_undef() )->remove_tree >>.
+  #pod
+  #pod If the first component of the path is a tilde ('~') then the component will be
+  #pod replaced with the output of C<glob('~')>.  If the first component of the path
+  #pod is a tilde followed by a user name then the component will be replaced with
+  #pod output of C<glob('~username')>.  Behaviour for non-existent users depends on
+  #pod the output of C<glob> on the system.
+  #pod
+  #pod On Windows, if the path consists of a drive identifier without a path component
+  #pod (C<C:> or C<D:>), it will be expanded to the absolute path of the current
+  #pod directory on that volume using C<Cwd::getdcwd()>.
+  #pod
+  #pod If called with a single C<Path::Tiny> argument, the original is returned unless
+  #pod the original is holding a temporary file or directory reference in which case a
+  #pod stringified copy is made.
+  #pod
+  #pod     $path = path("foo/bar");
+  #pod     $temp = Path::Tiny->tempfile;
+  #pod
+  #pod     $p2 = path($path); # like $p2 = $path
+  #pod     $t2 = path($temp); # like $t2 = path( "$temp" )
+  #pod
+  #pod This optimizes copies without proliferating references unexpectedly if a copy is
+  #pod made by code outside your control.
+  #pod
+  #pod Current API available since 0.017.
+  #pod
+  #pod =cut
   
   sub path {
-      return () unless exists $ENV{PATH};
-      my @path = split(':', $ENV{PATH});
-      foreach (@path) { $_ = '.' if $_ eq '' }
-      return @path;
-  }
+      my $path = shift;
+      Carp::croak("Path::Tiny paths require defined, positive-length parts")
+        unless 1 + @_ == grep { defined && length } $path, @_;
   
-  =item join
+      # non-temp Path::Tiny objects are effectively immutable and can be reused
+      if ( !@_ && ref($path) eq __PACKAGE__ && !$path->[TEMP] ) {
+          return $path;
+      }
   
-  join is the same as catfile.
+      # stringify objects
+      $path = "$path";
   
-  =cut
+      # expand relative volume paths on windows; put trailing slash on UNC root
+      if ( IS_WIN32() ) {
+          $path = _win32_vol( $path, $1 ) if $path =~ m{^($DRV_VOL)(?:$NOTSLASH|$)};
+          $path .= "/" if $path =~ m{^$UNC_VOL$};
+      }
   
-  sub join {
-      my $self = shift;
-      return $self->catfile(@_);
-  }
+      # concatenations stringifies objects, too
+      if (@_) {
+          $path .= ( _is_root($path) ? "" : "/" ) . join( "/", @_ );
+      }
   
-  =item splitpath
+      # canonicalize, but with unix slashes and put back trailing volume slash
+      my $cpath = $path = File::Spec->canonpath($path);
+      $path =~ tr[\\][/] if IS_WIN32();
+      $path = "/" if $path eq '/..'; # for old File::Spec
+      $path .= "/" if IS_WIN32() && $path =~ m{^$UNC_VOL$};
   
-      ($volume,$directories,$file) = File::Spec->splitpath( $path );
-      ($volume,$directories,$file) = File::Spec->splitpath( $path,
-                                                            $no_file );
-  
-  Splits a path into volume, directory, and filename portions. On systems
-  with no concept of volume, returns '' for volume. 
-  
-  For systems with no syntax differentiating filenames from directories, 
-  assumes that the last file is a path unless $no_file is true or a 
-  trailing separator or /. or /.. is present. On Unix this means that $no_file
-  true makes this return ( '', $path, '' ).
-  
-  The directory portion may or may not be returned with a trailing '/'.
-  
-  The results can be passed to L</catpath()> to get back a path equivalent to
-  (usually identical to) the original path.
-  
-  =cut
-  
-  sub splitpath {
-      my ($self,$path, $nofile) = @_;
-  
-      my ($volume,$directory,$file) = ('','','');
-  
-      if ( $nofile ) {
-          $directory = $path;
+      # root paths must always have a trailing slash, but other paths must not
+      if ( _is_root($path) ) {
+          $path =~ s{/?$}{/};
       }
       else {
-          $path =~ m|^ ( (?: .* / (?: \.\.?\z )? )? ) ([^/]*) |xs;
-          $directory = $1;
-          $file      = $2;
+          $path =~ s{/$}{};
       }
   
-      return ($volume,$directory,$file);
+      # do any tilde expansions
+      if ( $path =~ m{^(~[^/]*).*} ) {
+          require File::Glob;
+          my ($homedir) = File::Glob::bsd_glob($1);
+          $homedir =~ tr[\\][/] if IS_WIN32();
+          $path =~ s{^(~[^/]*)}{$homedir};
+      }
+  
+      bless [ $path, $cpath ], __PACKAGE__;
   }
   
+  #pod =construct new
+  #pod
+  #pod     $path = Path::Tiny->new("foo/bar");
+  #pod
+  #pod This is just like C<path>, but with method call overhead.  (Why would you
+  #pod do that?)
+  #pod
+  #pod Current API available since 0.001.
+  #pod
+  #pod =cut
   
-  =item splitdir
+  sub new { shift; path(@_) }
   
-  The opposite of L</catdir()>.
+  #pod =construct cwd
+  #pod
+  #pod     $path = Path::Tiny->cwd; # path( Cwd::getcwd )
+  #pod     $path = cwd; # optional export
+  #pod
+  #pod Gives you the absolute path to the current directory as a C<Path::Tiny> object.
+  #pod This is slightly faster than C<< path(".")->absolute >>.
+  #pod
+  #pod C<cwd> may be exported on request and used as a function instead of as a
+  #pod method.
+  #pod
+  #pod Current API available since 0.018.
+  #pod
+  #pod =cut
   
-      @dirs = File::Spec->splitdir( $directories );
-  
-  $directories must be only the directory portion of the path on systems 
-  that have the concept of a volume or that have path syntax that differentiates
-  files from directories.
-  
-  Unlike just splitting the directories on the separator, empty
-  directory names (C<''>) can be returned, because these are significant
-  on some OSs.
-  
-  On Unix,
-  
-      File::Spec->splitdir( "/a/b//c/" );
-  
-  Yields:
-  
-      ( '', 'a', 'b', '', 'c', '' )
-  
-  =cut
-  
-  sub splitdir {
-      return split m|/|, $_[1], -1;  # Preserve trailing fields
-  }
-  
-  
-  =item catpath()
-  
-  Takes volume, directory and file portions and returns an entire path. Under
-  Unix, $volume is ignored, and directory and file are concatenated.  A '/' is
-  inserted if needed (though if the directory portion doesn't start with
-  '/' it is not added).  On other OSs, $volume is significant.
-  
-  =cut
-  
-  sub catpath {
-      my ($self,$volume,$directory,$file) = @_;
-  
-      if ( $directory ne ''                && 
-           $file ne ''                     && 
-           substr( $directory, -1 ) ne '/' && 
-           substr( $file, 0, 1 ) ne '/' 
-      ) {
-          $directory .= "/$file" ;
-      }
-      else {
-          $directory .= $file ;
-      }
-  
-      return $directory ;
-  }
-  
-  =item abs2rel
-  
-  Takes a destination path and an optional base path returns a relative path
-  from the base path to the destination path:
-  
-      $rel_path = File::Spec->abs2rel( $path ) ;
-      $rel_path = File::Spec->abs2rel( $path, $base ) ;
-  
-  If $base is not present or '', then L<cwd()|Cwd> is used. If $base is
-  relative, then it is converted to absolute form using
-  L</rel2abs()>. This means that it is taken to be relative to
-  L<cwd()|Cwd>.
-  
-  On systems that have a grammar that indicates filenames, this ignores the 
-  $base filename. Otherwise all path components are assumed to be
-  directories.
-  
-  If $path is relative, it is converted to absolute form using L</rel2abs()>.
-  This means that it is taken to be relative to L<cwd()|Cwd>.
-  
-  No checks against the filesystem are made, so the result may not be correct if
-  C<$base> contains symbolic links.  (Apply
-  L<Cwd::abs_path()|Cwd/abs_path> beforehand if that
-  is a concern.)  On VMS, there is interaction with the working environment, as
-  logicals and macros are expanded.
-  
-  Based on code written by Shigio Yamaguchi.
-  
-  =cut
-  
-  sub abs2rel {
-      my($self,$path,$base) = @_;
-      $base = $self->_cwd() unless defined $base and length $base;
-  
-      ($path, $base) = map $self->canonpath($_), $path, $base;
-  
-      my $path_directories;
-      my $base_directories;
-  
-      if (grep $self->file_name_is_absolute($_), $path, $base) {
-  	($path, $base) = map $self->rel2abs($_), $path, $base;
-  
-  	my ($path_volume) = $self->splitpath($path, 1);
-  	my ($base_volume) = $self->splitpath($base, 1);
-  
-  	# Can't relativize across volumes
-  	return $path unless $path_volume eq $base_volume;
-  
-  	$path_directories = ($self->splitpath($path, 1))[1];
-  	$base_directories = ($self->splitpath($base, 1))[1];
-  
-  	# For UNC paths, the user might give a volume like //foo/bar that
-  	# strictly speaking has no directory portion.  Treat it as if it
-  	# had the root directory for that volume.
-  	if (!length($base_directories) and $self->file_name_is_absolute($base)) {
-  	    $base_directories = $self->rootdir;
-  	}
-      }
-      else {
-  	my $wd= ($self->splitpath($self->_cwd(), 1))[1];
-  	$path_directories = $self->catdir($wd, $path);
-  	$base_directories = $self->catdir($wd, $base);
-      }
-  
-      # Now, remove all leading components that are the same
-      my @pathchunks = $self->splitdir( $path_directories );
-      my @basechunks = $self->splitdir( $base_directories );
-  
-      if ($base_directories eq $self->rootdir) {
-        return $self->curdir if $path_directories eq $self->rootdir;
-        shift @pathchunks;
-        return $self->canonpath( $self->catpath('', $self->catdir( @pathchunks ), '') );
-      }
-  
-      my @common;
-      while (@pathchunks && @basechunks && $self->_same($pathchunks[0], $basechunks[0])) {
-          push @common, shift @pathchunks ;
-          shift @basechunks ;
-      }
-      return $self->curdir unless @pathchunks || @basechunks;
-  
-      # @basechunks now contains the directories the resulting relative path 
-      # must ascend out of before it can descend to $path_directory.  If there
-      # are updir components, we must descend into the corresponding directories
-      # (this only works if they are no symlinks).
-      my @reverse_base;
-      while( defined(my $dir= shift @basechunks) ) {
-  	if( $dir ne $self->updir ) {
-  	    unshift @reverse_base, $self->updir;
-  	    push @common, $dir;
-  	}
-  	elsif( @common ) {
-  	    if( @reverse_base && $reverse_base[0] eq $self->updir ) {
-  		shift @reverse_base;
-  		pop @common;
-  	    }
-  	    else {
-  		unshift @reverse_base, pop @common;
-  	    }
-  	}
-      }
-      my $result_dirs = $self->catdir( @reverse_base, @pathchunks );
-      return $self->canonpath( $self->catpath('', $result_dirs, '') );
-  }
-  
-  sub _same {
-    $_[1] eq $_[2];
-  }
-  
-  =item rel2abs()
-  
-  Converts a relative path to an absolute path. 
-  
-      $abs_path = File::Spec->rel2abs( $path ) ;
-      $abs_path = File::Spec->rel2abs( $path, $base ) ;
-  
-  If $base is not present or '', then L<cwd()|Cwd> is used. If $base is
-  relative, then it is converted to absolute form using
-  L</rel2abs()>. This means that it is taken to be relative to
-  L<cwd()|Cwd>.
-  
-  On systems that have a grammar that indicates filenames, this ignores
-  the $base filename. Otherwise all path components are assumed to be
-  directories.
-  
-  If $path is absolute, it is cleaned up and returned using L</canonpath()>.
-  
-  No checks against the filesystem are made.  On VMS, there is
-  interaction with the working environment, as logicals and
-  macros are expanded.
-  
-  Based on code written by Shigio Yamaguchi.
-  
-  =cut
-  
-  sub rel2abs {
-      my ($self,$path,$base ) = @_;
-  
-      # Clean up $path
-      if ( ! $self->file_name_is_absolute( $path ) ) {
-          # Figure out the effective $base and clean it up.
-          if ( !defined( $base ) || $base eq '' ) {
-  	    $base = $self->_cwd();
-          }
-          elsif ( ! $self->file_name_is_absolute( $base ) ) {
-              $base = $self->rel2abs( $base ) ;
-          }
-          else {
-              $base = $self->canonpath( $base ) ;
-          }
-  
-          # Glom them together
-          $path = $self->catdir( $base, $path ) ;
-      }
-  
-      return $self->canonpath( $path ) ;
-  }
-  
-  =back
-  
-  =head1 COPYRIGHT
-  
-  Copyright (c) 2004 by the Perl 5 Porters.  All rights reserved.
-  
-  This program is free software; you can redistribute it and/or modify
-  it under the same terms as Perl itself.
-  
-  Please submit bug reports and patches to perlbug@perl.org.
-  
-  =head1 SEE ALSO
-  
-  L<File::Spec>
-  
-  =cut
-  
-  # Internal routine to File::Spec, no point in making this public since
-  # it is the standard Cwd interface.  Most of the platform-specific
-  # File::Spec subclasses use this.
-  sub _cwd {
+  sub cwd {
       require Cwd;
-      Cwd::getcwd();
+      return path( Cwd::getcwd() );
   }
   
+  #pod =construct rootdir
+  #pod
+  #pod     $path = Path::Tiny->rootdir; # /
+  #pod     $path = rootdir;             # optional export 
+  #pod
+  #pod Gives you C<< File::Spec->rootdir >> as a C<Path::Tiny> object if you're too
+  #pod picky for C<path("/")>.
+  #pod
+  #pod C<rootdir> may be exported on request and used as a function instead of as a
+  #pod method.
+  #pod
+  #pod Current API available since 0.018.
+  #pod
+  #pod =cut
   
-  # Internal method to reduce xx\..\yy -> yy
-  sub _collapse {
-      my($fs, $path) = @_;
+  sub rootdir { path( File::Spec->rootdir ) }
   
-      my $updir  = $fs->updir;
-      my $curdir = $fs->curdir;
+  #pod =construct tempfile, tempdir
+  #pod
+  #pod     $temp = Path::Tiny->tempfile( @options );
+  #pod     $temp = Path::Tiny->tempdir( @options );
+  #pod     $temp = tempfile( @options ); # optional export
+  #pod     $temp = tempdir( @options );  # optional export
+  #pod
+  #pod C<tempfile> passes the options to C<< File::Temp->new >> and returns a C<Path::Tiny>
+  #pod object with the file name.  The C<TMPDIR> option is enabled by default.
+  #pod
+  #pod The resulting C<File::Temp> object is cached. When the C<Path::Tiny> object is
+  #pod destroyed, the C<File::Temp> object will be as well.
+  #pod
+  #pod C<File::Temp> annoyingly requires you to specify a custom template in slightly
+  #pod different ways depending on which function or method you call, but
+  #pod C<Path::Tiny> lets you ignore that and can take either a leading template or a
+  #pod C<TEMPLATE> option and does the right thing.
+  #pod
+  #pod     $temp = Path::Tiny->tempfile( "customXXXXXXXX" );             # ok
+  #pod     $temp = Path::Tiny->tempfile( TEMPLATE => "customXXXXXXXX" ); # ok
+  #pod
+  #pod The tempfile path object will be normalized to have an absolute path, even if
+  #pod created in a relative directory using C<DIR>.  If you want it to have
+  #pod the C<realpath> instead, pass a leading options hash like this:
+  #pod
+  #pod     $real_temp = tempfile({realpath => 1}, @options);
+  #pod
+  #pod C<tempdir> is just like C<tempfile>, except it calls
+  #pod C<< File::Temp->newdir >> instead.
+  #pod
+  #pod Both C<tempfile> and C<tempdir> may be exported on request and used as
+  #pod functions instead of as methods.
+  #pod
+  #pod B<Note>: for tempfiles, the filehandles from File::Temp are closed and not
+  #pod reused.  This is not as secure as using File::Temp handles directly, but is
+  #pod less prone to deadlocks or access problems on some platforms.  Think of what
+  #pod C<Path::Tiny> gives you to be just a temporary file B<name> that gets cleaned
+  #pod up.
+  #pod
+  #pod B<Note 2>: if you don't want these cleaned up automatically when the object
+  #pod is destroyed, File::Temp requires different options for directories and
+  #pod files.  Use C<< CLEANUP => 0 >> for directories and C<< UNLINK => 0 >> for
+  #pod files.
+  #pod
+  #pod B<Note 3>: Don't lose the temporary object by chaining a method call instead
+  #pod of storing it:
+  #pod
+  #pod     my $lost = tempdir()->child("foo"); # tempdir cleaned up right away
+  #pod
+  #pod Current API available since 0.097.
+  #pod
+  #pod =cut
   
-      my($vol, $dirs, $file) = $fs->splitpath($path);
-      my @dirs = $fs->splitdir($dirs);
-      pop @dirs if @dirs && $dirs[-1] eq '';
+  sub tempfile {
+      shift if @_ && $_[0] eq 'Path::Tiny'; # called as method
+      my $opts = ( @_ && ref $_[0] eq 'HASH' ) ? shift @_ : {};
+      $opts = _get_args( $opts, qw/realpath/ );
   
-      my @collapsed;
-      foreach my $dir (@dirs) {
-          if( $dir eq $updir              and   # if we have an updir
-              @collapsed                  and   # and something to collapse
-              length $collapsed[-1]       and   # and its not the rootdir
-              $collapsed[-1] ne $updir    and   # nor another updir
-              $collapsed[-1] ne $curdir         # nor the curdir
-            ) 
-          {                                     # then
-              pop @collapsed;                   # collapse
+      my ( $maybe_template, $args ) = _parse_file_temp_args(@_);
+      # File::Temp->new demands TEMPLATE
+      $args->{TEMPLATE} = $maybe_template->[0] if @$maybe_template;
+  
+      require File::Temp;
+      my $temp = File::Temp->new( TMPDIR => 1, %$args );
+      close $temp;
+      my $self = $opts->{realpath} ? path($temp)->realpath : path($temp)->absolute;
+      $self->[TEMP] = $temp;                # keep object alive while we are
+      return $self;
+  }
+  
+  sub tempdir {
+      shift if @_ && $_[0] eq 'Path::Tiny'; # called as method
+      my $opts = ( @_ && ref $_[0] eq 'HASH' ) ? shift @_ : {};
+      $opts = _get_args( $opts, qw/realpath/ );
+  
+      my ( $maybe_template, $args ) = _parse_file_temp_args(@_);
+  
+      # File::Temp->newdir demands leading template
+      require File::Temp;
+      my $temp = File::Temp->newdir( @$maybe_template, TMPDIR => 1, %$args );
+      my $self = $opts->{realpath} ? path($temp)->realpath : path($temp)->absolute;
+      $self->[TEMP] = $temp;                # keep object alive while we are
+      # Some ActiveState Perls for Windows break Cwd in ways that lead
+      # File::Temp to get confused about what path to remove; this
+      # monkey-patches the object with our own view of the absolute path
+      $temp->{REALNAME} = $self->[CANON] if IS_WIN32;
+      return $self;
+  }
+  
+  # normalize the various ways File::Temp does templates
+  sub _parse_file_temp_args {
+      my $leading_template = ( scalar(@_) % 2 == 1 ? shift(@_) : '' );
+      my %args = @_;
+      %args = map { uc($_), $args{$_} } keys %args;
+      my @template = (
+            exists $args{TEMPLATE} ? delete $args{TEMPLATE}
+          : $leading_template      ? $leading_template
+          :                          ()
+      );
+      return ( \@template, \%args );
+  }
+  
+  #--------------------------------------------------------------------------#
+  # Private methods
+  #--------------------------------------------------------------------------#
+  
+  sub _splitpath {
+      my ($self) = @_;
+      @{$self}[ VOL, DIR, FILE ] = File::Spec->splitpath( $self->[PATH] );
+  }
+  
+  sub _resolve_symlinks {
+      my ($self) = @_;
+      my $new = $self;
+      my ( $count, %seen ) = 0;
+      while ( -l $new->[PATH] ) {
+          if ( $seen{ $new->[PATH] }++ ) {
+              $self->_throw( 'readlink', $self->[PATH], "symlink loop detected" );
           }
-          else {                                # else
-              push @collapsed, $dir;            # just hang onto it
+          if ( ++$count > 100 ) {
+              $self->_throw( 'readlink', $self->[PATH], "maximum symlink depth exceeded" );
           }
+          my $resolved = readlink $new->[PATH] or $new->_throw( 'readlink', $new->[PATH] );
+          $resolved = path($resolved);
+          $new = $resolved->is_absolute ? $resolved : $new->sibling($resolved);
       }
-  
-      return $fs->catpath($vol,
-                          $fs->catdir(@collapsed),
-                          $file
-                         );
+      return $new;
   }
   
+  #--------------------------------------------------------------------------#
+  # Public methods
+  #--------------------------------------------------------------------------#
   
-  1;
-PERL_5.22.1_FILE_SPEC_UNIX
-
-$fatpacked{"perl/5.22.1/File/Spec/VMS.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PERL_5.22.1_FILE_SPEC_VMS';
-  package File::Spec::VMS;
+  #pod =method absolute
+  #pod
+  #pod     $abs = path("foo/bar")->absolute;
+  #pod     $abs = path("foo/bar")->absolute("/tmp");
+  #pod
+  #pod Returns a new C<Path::Tiny> object with an absolute path (or itself if already
+  #pod absolute).  Unless an argument is given, the current directory is used as the
+  #pod absolute base path.  The argument must be absolute or you won't get an absolute
+  #pod result.
+  #pod
+  #pod This will not resolve upward directories ("foo/../bar") unless C<canonpath>
+  #pod in L<File::Spec> would normally do so on your platform.  If you need them
+  #pod resolved, you must call the more expensive C<realpath> method instead.
+  #pod
+  #pod On Windows, an absolute path without a volume component will have it added
+  #pod based on the current drive.
+  #pod
+  #pod Current API available since 0.001.
+  #pod
+  #pod =cut
   
-  use strict;
-  use vars qw(@ISA $VERSION);
-  require File::Spec::Unix;
+  sub absolute {
+      my ( $self, $base ) = @_;
   
-  $VERSION = '3.62';
-  $VERSION =~ tr/_//d;
-  
-  @ISA = qw(File::Spec::Unix);
-  
-  use File::Basename;
-  use VMS::Filespec;
-  
-  =head1 NAME
-  
-  File::Spec::VMS - methods for VMS file specs
-  
-  =head1 SYNOPSIS
-  
-   require File::Spec::VMS; # Done internally by File::Spec if needed
-  
-  =head1 DESCRIPTION
-  
-  See File::Spec::Unix for a documentation of the methods provided
-  there. This package overrides the implementation of these methods, not
-  the semantics.
-  
-  The default behavior is to allow either VMS or Unix syntax on input and to 
-  return VMS syntax on output unless Unix syntax has been explicitly requested
-  via the C<DECC$FILENAME_UNIX_REPORT> CRTL feature.
-  
-  =over 4
-  
-  =cut
-  
-  # Need to look up the feature settings.  The preferred way is to use the
-  # VMS::Feature module, but that may not be available to dual life modules.
-  
-  my $use_feature;
-  BEGIN {
-      if (eval { local $SIG{__DIE__}; require VMS::Feature; }) {
-          $use_feature = 1;
-      }
-  }
-  
-  # Need to look up the UNIX report mode.  This may become a dynamic mode
-  # in the future.
-  sub _unix_rpt {
-      my $unix_rpt;
-      if ($use_feature) {
-          $unix_rpt = VMS::Feature::current("filename_unix_report");
-      } else {
-          my $env_unix_rpt = $ENV{'DECC$FILENAME_UNIX_REPORT'} || '';
-          $unix_rpt = $env_unix_rpt =~ /^[ET1]/i; 
-      }
-      return $unix_rpt;
-  }
-  
-  =item canonpath (override)
-  
-  Removes redundant portions of file specifications and returns results
-  in native syntax unless Unix filename reporting has been enabled.
-  
-  =cut
-  
-  
-  sub canonpath {
-      my($self,$path) = @_;
-  
-      return undef unless defined $path;
-  
-      my $unix_rpt = $self->_unix_rpt;
-  
-      if ($path =~ m|/|) {
-        my $pathify = $path =~ m|/\Z(?!\n)|;
-        $path = $self->SUPER::canonpath($path);
-  
-        return $path if $unix_rpt;
-        $path = $pathify ? vmspath($path) : vmsify($path);
-      }
-  
-      $path =~ s/(?<!\^)</[/;			# < and >       ==> [ and ]
-      $path =~ s/(?<!\^)>/]/;
-      $path =~ s/(?<!\^)\]\[\./\.\]\[/g;		# ][.		==> .][
-      $path =~ s/(?<!\^)\[000000\.\]\[/\[/g;	# [000000.][	==> [
-      $path =~ s/(?<!\^)\[000000\./\[/g;		# [000000.	==> [
-      $path =~ s/(?<!\^)\.\]\[000000\]/\]/g;	# .][000000]	==> ]
-      $path =~ s/(?<!\^)\.\]\[/\./g;		# foo.][bar     ==> foo.bar
-      1 while ($path =~ s/(?<!\^)([\[\.])(-+)\.(-+)([\.\]])/$1$2$3$4/);
-  						# That loop does the following
-  						# with any amount of dashes:
-  						# .-.-.		==> .--.
-  						# [-.-.		==> [--.
-  						# .-.-]		==> .--]
-  						# [-.-]		==> [--]
-      1 while ($path =~ s/(?<!\^)([\[\.])[^\]\.]+\.-(-+)([\]\.])/$1$2$3/);
-  						# That loop does the following
-  						# with any amount (minimum 2)
-  						# of dashes:
-  						# .foo.--.	==> .-.
-  						# .foo.--]	==> .-]
-  						# [foo.--.	==> [-.
-  						# [foo.--]	==> [-]
-  						#
-  						# And then, the remaining cases
-      $path =~ s/(?<!\^)\[\.-/[-/;		# [.-		==> [-
-      $path =~ s/(?<!\^)\.[^\]\.]+\.-\./\./g;	# .foo.-.	==> .
-      $path =~ s/(?<!\^)\[[^\]\.]+\.-\./\[/g;	# [foo.-.	==> [
-      $path =~ s/(?<!\^)\.[^\]\.]+\.-\]/\]/g;	# .foo.-]	==> ]
-  						# [foo.-]       ==> [000000]
-      $path =~ s/(?<!\^)\[[^\]\.]+\.-\]/\[000000\]/g;
-  						# []		==>
-      $path =~ s/(?<!\^)\[\]// unless $path eq '[]';
-      return $unix_rpt ? unixify($path) : $path;
-  }
-  
-  =item catdir (override)
-  
-  Concatenates a list of file specifications, and returns the result as a
-  native directory specification unless the Unix filename reporting feature
-  has been enabled.  No check is made for "impossible" cases (e.g. elements
-  other than the first being absolute filespecs).
-  
-  =cut
-  
-  sub catdir {
-      my $self = shift;
-      my $dir = pop;
-  
-      my $unix_rpt = $self->_unix_rpt;
-  
-      my @dirs = grep {defined() && length()} @_;
-  
-      my $rslt;
-      if (@dirs) {
-  	my $path = (@dirs == 1 ? $dirs[0] : $self->catdir(@dirs));
-  	my ($spath,$sdir) = ($path,$dir);
-  	$spath =~ s/\.dir\Z(?!\n)//i; $sdir =~ s/\.dir\Z(?!\n)//i; 
-  
-  	if ($unix_rpt) {
-  	    $spath = unixify($spath) unless $spath =~ m#/#;
-  	    $sdir= unixify($sdir) unless $sdir =~ m#/#;
-              return $self->SUPER::catdir($spath, $sdir)
-  	}
-  
-  	$rslt = vmspath( unixify($spath) . '/' . unixify($sdir));
-  
-  	# Special case for VMS absolute directory specs: these will have
-  	# had device prepended during trip through Unix syntax in
-  	# eliminate_macros(), since Unix syntax has no way to express
-  	# "absolute from the top of this device's directory tree".
-  	if ($spath =~ /^[\[<][^.\-]/s) { $rslt =~ s/^[^\[<]+//s; }
-  
-      } else {
-  	# Single directory. Return an empty string on null input; otherwise
-  	# just return a canonical path.
-  
-  	if    (not defined $dir or not length $dir) {
-  	    $rslt = '';
-  	} else {
-  	    $rslt = $unix_rpt ? $dir : vmspath($dir);
-  	}
-      }
-      return $self->canonpath($rslt);
-  }
-  
-  =item catfile (override)
-  
-  Concatenates a list of directory specifications with a filename specification
-  to build a path.
-  
-  =cut
-  
-  sub catfile {
-      my $self = shift;
-      my $tfile = pop();
-      my $file = $self->canonpath($tfile);
-      my @files = grep {defined() && length()} @_;
-  
-      my $unix_rpt = $self->_unix_rpt;
-  
-      my $rslt;
-      if (@files) {
-  	my $path = (@files == 1 ? $files[0] : $self->catdir(@files));
-  	my $spath = $path;
-  
-          # Something building a VMS path in pieces may try to pass a
-          # directory name in filename format, so normalize it.
-  	$spath =~ s/\.dir\Z(?!\n)//i;
-  
-          # If the spath ends with a directory delimiter and the file is bare,
-          # then just concatenate them.
-  	if ($spath =~ /^(?<!\^)[^\)\]\/:>]+\)\Z(?!\n)/s && basename($file) eq $file) {
-  	    $rslt = "$spath$file";
-  	} else {
-             $rslt = unixify($spath);
-             $rslt .= (defined($rslt) && length($rslt) ? '/' : '') . unixify($file);
-             $rslt = vmsify($rslt) unless $unix_rpt;
-  	}
+      # absolute paths handled differently by OS
+      if (IS_WIN32) {
+          return $self if length $self->volume;
+          # add missing volume
+          if ( $self->is_absolute ) {
+              require Cwd;
+              # use Win32::GetCwd not Cwd::getdcwd because we're sure
+              # to have the former but not necessarily the latter
+              my ($drv) = Win32::GetCwd() =~ /^($DRV_VOL | $UNC_VOL)/x;
+              return path( $drv . $self->[PATH] );
+          }
       }
       else {
-          # Only passed a single file?
-          my $xfile = (defined($file) && length($file)) ? $file : '';
-  
-          $rslt = $unix_rpt ? $xfile : vmsify($xfile);
+          return $self if $self->is_absolute;
       }
-      return $self->canonpath($rslt) unless $unix_rpt;
   
-      # In Unix report mode, do not strip off redundant path information.
-      return $rslt;
+      # relative path on any OS
+      require Cwd;
+      return path( ( defined($base) ? $base : Cwd::getcwd() ), $_[0]->[PATH] );
   }
   
+  #pod =method append, append_raw, append_utf8
+  #pod
+  #pod     path("foo.txt")->append(@data);
+  #pod     path("foo.txt")->append(\@data);
+  #pod     path("foo.txt")->append({binmode => ":raw"}, @data);
+  #pod     path("foo.txt")->append_raw(@data);
+  #pod     path("foo.txt")->append_utf8(@data);
+  #pod
+  #pod Appends data to a file.  The file is locked with C<flock> prior to writing.  An
+  #pod optional hash reference may be used to pass options.  Valid options are:
+  #pod
+  #pod =for :list
+  #pod * C<binmode>: passed to C<binmode()> on the handle used for writing.
+  #pod * C<truncate>: truncates the file after locking and before appending
+  #pod
+  #pod The C<truncate> option is a way to replace the contents of a file
+  #pod B<in place>, unlike L</spew> which writes to a temporary file and then
+  #pod replaces the original (if it exists).
+  #pod
+  #pod C<append_raw> is like C<append> with a C<binmode> of C<:unix> for fast,
+  #pod unbuffered, raw write.
+  #pod
+  #pod C<append_utf8> is like C<append> with a C<binmode> of
+  #pod C<:unix:encoding(UTF-8)> (or L<PerlIO::utf8_strict>).  If L<Unicode::UTF8>
+  #pod 0.58+ is installed, a raw append will be done instead on the data encoded
+  #pod with C<Unicode::UTF8>.
+  #pod
+  #pod Current API available since 0.060.
+  #pod
+  #pod =cut
   
-  =item curdir (override)
-  
-  Returns a string representation of the current directory: '[]' or '.'
-  
-  =cut
-  
-  sub curdir {
-      my $self = shift @_;
-      return '.' if ($self->_unix_rpt);
-      return '[]';
+  sub append {
+      my ( $self, @data ) = @_;
+      my $args = ( @data && ref $data[0] eq 'HASH' ) ? shift @data : {};
+      $args = _get_args( $args, qw/binmode truncate/ );
+      my $binmode = $args->{binmode};
+      $binmode = ( ( caller(0) )[10] || {} )->{'open>'} unless defined $binmode;
+      my $mode = $args->{truncate} ? ">" : ">>";
+      my $fh = $self->filehandle( { locked => 1 }, $mode, $binmode );
+      print {$fh} map { ref eq 'ARRAY' ? @$_ : $_ } @data;
+      close $fh or $self->_throw('close');
   }
   
-  =item devnull (override)
-  
-  Returns a string representation of the null device: '_NLA0:' or '/dev/null'
-  
-  =cut
-  
-  sub devnull {
-      my $self = shift @_;
-      return '/dev/null' if ($self->_unix_rpt);
-      return "_NLA0:";
+  sub append_raw {
+      my ( $self, @data ) = @_;
+      my $args = ( @data && ref $data[0] eq 'HASH' ) ? shift @data : {};
+      $args = _get_args( $args, qw/binmode truncate/ );
+      $args->{binmode} = ':unix';
+      append( $self, $args, @data );
   }
   
-  =item rootdir (override)
-  
-  Returns a string representation of the root directory: 'SYS$DISK:[000000]'
-  or '/'
-  
-  =cut
-  
-  sub rootdir {
-      my $self = shift @_;
-      if ($self->_unix_rpt) {
-         # Root may exist, try it first.
-         my $try = '/';
-         my ($dev1, $ino1) = stat('/');
-         my ($dev2, $ino2) = stat('.');
-  
-         # Perl falls back to '.' if it can not determine '/'
-         if (($dev1 != $dev2) || ($ino1 != $ino2)) {
-             return $try;
-         }
-         # Fall back to UNIX format sys$disk.
-         return '/sys$disk/';
+  sub append_utf8 {
+      my ( $self, @data ) = @_;
+      my $args = ( @data && ref $data[0] eq 'HASH' ) ? shift @data : {};
+      $args = _get_args( $args, qw/binmode truncate/ );
+      if ( defined($HAS_UU) ? $HAS_UU : ( $HAS_UU = _check_UU() ) ) {
+          $args->{binmode} = ":unix";
+          append( $self, $args, map { Unicode::UTF8::encode_utf8($_) } @data );
       }
-      return 'SYS$DISK:[000000]';
-  }
-  
-  =item tmpdir (override)
-  
-  Returns a string representation of the first writable directory
-  from the following list or '' if none are writable:
-  
-      /tmp if C<DECC$FILENAME_UNIX_REPORT> is enabled.
-      sys$scratch:
-      $ENV{TMPDIR}
-  
-  If running under taint mode, and if $ENV{TMPDIR}
-  is tainted, it is not used.
-  
-  =cut
-  
-  sub tmpdir {
-      my $self = shift @_;
-      my $tmpdir = $self->_cached_tmpdir('TMPDIR');
-      return $tmpdir if defined $tmpdir;
-      if ($self->_unix_rpt) {
-          $tmpdir = $self->_tmpdir('/tmp', '/sys$scratch', $ENV{TMPDIR});
+      elsif ( defined($HAS_PU) ? $HAS_PU : ( $HAS_PU = _check_PU() ) ) {
+          $args->{binmode} = ":unix:utf8_strict";
+          append( $self, $args, @data );
       }
       else {
-          $tmpdir = $self->_tmpdir( 'sys$scratch:', $ENV{TMPDIR} );
+          $args->{binmode} = ":unix:encoding(UTF-8)";
+          append( $self, $args, @data );
       }
-      $self->_cache_tmpdir($tmpdir, 'TMPDIR');
   }
   
-  =item updir (override)
+  #pod =method assert
+  #pod
+  #pod     $path = path("foo.txt")->assert( sub { $_->exists } );
+  #pod
+  #pod Returns the invocant after asserting that a code reference argument returns
+  #pod true.  When the assertion code reference runs, it will have the invocant
+  #pod object in the C<$_> variable.  If it returns false, an exception will be
+  #pod thrown.  The assertion code reference may also throw its own exception.
+  #pod
+  #pod If no assertion is provided, the invocant is returned without error.
+  #pod
+  #pod Current API available since 0.062.
+  #pod
+  #pod =cut
   
-  Returns a string representation of the parent directory: '[-]' or '..'
-  
-  =cut
-  
-  sub updir {
-      my $self = shift @_;
-      return '..' if ($self->_unix_rpt);
-      return '[-]';
+  sub assert {
+      my ( $self, $assertion ) = @_;
+      return $self unless $assertion;
+      if ( ref $assertion eq 'CODE' ) {
+          local $_ = $self;
+          $assertion->()
+            or Path::Tiny::Error->throw( "assert", $self->[PATH], "failed assertion" );
+      }
+      else {
+          Carp::croak("argument to assert must be a code reference argument");
+      }
+      return $self;
   }
   
-  =item case_tolerant (override)
+  #pod =method basename
+  #pod
+  #pod     $name = path("foo/bar.txt")->basename;        # bar.txt
+  #pod     $name = path("foo.txt")->basename('.txt');    # foo
+  #pod     $name = path("foo.txt")->basename(qr/.txt/);  # foo
+  #pod     $name = path("foo.txt")->basename(@suffixes);
+  #pod
+  #pod Returns the file portion or last directory portion of a path.
+  #pod
+  #pod Given a list of suffixes as strings or regular expressions, any that match at
+  #pod the end of the file portion or last directory portion will be removed before
+  #pod the result is returned.
+  #pod
+  #pod Current API available since 0.054.
+  #pod
+  #pod =cut
   
-  VMS file specification syntax is case-tolerant.
+  sub basename {
+      my ( $self, @suffixes ) = @_;
+      $self->_splitpath unless defined $self->[FILE];
+      my $file = $self->[FILE];
+      for my $s (@suffixes) {
+          my $re = ref($s) eq 'Regexp' ? qr/$s$/ : qr/\Q$s\E$/;
+          last if $file =~ s/$re//;
+      }
+      return $file;
+  }
   
-  =cut
+  #pod =method canonpath
+  #pod
+  #pod     $canonical = path("foo/bar")->canonpath; # foo\bar on Windows
+  #pod
+  #pod Returns a string with the canonical format of the path name for
+  #pod the platform.  In particular, this means directory separators
+  #pod will be C<\> on Windows.
+  #pod
+  #pod Current API available since 0.001.
+  #pod
+  #pod =cut
   
-  sub case_tolerant {
+  sub canonpath { $_[0]->[CANON] }
+  
+  #pod =method child
+  #pod
+  #pod     $file = path("/tmp")->child("foo.txt"); # "/tmp/foo.txt"
+  #pod     $file = path("/tmp")->child(@parts);
+  #pod
+  #pod Returns a new C<Path::Tiny> object relative to the original.  Works
+  #pod like C<catfile> or C<catdir> from File::Spec, but without caring about
+  #pod file or directories.
+  #pod
+  #pod Current API available since 0.001.
+  #pod
+  #pod =cut
+  
+  sub child {
+      my ( $self, @parts ) = @_;
+      return path( $self->[PATH], @parts );
+  }
+  
+  #pod =method children
+  #pod
+  #pod     @paths = path("/tmp")->children;
+  #pod     @paths = path("/tmp")->children( qr/\.txt$/ );
+  #pod
+  #pod Returns a list of C<Path::Tiny> objects for all files and directories
+  #pod within a directory.  Excludes "." and ".." automatically.
+  #pod
+  #pod If an optional C<qr//> argument is provided, it only returns objects for child
+  #pod names that match the given regular expression.  Only the base name is used
+  #pod for matching:
+  #pod
+  #pod     @paths = path("/tmp")->children( qr/^foo/ );
+  #pod     # matches children like the glob foo*
+  #pod
+  #pod Current API available since 0.028.
+  #pod
+  #pod =cut
+  
+  sub children {
+      my ( $self, $filter ) = @_;
+      my $dh;
+      opendir $dh, $self->[PATH] or $self->_throw('opendir');
+      my @children = readdir $dh;
+      closedir $dh or $self->_throw('closedir');
+  
+      if ( not defined $filter ) {
+          @children = grep { $_ ne '.' && $_ ne '..' } @children;
+      }
+      elsif ( $filter && ref($filter) eq 'Regexp' ) {
+          @children = grep { $_ ne '.' && $_ ne '..' && $_ =~ $filter } @children;
+      }
+      else {
+          Carp::croak("Invalid argument '$filter' for children()");
+      }
+  
+      return map { path( $self->[PATH], $_ ) } @children;
+  }
+  
+  #pod =method chmod
+  #pod
+  #pod     path("foo.txt")->chmod(0777);
+  #pod     path("foo.txt")->chmod("0755");
+  #pod     path("foo.txt")->chmod("go-w");
+  #pod     path("foo.txt")->chmod("a=r,u+wx");
+  #pod
+  #pod Sets file or directory permissions.  The argument can be a numeric mode, a
+  #pod octal string beginning with a "0" or a limited subset of the symbolic mode use
+  #pod by F</bin/chmod>.
+  #pod
+  #pod The symbolic mode must be a comma-delimited list of mode clauses.  Clauses must
+  #pod match C<< qr/\A([augo]+)([=+-])([rwx]+)\z/ >>, which defines "who", "op" and
+  #pod "perms" parameters for each clause.  Unlike F</bin/chmod>, all three parameters
+  #pod are required for each clause, multiple ops are not allowed and permissions
+  #pod C<stugoX> are not supported.  (See L<File::chmod> for more complex needs.)
+  #pod
+  #pod Current API available since 0.053.
+  #pod
+  #pod =cut
+  
+  sub chmod {
+      my ( $self, $new_mode ) = @_;
+  
+      my $mode;
+      if ( $new_mode =~ /\d/ ) {
+          $mode = ( $new_mode =~ /^0/ ? oct($new_mode) : $new_mode );
+      }
+      elsif ( $new_mode =~ /[=+-]/ ) {
+          $mode = _symbolic_chmod( $self->stat->mode & 07777, $new_mode ); ## no critic
+      }
+      else {
+          Carp::croak("Invalid mode argument '$new_mode' for chmod()");
+      }
+  
+      CORE::chmod( $mode, $self->[PATH] ) or $self->_throw("chmod");
+  
       return 1;
   }
   
-  =item path (override)
+  #pod =method copy
+  #pod
+  #pod     path("/tmp/foo.txt")->copy("/tmp/bar.txt");
+  #pod
+  #pod Copies the current path to the given destination using L<File::Copy>'s
+  #pod C<copy> function. Upon success, returns the C<Path::Tiny> object for the
+  #pod newly copied file.
+  #pod
+  #pod Current API available since 0.070.
+  #pod
+  #pod =cut
   
-  Translate logical name DCL$PATH as a searchlist, rather than trying
-  to C<split> string value of C<$ENV{'PATH'}>.
+  # XXX do recursively for directories?
+  sub copy {
+      my ( $self, $dest ) = @_;
+      require File::Copy;
+      File::Copy::copy( $self->[PATH], $dest )
+        or Carp::croak("copy failed for $self to $dest: $!");
   
-  =cut
+      return -d $dest ? path( $dest, $self->basename ) : path($dest);
+  }
   
-  sub path {
-      my (@dirs,$dir,$i);
-      while ($dir = $ENV{'DCL$PATH;' . $i++}) { push(@dirs,$dir); }
+  #pod =method digest
+  #pod
+  #pod     $obj = path("/tmp/foo.txt")->digest;        # SHA-256
+  #pod     $obj = path("/tmp/foo.txt")->digest("MD5"); # user-selected
+  #pod     $obj = path("/tmp/foo.txt")->digest( { chunk_size => 1e6 }, "MD5" );
+  #pod
+  #pod Returns a hexadecimal digest for a file.  An optional hash reference of options may
+  #pod be given.  The only option is C<chunk_size>.  If C<chunk_size> is given, that many
+  #pod bytes will be read at a time.  If not provided, the entire file will be slurped
+  #pod into memory to compute the digest.
+  #pod
+  #pod Any subsequent arguments are passed to the constructor for L<Digest> to select
+  #pod an algorithm.  If no arguments are given, the default is SHA-256.
+  #pod
+  #pod Current API available since 0.056.
+  #pod
+  #pod =cut
+  
+  sub digest {
+      my ( $self, @opts ) = @_;
+      my $args = ( @opts && ref $opts[0] eq 'HASH' ) ? shift @opts : {};
+      $args = _get_args( $args, qw/chunk_size/ );
+      unshift @opts, 'SHA-256' unless @opts;
+      require Digest;
+      my $digest = Digest->new(@opts);
+      if ( $args->{chunk_size} ) {
+          my $fh = $self->filehandle( { locked => 1 }, "<", ":unix" );
+          my $buf;
+          $digest->add($buf) while read $fh, $buf, $args->{chunk_size};
+      }
+      else {
+          $digest->add( $self->slurp_raw );
+      }
+      return $digest->hexdigest;
+  }
+  
+  #pod =method dirname (deprecated)
+  #pod
+  #pod     $name = path("/tmp/foo.txt")->dirname; # "/tmp/"
+  #pod
+  #pod Returns the directory portion you would get from calling
+  #pod C<< File::Spec->splitpath( $path->stringify ) >> or C<"."> for a path without a
+  #pod parent directory portion.  Because L<File::Spec> is inconsistent, the result
+  #pod might or might not have a trailing slash.  Because of this, this method is
+  #pod B<deprecated>.
+  #pod
+  #pod A better, more consistently approach is likely C<< $path->parent->stringify >>,
+  #pod which will not have a trailing slash except for a root directory.
+  #pod
+  #pod Deprecated in 0.056.
+  #pod
+  #pod =cut
+  
+  sub dirname {
+      my ($self) = @_;
+      $self->_splitpath unless defined $self->[DIR];
+      return length $self->[DIR] ? $self->[DIR] : ".";
+  }
+  
+  #pod =method edit, edit_raw, edit_utf8
+  #pod
+  #pod     path("foo.txt")->edit( \&callback, $options );
+  #pod     path("foo.txt")->edit_utf8( \&callback );
+  #pod     path("foo.txt")->edit_raw( \&callback );
+  #pod
+  #pod These are convenience methods that allow "editing" a file using a single
+  #pod callback argument. They slurp the file using C<slurp>, place the contents
+  #pod inside a localized C<$_> variable, call the callback function (without
+  #pod arguments), and then write C<$_> (presumably mutated) back to the
+  #pod file with C<spew>.
+  #pod
+  #pod An optional hash reference may be used to pass options.  The only option is
+  #pod C<binmode>, which is passed to C<slurp> and C<spew>.
+  #pod
+  #pod C<edit_utf8> and C<edit_raw> act like their respective C<slurp_*> and
+  #pod C<spew_*> methods.
+  #pod
+  #pod Current API available since 0.077.
+  #pod
+  #pod =cut
+  
+  sub edit {
+      my $self = shift;
+      my $cb   = shift;
+      my $args = _get_args( shift, qw/binmode/ );
+      Carp::croak("Callback for edit() must be a code reference")
+        unless defined($cb) && ref($cb) eq 'CODE';
+  
+      local $_ =
+        $self->slurp( exists( $args->{binmode} ) ? { binmode => $args->{binmode} } : () );
+      $cb->();
+      $self->spew( $args, $_ );
+  
+      return;
+  }
+  
+  # this is done long-hand to benefit from slurp_utf8 optimizations
+  sub edit_utf8 {
+      my ( $self, $cb ) = @_;
+      Carp::croak("Callback for edit_utf8() must be a code reference")
+        unless defined($cb) && ref($cb) eq 'CODE';
+  
+      local $_ = $self->slurp_utf8;
+      $cb->();
+      $self->spew_utf8($_);
+  
+      return;
+  }
+  
+  sub edit_raw { $_[2] = { binmode => ":unix" }; goto &edit }
+  
+  #pod =method edit_lines, edit_lines_utf8, edit_lines_raw
+  #pod
+  #pod     path("foo.txt")->edit_lines( \&callback, $options );
+  #pod     path("foo.txt")->edit_lines_utf8( \&callback );
+  #pod     path("foo.txt")->edit_lines_raw( \&callback );
+  #pod
+  #pod These are convenience methods that allow "editing" a file's lines using a
+  #pod single callback argument.  They iterate over the file: for each line, the
+  #pod line is put into a localized C<$_> variable, the callback function is
+  #pod executed (without arguments) and then C<$_> is written to a temporary file.
+  #pod When iteration is finished, the temporary file is atomically renamed over
+  #pod the original.
+  #pod
+  #pod An optional hash reference may be used to pass options.  The only option is
+  #pod C<binmode>, which is passed to the method that open handles for reading and
+  #pod writing.
+  #pod
+  #pod C<edit_lines_utf8> and C<edit_lines_raw> act like their respective
+  #pod C<slurp_*> and C<spew_*> methods.
+  #pod
+  #pod Current API available since 0.077.
+  #pod
+  #pod =cut
+  
+  sub edit_lines {
+      my $self = shift;
+      my $cb   = shift;
+      my $args = _get_args( shift, qw/binmode/ );
+      Carp::croak("Callback for edit_lines() must be a code reference")
+        unless defined($cb) && ref($cb) eq 'CODE';
+  
+      my $binmode = $args->{binmode};
+      # get default binmode from caller's lexical scope (see "perldoc open")
+      $binmode = ( ( caller(0) )[10] || {} )->{'open>'} unless defined $binmode;
+  
+      # writing need to follow the link and create the tempfile in the same
+      # dir for later atomic rename
+      my $resolved_path = $self->_resolve_symlinks;
+      my $temp          = path( $resolved_path . $$ . int( rand( 2**31 ) ) );
+  
+      my $temp_fh = $temp->filehandle( { exclusive => 1, locked => 1 }, ">", $binmode );
+      my $in_fh = $self->filehandle( { locked => 1 }, '<', $binmode );
+  
+      local $_;
+      while (<$in_fh>) {
+          $cb->();
+          $temp_fh->print($_);
+      }
+  
+      close $temp_fh or $self->_throw( 'close', $temp );
+      close $in_fh or $self->_throw('close');
+  
+      return $temp->move($resolved_path);
+  }
+  
+  sub edit_lines_raw { $_[2] = { binmode => ":unix" }; goto &edit_lines }
+  
+  sub edit_lines_utf8 {
+      $_[2] = { binmode => ":raw:encoding(UTF-8)" };
+      goto &edit_lines;
+  }
+  
+  #pod =method exists, is_file, is_dir
+  #pod
+  #pod     if ( path("/tmp")->exists ) { ... }     # -e
+  #pod     if ( path("/tmp")->is_dir ) { ... }     # -d
+  #pod     if ( path("/tmp")->is_file ) { ... }    # -e && ! -d
+  #pod
+  #pod Implements file test operations, this means the file or directory actually has
+  #pod to exist on the filesystem.  Until then, it's just a path.
+  #pod
+  #pod B<Note>: C<is_file> is not C<-f> because C<-f> is not the opposite of C<-d>.
+  #pod C<-f> means "plain file", excluding symlinks, devices, etc. that often can be
+  #pod read just like files.
+  #pod
+  #pod Use C<-f> instead if you really mean to check for a plain file.
+  #pod
+  #pod Current API available since 0.053.
+  #pod
+  #pod =cut
+  
+  sub exists { -e $_[0]->[PATH] }
+  
+  sub is_file { -e $_[0]->[PATH] && !-d _ }
+  
+  sub is_dir { -d $_[0]->[PATH] }
+  
+  #pod =method filehandle
+  #pod
+  #pod     $fh = path("/tmp/foo.txt")->filehandle($mode, $binmode);
+  #pod     $fh = path("/tmp/foo.txt")->filehandle({ locked => 1 }, $mode, $binmode);
+  #pod     $fh = path("/tmp/foo.txt")->filehandle({ exclusive => 1  }, $mode, $binmode);
+  #pod
+  #pod Returns an open file handle.  The C<$mode> argument must be a Perl-style
+  #pod read/write mode string ("<" ,">", "<<", etc.).  If a C<$binmode>
+  #pod is given, it is set during the C<open> call.
+  #pod
+  #pod An optional hash reference may be used to pass options.
+  #pod
+  #pod The C<locked> option governs file locking; if true, handles opened for writing,
+  #pod appending or read-write are locked with C<LOCK_EX>; otherwise, they are
+  #pod locked with C<LOCK_SH>.  When using C<locked>, ">" or "+>" modes will delay
+  #pod truncation until after the lock is acquired.
+  #pod
+  #pod The C<exclusive> option causes the open() call to fail if the file already
+  #pod exists.  This corresponds to the O_EXCL flag to sysopen / open(2).
+  #pod C<exclusive> implies C<locked> and will set it for you if you forget it.
+  #pod
+  #pod See C<openr>, C<openw>, C<openrw>, and C<opena> for sugar.
+  #pod
+  #pod Current API available since 0.066.
+  #pod
+  #pod =cut
+  
+  # Note: must put binmode on open line, not subsequent binmode() call, so things
+  # like ":unix" actually stop perlio/crlf from being added
+  
+  sub filehandle {
+      my ( $self, @args ) = @_;
+      my $args = ( @args && ref $args[0] eq 'HASH' ) ? shift @args : {};
+      $args = _get_args( $args, qw/locked exclusive/ );
+      $args->{locked} = 1 if $args->{exclusive};
+      my ( $opentype, $binmode ) = @args;
+  
+      $opentype = "<" unless defined $opentype;
+      Carp::croak("Invalid file mode '$opentype'")
+        unless grep { $opentype eq $_ } qw/< +< > +> >> +>>/;
+  
+      $binmode = ( ( caller(0) )[10] || {} )->{ 'open' . substr( $opentype, -1, 1 ) }
+        unless defined $binmode;
+      $binmode = "" unless defined $binmode;
+  
+      my ( $fh, $lock, $trunc );
+      if ( $HAS_FLOCK && $args->{locked} ) {
+          require Fcntl;
+          # truncating file modes shouldn't truncate until lock acquired
+          if ( grep { $opentype eq $_ } qw( > +> ) ) {
+              # sysopen in write mode without truncation
+              my $flags = $opentype eq ">" ? Fcntl::O_WRONLY() : Fcntl::O_RDWR();
+              $flags |= Fcntl::O_CREAT();
+              $flags |= Fcntl::O_EXCL() if $args->{exclusive};
+              sysopen( $fh, $self->[PATH], $flags ) or $self->_throw("sysopen");
+  
+              # fix up the binmode since sysopen() can't specify layers like
+              # open() and binmode() can't start with just :unix like open()
+              if ( $binmode =~ s/^:unix// ) {
+                  # eliminate pseudo-layers
+                  binmode( $fh, ":raw" ) or $self->_throw("binmode (:raw)");
+                  # strip off real layers until only :unix is left
+                  while ( 1 < ( my $layers =()= PerlIO::get_layers( $fh, output => 1 ) ) ) {
+                      binmode( $fh, ":pop" ) or $self->_throw("binmode (:pop)");
+                  }
+              }
+  
+              # apply any remaining binmode layers
+              if ( length $binmode ) {
+                  binmode( $fh, $binmode ) or $self->_throw("binmode ($binmode)");
+              }
+  
+              # ask for lock and truncation
+              $lock  = Fcntl::LOCK_EX();
+              $trunc = 1;
+          }
+          elsif ( $^O eq 'aix' && $opentype eq "<" ) {
+              # AIX can only lock write handles, so upgrade to RW and LOCK_EX if
+              # the file is writable; otherwise give up on locking.  N.B.
+              # checking -w before open to determine the open mode is an
+              # unavoidable race condition
+              if ( -w $self->[PATH] ) {
+                  $opentype = "+<";
+                  $lock     = Fcntl::LOCK_EX();
+              }
+          }
+          else {
+              $lock = $opentype eq "<" ? Fcntl::LOCK_SH() : Fcntl::LOCK_EX();
+          }
+      }
+  
+      unless ($fh) {
+          my $mode = $opentype . $binmode;
+          open $fh, $mode, $self->[PATH] or $self->_throw("open ($mode)");
+      }
+  
+      do { flock( $fh, $lock ) or $self->_throw("flock ($lock)") } if $lock;
+      do { truncate( $fh, 0 ) or $self->_throw("truncate") } if $trunc;
+  
+      return $fh;
+  }
+  
+  #pod =method is_absolute, is_relative
+  #pod
+  #pod     if ( path("/tmp")->is_absolute ) { ... }
+  #pod     if ( path("/tmp")->is_relative ) { ... }
+  #pod
+  #pod Booleans for whether the path appears absolute or relative.
+  #pod
+  #pod Current API available since 0.001.
+  #pod
+  #pod =cut
+  
+  sub is_absolute { substr( $_[0]->dirname, 0, 1 ) eq '/' }
+  
+  sub is_relative { substr( $_[0]->dirname, 0, 1 ) ne '/' }
+  
+  #pod =method is_rootdir
+  #pod
+  #pod     while ( ! $path->is_rootdir ) {
+  #pod         $path = $path->parent;
+  #pod         ...
+  #pod     }
+  #pod
+  #pod Boolean for whether the path is the root directory of the volume.  I.e. the
+  #pod C<dirname> is C<q[/]> and the C<basename> is C<q[]>.
+  #pod
+  #pod This works even on C<MSWin32> with drives and UNC volumes:
+  #pod
+  #pod     path("C:/")->is_rootdir;             # true
+  #pod     path("//server/share/")->is_rootdir; #true
+  #pod
+  #pod Current API available since 0.038.
+  #pod
+  #pod =cut
+  
+  sub is_rootdir {
+      my ($self) = @_;
+      $self->_splitpath unless defined $self->[DIR];
+      return $self->[DIR] eq '/' && $self->[FILE] eq '';
+  }
+  
+  #pod =method iterator
+  #pod
+  #pod     $iter = path("/tmp")->iterator( \%options );
+  #pod
+  #pod Returns a code reference that walks a directory lazily.  Each invocation
+  #pod returns a C<Path::Tiny> object or undef when the iterator is exhausted.
+  #pod
+  #pod     $iter = path("/tmp")->iterator;
+  #pod     while ( $path = $iter->() ) {
+  #pod         ...
+  #pod     }
+  #pod
+  #pod The current and parent directory entries ("." and "..") will not
+  #pod be included.
+  #pod
+  #pod If the C<recurse> option is true, the iterator will walk the directory
+  #pod recursively, breadth-first.  If the C<follow_symlinks> option is also true,
+  #pod directory links will be followed recursively.  There is no protection against
+  #pod loops when following links. If a directory is not readable, it will not be
+  #pod followed.
+  #pod
+  #pod The default is the same as:
+  #pod
+  #pod     $iter = path("/tmp")->iterator( {
+  #pod         recurse         => 0,
+  #pod         follow_symlinks => 0,
+  #pod     } );
+  #pod
+  #pod For a more powerful, recursive iterator with built-in loop avoidance, see
+  #pod L<Path::Iterator::Rule>.
+  #pod
+  #pod See also L</visit>.
+  #pod
+  #pod Current API available since 0.016.
+  #pod
+  #pod =cut
+  
+  sub iterator {
+      my $self = shift;
+      my $args = _get_args( shift, qw/recurse follow_symlinks/ );
+      my @dirs = $self;
+      my $current;
+      return sub {
+          my $next;
+          while (@dirs) {
+              if ( ref $dirs[0] eq 'Path::Tiny' ) {
+                  if ( !-r $dirs[0] ) {
+                      # Directory is missing or not readable, so skip it.  There
+                      # is still a race condition possible between the check and
+                      # the opendir, but we can't easily differentiate between
+                      # error cases that are OK to skip and those that we want
+                      # to be exceptions, so we live with the race and let opendir
+                      # be fatal.
+                      shift @dirs and next;
+                  }
+                  $current = $dirs[0];
+                  my $dh;
+                  opendir( $dh, $current->[PATH] )
+                    or $self->_throw( 'opendir', $current->[PATH] );
+                  $dirs[0] = $dh;
+                  if ( -l $current->[PATH] && !$args->{follow_symlinks} ) {
+                      # Symlink attack! It was a real dir, but is now a symlink!
+                      # N.B. we check *after* opendir so the attacker has to win
+                      # two races: replace dir with symlink before opendir and
+                      # replace symlink with dir before -l check above
+                      shift @dirs and next;
+                  }
+              }
+              while ( defined( $next = readdir $dirs[0] ) ) {
+                  next if $next eq '.' || $next eq '..';
+                  my $path = $current->child($next);
+                  push @dirs, $path
+                    if $args->{recurse} && -d $path && !( !$args->{follow_symlinks} && -l $path );
+                  return $path;
+              }
+              shift @dirs;
+          }
+          return;
+      };
+  }
+  
+  #pod =method lines, lines_raw, lines_utf8
+  #pod
+  #pod     @contents = path("/tmp/foo.txt")->lines;
+  #pod     @contents = path("/tmp/foo.txt")->lines(\%options);
+  #pod     @contents = path("/tmp/foo.txt")->lines_raw;
+  #pod     @contents = path("/tmp/foo.txt")->lines_utf8;
+  #pod
+  #pod     @contents = path("/tmp/foo.txt")->lines( { chomp => 1, count => 4 } );
+  #pod
+  #pod Returns a list of lines from a file.  Optionally takes a hash-reference of
+  #pod options.  Valid options are C<binmode>, C<count> and C<chomp>.
+  #pod
+  #pod If C<binmode> is provided, it will be set on the handle prior to reading.
+  #pod
+  #pod If a positive C<count> is provided, that many lines will be returned from the
+  #pod start of the file.  If a negative C<count> is provided, the entire file will be
+  #pod read, but only C<abs(count)> will be kept and returned.  If C<abs(count)>
+  #pod exceeds the number of lines in the file, all lines will be returned.
+  #pod
+  #pod If C<chomp> is set, any end-of-line character sequences (C<CR>, C<CRLF>, or
+  #pod C<LF>) will be removed from the lines returned.
+  #pod
+  #pod Because the return is a list, C<lines> in scalar context will return the number
+  #pod of lines (and throw away the data).
+  #pod
+  #pod     $number_of_lines = path("/tmp/foo.txt")->lines;
+  #pod
+  #pod C<lines_raw> is like C<lines> with a C<binmode> of C<:raw>.  We use C<:raw>
+  #pod instead of C<:unix> so PerlIO buffering can manage reading by line.
+  #pod
+  #pod C<lines_utf8> is like C<lines> with a C<binmode> of C<:raw:encoding(UTF-8)>
+  #pod (or L<PerlIO::utf8_strict>).  If L<Unicode::UTF8> 0.58+ is installed, a raw
+  #pod UTF-8 slurp will be done and then the lines will be split.  This is
+  #pod actually faster than relying on C<:encoding(UTF-8)>, though a bit memory
+  #pod intensive.  If memory use is a concern, consider C<openr_utf8> and
+  #pod iterating directly on the handle.
+  #pod
+  #pod Current API available since 0.065.
+  #pod
+  #pod =cut
+  
+  sub lines {
+      my $self    = shift;
+      my $args    = _get_args( shift, qw/binmode chomp count/ );
+      my $binmode = $args->{binmode};
+      $binmode = ( ( caller(0) )[10] || {} )->{'open<'} unless defined $binmode;
+      my $fh = $self->filehandle( { locked => 1 }, "<", $binmode );
+      my $chomp = $args->{chomp};
+      # XXX more efficient to read @lines then chomp(@lines) vs map?
+      if ( $args->{count} ) {
+          my ( $counter, $mod, @result ) = ( 0, abs( $args->{count} ) );
+          while ( my $line = <$fh> ) {
+              $line =~ s/(?:\x{0d}?\x{0a}|\x{0d})$// if $chomp;
+              $result[ $counter++ ] = $line;
+              # for positive count, terminate after right number of lines
+              last if $counter == $args->{count};
+              # for negative count, eventually wrap around in the result array
+              $counter %= $mod;
+          }
+          # reorder results if full and wrapped somewhere in the middle
+          splice( @result, 0, 0, splice( @result, $counter ) )
+            if @result == $mod && $counter % $mod;
+          return @result;
+      }
+      elsif ($chomp) {
+          return map { s/(?:\x{0d}?\x{0a}|\x{0d})$//; $_ } <$fh>; ## no critic
+      }
+      else {
+          return wantarray ? <$fh> : ( my $count =()= <$fh> );
+      }
+  }
+  
+  sub lines_raw {
+      my $self = shift;
+      my $args = _get_args( shift, qw/binmode chomp count/ );
+      if ( $args->{chomp} && !$args->{count} ) {
+          return split /\n/, slurp_raw($self);                    ## no critic
+      }
+      else {
+          $args->{binmode} = ":raw";
+          return lines( $self, $args );
+      }
+  }
+  
+  my $CRLF = qr/(?:\x{0d}?\x{0a}|\x{0d})/;
+  
+  sub lines_utf8 {
+      my $self = shift;
+      my $args = _get_args( shift, qw/binmode chomp count/ );
+      if (   ( defined($HAS_UU) ? $HAS_UU : ( $HAS_UU = _check_UU() ) )
+          && $args->{chomp}
+          && !$args->{count} )
+      {
+          my $slurp = slurp_utf8($self);
+          $slurp =~ s/$CRLF$//; # like chomp, but full CR?LF|CR
+          return split $CRLF, $slurp, -1; ## no critic
+      }
+      elsif ( defined($HAS_PU) ? $HAS_PU : ( $HAS_PU = _check_PU() ) ) {
+          $args->{binmode} = ":unix:utf8_strict";
+          return lines( $self, $args );
+      }
+      else {
+          $args->{binmode} = ":raw:encoding(UTF-8)";
+          return lines( $self, $args );
+      }
+  }
+  
+  #pod =method mkpath
+  #pod
+  #pod     path("foo/bar/baz")->mkpath;
+  #pod     path("foo/bar/baz")->mkpath( \%options );
+  #pod
+  #pod Like calling C<make_path> from L<File::Path>.  An optional hash reference
+  #pod is passed through to C<make_path>.  Errors will be trapped and an exception
+  #pod thrown.  Returns the list of directories created or an empty list if
+  #pod the directories already exist, just like C<make_path>.
+  #pod
+  #pod Current API available since 0.001.
+  #pod
+  #pod =cut
+  
+  sub mkpath {
+      my ( $self, $args ) = @_;
+      $args = {} unless ref $args eq 'HASH';
+      my $err;
+      $args->{error} = \$err unless defined $args->{error};
+      require File::Path;
+      my @dirs = File::Path::make_path( $self->[PATH], $args );
+      if ( $err && @$err ) {
+          my ( $file, $message ) = %{ $err->[0] };
+          Carp::croak("mkpath failed for $file: $message");
+      }
       return @dirs;
   }
   
-  =item file_name_is_absolute (override)
+  #pod =method move
+  #pod
+  #pod     path("foo.txt")->move("bar.txt");
+  #pod
+  #pod Move the current path to the given destination path using Perl's
+  #pod built-in L<rename|perlfunc/rename> function. Returns the result
+  #pod of the C<rename> function.
+  #pod
+  #pod Current API available since 0.001.
+  #pod
+  #pod =cut
   
-  Checks for VMS directory spec as well as Unix separators.
+  sub move {
+      my ( $self, $dst ) = @_;
   
-  =cut
-  
-  sub file_name_is_absolute {
-      my ($self,$file) = @_;
-      # If it's a logical name, expand it.
-      $file = $ENV{$file} while $file =~ /^[\w\$\-]+\Z(?!\n)/s && $ENV{$file};
-      return scalar($file =~ m!^/!s             ||
-  		  $file =~ m![<\[][^.\-\]>]!  ||
-  		  $file =~ /^[A-Za-z0-9_\$\-\~]+(?<!\^):/);
+      return rename( $self->[PATH], $dst )
+        || $self->_throw( 'rename', $self->[PATH] . "' -> '$dst" );
   }
   
-  =item splitpath (override)
+  #pod =method openr, openw, openrw, opena
+  #pod
+  #pod     $fh = path("foo.txt")->openr($binmode);  # read
+  #pod     $fh = path("foo.txt")->openr_raw;
+  #pod     $fh = path("foo.txt")->openr_utf8;
+  #pod
+  #pod     $fh = path("foo.txt")->openw($binmode);  # write
+  #pod     $fh = path("foo.txt")->openw_raw;
+  #pod     $fh = path("foo.txt")->openw_utf8;
+  #pod
+  #pod     $fh = path("foo.txt")->opena($binmode);  # append
+  #pod     $fh = path("foo.txt")->opena_raw;
+  #pod     $fh = path("foo.txt")->opena_utf8;
+  #pod
+  #pod     $fh = path("foo.txt")->openrw($binmode); # read/write
+  #pod     $fh = path("foo.txt")->openrw_raw;
+  #pod     $fh = path("foo.txt")->openrw_utf8;
+  #pod
+  #pod Returns a file handle opened in the specified mode.  The C<openr> style methods
+  #pod take a single C<binmode> argument.  All of the C<open*> methods have
+  #pod C<open*_raw> and C<open*_utf8> equivalents that use C<:raw> and
+  #pod C<:raw:encoding(UTF-8)>, respectively.
+  #pod
+  #pod An optional hash reference may be used to pass options.  The only option is
+  #pod C<locked>.  If true, handles opened for writing, appending or read-write are
+  #pod locked with C<LOCK_EX>; otherwise, they are locked for C<LOCK_SH>.
+  #pod
+  #pod     $fh = path("foo.txt")->openrw_utf8( { locked => 1 } );
+  #pod
+  #pod See L</filehandle> for more on locking.
+  #pod
+  #pod Current API available since 0.011.
+  #pod
+  #pod =cut
   
-     ($volume,$directories,$file) = File::Spec->splitpath( $path );
-     ($volume,$directories,$file) = File::Spec->splitpath( $path,
-                                                           $no_file );
+  # map method names to corresponding open mode
+  my %opens = (
+      opena  => ">>",
+      openr  => "<",
+      openw  => ">",
+      openrw => "+<"
+  );
   
-  Passing a true value for C<$no_file> indicates that the path being
-  split only contains directory components, even on systems where you
-  can usually (when not supporting a foreign syntax) tell the difference
-  between directories and files at a glance.
-  
-  =cut
-  
-  sub splitpath {
-      my($self,$path, $nofile) = @_;
-      my($dev,$dir,$file)      = ('','','');
-      my $vmsify_path = vmsify($path);
-  
-      if ( $nofile ) {
-          #vmsify('d1/d2/d3') returns '[.d1.d2]d3'
-          #vmsify('/d1/d2/d3') returns 'd1:[d2]d3'
-          if( $vmsify_path =~ /(.*)\](.+)/ ){
-              $vmsify_path = $1.'.'.$2.']';
-          }
-          $vmsify_path =~ /(.+:)?(.*)/s;
-          $dir = defined $2 ? $2 : ''; # dir can be '0'
-          return ($1 || '',$dir,$file);
-      }
-      else {
-          $vmsify_path =~ /(.+:)?([\[<].*[\]>])?(.*)/s;
-          return ($1 || '',$2 || '',$3);
-      }
+  while ( my ( $k, $v ) = each %opens ) {
+      no strict 'refs';
+      # must check for lexical IO mode hint
+      *{$k} = sub {
+          my ( $self, @args ) = @_;
+          my $args = ( @args && ref $args[0] eq 'HASH' ) ? shift @args : {};
+          $args = _get_args( $args, qw/locked/ );
+          my ($binmode) = @args;
+          $binmode = ( ( caller(0) )[10] || {} )->{ 'open' . substr( $v, -1, 1 ) }
+            unless defined $binmode;
+          $self->filehandle( $args, $v, $binmode );
+      };
+      *{ $k . "_raw" } = sub {
+          my ( $self, @args ) = @_;
+          my $args = ( @args && ref $args[0] eq 'HASH' ) ? shift @args : {};
+          $args = _get_args( $args, qw/locked/ );
+          $self->filehandle( $args, $v, ":raw" );
+      };
+      *{ $k . "_utf8" } = sub {
+          my ( $self, @args ) = @_;
+          my $args = ( @args && ref $args[0] eq 'HASH' ) ? shift @args : {};
+          $args = _get_args( $args, qw/locked/ );
+          $self->filehandle( $args, $v, ":raw:encoding(UTF-8)" );
+      };
   }
   
-  =item splitdir (override)
+  #pod =method parent
+  #pod
+  #pod     $parent = path("foo/bar/baz")->parent; # foo/bar
+  #pod     $parent = path("foo/wibble.txt")->parent; # foo
+  #pod
+  #pod     $parent = path("foo/bar/baz")->parent(2); # foo
+  #pod
+  #pod Returns a C<Path::Tiny> object corresponding to the parent directory of the
+  #pod original directory or file. An optional positive integer argument is the number
+  #pod of parent directories upwards to return.  C<parent> by itself is equivalent to
+  #pod C<parent(1)>.
+  #pod
+  #pod Current API available since 0.014.
+  #pod
+  #pod =cut
   
-  Split a directory specification into the components.
-  
-  =cut
-  
-  sub splitdir {
-      my($self,$dirspec) = @_;
-      my @dirs = ();
-      return @dirs if ( (!defined $dirspec) || ('' eq $dirspec) );
-  
-      $dirspec =~ s/(?<!\^)</[/;                  # < and >	==> [ and ]
-      $dirspec =~ s/(?<!\^)>/]/;
-      $dirspec =~ s/(?<!\^)\]\[\./\.\]\[/g;	# ][.		==> .][
-      $dirspec =~ s/(?<!\^)\[000000\.\]\[/\[/g;	# [000000.][	==> [
-      $dirspec =~ s/(?<!\^)\[000000\./\[/g;	# [000000.	==> [
-      $dirspec =~ s/(?<!\^)\.\]\[000000\]/\]/g;	# .][000000]	==> ]
-      $dirspec =~ s/(?<!\^)\.\]\[/\./g;		# foo.][bar	==> foo.bar
-      while ($dirspec =~ s/(^|[\[\<\.])\-(\-+)($|[\]\>\.])/$1-.$2$3/g) {}
-  						# That loop does the following
-  						# with any amount of dashes:
-  						# .--.		==> .-.-.
-  						# [--.		==> [-.-.
-  						# .--]		==> .-.-]
-  						# [--]		==> [-.-]
-      $dirspec = "[$dirspec]" unless $dirspec =~ /(?<!\^)[\[<]/; # make legal
-      $dirspec =~ s/^(\[|<)\./$1/;
-      @dirs = split /(?<!\^)\./, vmspath($dirspec);
-      $dirs[0] =~ s/^[\[<]//s;  $dirs[-1] =~ s/[\]>]\Z(?!\n)//s;
-      @dirs;
-  }
-  
-  
-  =item catpath (override)
-  
-  Construct a complete filespec.
-  
-  =cut
-  
-  sub catpath {
-      my($self,$dev,$dir,$file) = @_;
-      
-      # We look for a volume in $dev, then in $dir, but not both
-      my ($dir_volume, $dir_dir, $dir_file) = $self->splitpath($dir);
-      $dev = $dir_volume unless length $dev;
-      $dir = length $dir_file ? $self->catfile($dir_dir, $dir_file) : $dir_dir;
-      
-      if ($dev =~ m|^(?<!\^)/+([^/]+)|) { $dev = "$1:"; }
-      else { $dev .= ':' unless $dev eq '' or $dev =~ /:\Z(?!\n)/; }
-      if (length($dev) or length($dir)) {
-          $dir = "[$dir]" unless $dir =~ /(?<!\^)[\[<\/]/;
-          $dir = vmspath($dir);
-      }
-      $dir = '' if length($dev) && ($dir eq '[]' || $dir eq '<>');
-      "$dev$dir$file";
-  }
-  
-  =item abs2rel (override)
-  
-  Attempt to convert an absolute file specification to a relative specification.
-  
-  =cut
-  
-  sub abs2rel {
-      my $self = shift;
-      return vmspath(File::Spec::Unix::abs2rel( $self, @_ ))
-          if ((grep m{/}, @_) && !(grep m{(?<!\^)[\[<:]}, @_));
-  
-      my($path,$base) = @_;
-      $base = $self->_cwd() unless defined $base and length $base;
-  
-      # If there is no device or directory syntax on $base, make sure it
-      # is treated as a directory.
-      $base = VMS::Filespec::vmspath($base) unless $base =~ m{(?<!\^)[\[<:]};
-  
-      for ($path, $base) { $_ = $self->rel2abs($_) }
-  
-      # Are we even starting $path on the same (node::)device as $base?  Note that
-      # logical paths or nodename differences may be on the "same device" 
-      # but the comparison that ignores device differences so as to concatenate 
-      # [---] up directory specs is not even a good idea in cases where there is 
-      # a logical path difference between $path and $base nodename and/or device.
-      # Hence we fall back to returning the absolute $path spec
-      # if there is a case blind device (or node) difference of any sort
-      # and we do not even try to call $parse() or consult %ENV for $trnlnm()
-      # (this module needs to run on non VMS platforms after all).
-      
-      my ($path_volume, $path_directories, $path_file) = $self->splitpath($path);
-      my ($base_volume, $base_directories, $base_file) = $self->splitpath($base);
-      return $path unless lc($path_volume) eq lc($base_volume);
-  
-      # Now, remove all leading components that are the same
-      my @pathchunks = $self->splitdir( $path_directories );
-      my $pathchunks = @pathchunks;
-      unshift(@pathchunks,'000000') unless $pathchunks[0] eq '000000';
-      my @basechunks = $self->splitdir( $base_directories );
-      my $basechunks = @basechunks;
-      unshift(@basechunks,'000000') unless $basechunks[0] eq '000000';
-  
-      while ( @pathchunks && 
-              @basechunks && 
-              lc( $pathchunks[0] ) eq lc( $basechunks[0] ) 
-            ) {
-          shift @pathchunks ;
-          shift @basechunks ;
-      }
-  
-      # @basechunks now contains the directories to climb out of,
-      # @pathchunks now has the directories to descend in to.
-      if ((@basechunks > 0) || ($basechunks != $pathchunks)) {
-        $path_directories = join '.', ('-' x @basechunks, @pathchunks) ;
-      }
-      else {
-        $path_directories = join '.', @pathchunks;
-      }
-      $path_directories = '['.$path_directories.']';
-      return $self->canonpath( $self->catpath( '', $path_directories, $path_file ) ) ;
-  }
-  
-  
-  =item rel2abs (override)
-  
-  Return an absolute file specification from a relative one.
-  
-  =cut
-  
-  sub rel2abs {
-      my $self = shift ;
-      my ($path,$base ) = @_;
-      return undef unless defined $path;
-      if ($path =~ m/\//) {
-         $path = ( -d $path || $path =~ m/\/\z/  # educated guessing about
-                    ? vmspath($path)             # whether it's a directory
-                    : vmsify($path) );
-      }
-      $base = vmspath($base) if defined $base && $base =~ m/\//;
-  
-      # Clean up and split up $path
-      if ( ! $self->file_name_is_absolute( $path ) ) {
-          # Figure out the effective $base and clean it up.
-          if ( !defined( $base ) || $base eq '' ) {
-              $base = $self->_cwd;
-          }
-          elsif ( ! $self->file_name_is_absolute( $base ) ) {
-              $base = $self->rel2abs( $base ) ;
+  # XXX this is ugly and coverage is incomplete.  I think it's there for windows
+  # so need to check coverage there and compare
+  sub parent {
+      my ( $self, $level ) = @_;
+      $level = 1 unless defined $level && $level > 0;
+      $self->_splitpath unless defined $self->[FILE];
+      my $parent;
+      if ( length $self->[FILE] ) {
+          if ( $self->[FILE] eq '.' || $self->[FILE] eq ".." ) {
+              $parent = path( $self->[PATH] . "/.." );
           }
           else {
-              $base = $self->canonpath( $base ) ;
+              $parent = path( _non_empty( $self->[VOL] . $self->[DIR] ) );
           }
-  
-          # Split up paths
-          my ( $path_directories, $path_file ) =
-              ($self->splitpath( $path ))[1,2] ;
-  
-          my ( $base_volume, $base_directories ) =
-              $self->splitpath( $base ) ;
-  
-          $path_directories = '' if $path_directories eq '[]' ||
-                                    $path_directories eq '<>';
-          my $sep = '' ;
-          $sep = '.'
-              if ( $base_directories =~ m{[^.\]>]\Z(?!\n)} &&
-                   $path_directories =~ m{^[^.\[<]}s
-              ) ;
-          $base_directories = "$base_directories$sep$path_directories";
-          $base_directories =~ s{\.?[\]>][\[<]\.?}{.};
-  
-          $path = $self->catpath( $base_volume, $base_directories, $path_file );
-     }
-  
-      return $self->canonpath( $path ) ;
+      }
+      elsif ( length $self->[DIR] ) {
+          # because of symlinks, any internal updir requires us to
+          # just add more updirs at the end
+          if ( $self->[DIR] =~ m{(?:^\.\./|/\.\./|/\.\.$)} ) {
+              $parent = path( $self->[VOL] . $self->[DIR] . "/.." );
+          }
+          else {
+              ( my $dir = $self->[DIR] ) =~ s{/[^\/]+/$}{/};
+              $parent = path( $self->[VOL] . $dir );
+          }
+      }
+      else {
+          $parent = path( _non_empty( $self->[VOL] ) );
+      }
+      return $level == 1 ? $parent : $parent->parent( $level - 1 );
   }
   
+  sub _non_empty {
+      my ($string) = shift;
+      return ( ( defined($string) && length($string) ) ? $string : "." );
+  }
   
-  =back
+  #pod =method realpath
+  #pod
+  #pod     $real = path("/baz/foo/../bar")->realpath;
+  #pod     $real = path("foo/../bar")->realpath;
+  #pod
+  #pod Returns a new C<Path::Tiny> object with all symbolic links and upward directory
+  #pod parts resolved using L<Cwd>'s C<realpath>.  Compared to C<absolute>, this is
+  #pod more expensive as it must actually consult the filesystem.
+  #pod
+  #pod If the parent path can't be resolved (e.g. if it includes directories that
+  #pod don't exist), an exception will be thrown:
+  #pod
+  #pod     $real = path("doesnt_exist/foo")->realpath; # dies
+  #pod
+  #pod However, if the parent path exists and only the last component (e.g. filename)
+  #pod doesn't exist, the realpath will be the realpath of the parent plus the
+  #pod non-existent last component:
+  #pod
+  #pod     $real = path("./aasdlfasdlf")->realpath; # works
+  #pod
+  #pod The underlying L<Cwd> module usually worked this way on Unix, but died on
+  #pod Windows (and some Unixes) if the full path didn't exist.  As of version 0.064,
+  #pod it's safe to use anywhere.
+  #pod
+  #pod Current API available since 0.001.
+  #pod
+  #pod =cut
   
-  =head1 COPYRIGHT
+  # Win32 and some Unixes need parent path resolved separately so realpath
+  # doesn't throw an error resolving non-existent basename
+  sub realpath {
+      my $self = shift;
+      $self = $self->_resolve_symlinks;
+      require Cwd;
+      $self->_splitpath if !defined $self->[FILE];
+      my $check_parent =
+        length $self->[FILE] && $self->[FILE] ne '.' && $self->[FILE] ne '..';
+      my $realpath = eval {
+          # pure-perl Cwd can carp
+          local $SIG{__WARN__} = sub { };
+          Cwd::realpath( $check_parent ? $self->parent->[PATH] : $self->[PATH] );
+      };
+      # parent realpath must exist; not all Cwd::realpath will error if it doesn't
+      $self->_throw("resolving realpath")
+        unless defined $realpath && length $realpath && -e $realpath;
+      return ( $check_parent ? path( $realpath, $self->[FILE] ) : path($realpath) );
+  }
   
-  Copyright (c) 2004-14 by the Perl 5 Porters.  All rights reserved.
+  #pod =method relative
+  #pod
+  #pod     $rel = path("/tmp/foo/bar")->relative("/tmp"); # foo/bar
+  #pod
+  #pod Returns a C<Path::Tiny> object with a path relative to a new base path
+  #pod given as an argument.  If no argument is given, the current directory will
+  #pod be used as the new base path.
+  #pod
+  #pod If either path is already relative, it will be made absolute based on the
+  #pod current directly before determining the new relative path.
+  #pod
+  #pod The algorithm is roughly as follows:
+  #pod
+  #pod =for :list
+  #pod * If the original and new base path are on different volumes, an exception
+  #pod   will be thrown.
+  #pod * If the original and new base are identical, the relative path is C<".">.
+  #pod * If the new base subsumes the original, the relative path is the original
+  #pod   path with the new base chopped off the front
+  #pod * If the new base does not subsume the original, a common prefix path is
+  #pod   determined (possibly the root directory) and the relative path will
+  #pod   consist of updirs (C<"..">) to reach the common prefix, followed by the
+  #pod   original path less the common prefix.
+  #pod
+  #pod Unlike C<File::Spec::rel2abs>, in the last case above, the calculation based
+  #pod on a common prefix takes into account symlinks that could affect the updir
+  #pod process.  Given an original path "/A/B" and a new base "/A/C",
+  #pod (where "A", "B" and "C" could each have multiple path components):
+  #pod
+  #pod =for :list
+  #pod * Symlinks in "A" don't change the result unless the last component of A is
+  #pod   a symlink and the first component of "C" is an updir.
+  #pod * Symlinks in "B" don't change the result and will exist in the result as
+  #pod   given.
+  #pod * Symlinks and updirs in "C" must be resolved to actual paths, taking into
+  #pod   account the possibility that not all path components might exist on the
+  #pod   filesystem.
+  #pod
+  #pod Current API available since 0.001.  New algorithm (that accounts for
+  #pod symlinks) available since 0.079.
+  #pod
+  #pod =cut
   
-  This program is free software; you can redistribute it and/or modify
-  it under the same terms as Perl itself.
+  sub relative {
+      my ( $self, $base ) = @_;
+      $base = path( defined $base && length $base ? $base : '.' );
   
-  =head1 SEE ALSO
+      # relative paths must be converted to absolute first
+      $self = $self->absolute if $self->is_relative;
+      $base = $base->absolute if $base->is_relative;
   
-  See L<File::Spec> and L<File::Spec::Unix>.  This package overrides the
-  implementation of these methods, not the semantics.
+      # normalize volumes if they exist
+      $self = $self->absolute if !length $self->volume && length $base->volume;
+      $base = $base->absolute if length $self->volume  && !length $base->volume;
   
-  An explanation of VMS file specs can be found at
-  L<http://h71000.www7.hp.com/doc/731FINAL/4506/4506pro_014.html#apps_locating_naming_files>.
+      # can't make paths relative across volumes
+      if ( !_same( $self->volume, $base->volume ) ) {
+          Carp::croak("relative() can't cross volumes: '$self' vs '$base'");
+      }
   
-  =cut
+      # if same absolute path, relative is current directory
+      return path(".") if _same( $self->[PATH], $base->[PATH] );
+  
+      # if base is a prefix of self, chop prefix off self
+      if ( $base->subsumes($self) ) {
+          $base = "" if $base->is_rootdir;
+          my $relative = "$self";
+          $relative =~ s{\A\Q$base/}{};
+          return path($relative);
+      }
+  
+      # base is not a prefix, so must find a common prefix (even if root)
+      my ( @common, @self_parts, @base_parts );
+      @base_parts = split /\//, $base->_just_filepath;
+  
+      # if self is rootdir, then common directory is root (shown as empty
+      # string for later joins); otherwise, must be computed from path parts.
+      if ( $self->is_rootdir ) {
+          @common = ("");
+          shift @base_parts;
+      }
+      else {
+          @self_parts = split /\//, $self->_just_filepath;
+  
+          while ( @self_parts && @base_parts && _same( $self_parts[0], $base_parts[0] ) ) {
+              push @common, shift @base_parts;
+              shift @self_parts;
+          }
+      }
+  
+      # if there are any symlinks from common to base, we have a problem, as
+      # you can't guarantee that updir from base reaches the common prefix;
+      # we must resolve symlinks and try again; likewise, any updirs are
+      # a problem as it throws off calculation of updirs needed to get from
+      # self's path to the common prefix.
+      if ( my $new_base = $self->_resolve_between( \@common, \@base_parts ) ) {
+          return $self->relative($new_base);
+      }
+  
+      # otherwise, symlinks in common or from common to A don't matter as
+      # those don't involve updirs
+      my @new_path = ( ("..") x ( 0+ @base_parts ), @self_parts );
+      return path(@new_path);
+  }
+  
+  sub _just_filepath {
+      my $self     = shift;
+      my $self_vol = $self->volume;
+      return "$self" if !length $self_vol;
+  
+      ( my $self_path = "$self" ) =~ s{\A\Q$self_vol}{};
+  
+      return $self_path;
+  }
+  
+  sub _resolve_between {
+      my ( $self, $common, $base ) = @_;
+      my $path = $self->volume . join( "/", @$common );
+      my $changed = 0;
+      for my $p (@$base) {
+          $path .= "/$p";
+          if ( $p eq '..' ) {
+              $changed = 1;
+              if ( -e $path ) {
+                  $path = path($path)->realpath->[PATH];
+              }
+              else {
+                  $path =~ s{/[^/]+/..$}{/};
+              }
+          }
+          if ( -l $path ) {
+              $changed = 1;
+              $path    = path($path)->realpath->[PATH];
+          }
+      }
+      return $changed ? path($path) : undef;
+  }
+  
+  #pod =method remove
+  #pod
+  #pod     path("foo.txt")->remove;
+  #pod
+  #pod This is just like C<unlink>, except for its error handling: if the path does
+  #pod not exist, it returns false; if deleting the file fails, it throws an
+  #pod exception.
+  #pod
+  #pod Current API available since 0.012.
+  #pod
+  #pod =cut
+  
+  sub remove {
+      my $self = shift;
+  
+      return 0 if !-e $self->[PATH] && !-l $self->[PATH];
+  
+      return unlink( $self->[PATH] ) || $self->_throw('unlink');
+  }
+  
+  #pod =method remove_tree
+  #pod
+  #pod     # directory
+  #pod     path("foo/bar/baz")->remove_tree;
+  #pod     path("foo/bar/baz")->remove_tree( \%options );
+  #pod     path("foo/bar/baz")->remove_tree( { safe => 0 } ); # force remove
+  #pod
+  #pod Like calling C<remove_tree> from L<File::Path>, but defaults to C<safe> mode.
+  #pod An optional hash reference is passed through to C<remove_tree>.  Errors will be
+  #pod trapped and an exception thrown.  Returns the number of directories deleted,
+  #pod just like C<remove_tree>.
+  #pod
+  #pod If you want to remove a directory only if it is empty, use the built-in
+  #pod C<rmdir> function instead.
+  #pod
+  #pod     rmdir path("foo/bar/baz/");
+  #pod
+  #pod Current API available since 0.013.
+  #pod
+  #pod =cut
+  
+  sub remove_tree {
+      my ( $self, $args ) = @_;
+      return 0 if !-e $self->[PATH] && !-l $self->[PATH];
+      $args = {} unless ref $args eq 'HASH';
+      my $err;
+      $args->{error} = \$err unless defined $args->{error};
+      $args->{safe}  = 1     unless defined $args->{safe};
+      require File::Path;
+      my $count = File::Path::remove_tree( $self->[PATH], $args );
+  
+      if ( $err && @$err ) {
+          my ( $file, $message ) = %{ $err->[0] };
+          Carp::croak("remove_tree failed for $file: $message");
+      }
+      return $count;
+  }
+  
+  #pod =method sibling
+  #pod
+  #pod     $foo = path("/tmp/foo.txt");
+  #pod     $sib = $foo->sibling("bar.txt");        # /tmp/bar.txt
+  #pod     $sib = $foo->sibling("baz", "bam.txt"); # /tmp/baz/bam.txt
+  #pod
+  #pod Returns a new C<Path::Tiny> object relative to the parent of the original.
+  #pod This is slightly more efficient than C<< $path->parent->child(...) >>.
+  #pod
+  #pod Current API available since 0.058.
+  #pod
+  #pod =cut
+  
+  sub sibling {
+      my $self = shift;
+      return path( $self->parent->[PATH], @_ );
+  }
+  
+  #pod =method slurp, slurp_raw, slurp_utf8
+  #pod
+  #pod     $data = path("foo.txt")->slurp;
+  #pod     $data = path("foo.txt")->slurp( {binmode => ":raw"} );
+  #pod     $data = path("foo.txt")->slurp_raw;
+  #pod     $data = path("foo.txt")->slurp_utf8;
+  #pod
+  #pod Reads file contents into a scalar.  Takes an optional hash reference which may
+  #pod be used to pass options.  The only available option is C<binmode>, which is
+  #pod passed to C<binmode()> on the handle used for reading.
+  #pod
+  #pod C<slurp_raw> is like C<slurp> with a C<binmode> of C<:unix> for
+  #pod a fast, unbuffered, raw read.
+  #pod
+  #pod C<slurp_utf8> is like C<slurp> with a C<binmode> of
+  #pod C<:unix:encoding(UTF-8)> (or L<PerlIO::utf8_strict>).  If L<Unicode::UTF8>
+  #pod 0.58+ is installed, a raw slurp will be done instead and the result decoded
+  #pod with C<Unicode::UTF8>.  This is just as strict and is roughly an order of
+  #pod magnitude faster than using C<:encoding(UTF-8)>.
+  #pod
+  #pod B<Note>: C<slurp> and friends lock the filehandle before slurping.  If
+  #pod you plan to slurp from a file created with L<File::Temp>, be sure to
+  #pod close other handles or open without locking to avoid a deadlock:
+  #pod
+  #pod     my $tempfile = File::Temp->new(EXLOCK => 0);
+  #pod     my $guts = path($tempfile)->slurp;
+  #pod
+  #pod Current API available since 0.004.
+  #pod
+  #pod =cut
+  
+  sub slurp {
+      my $self    = shift;
+      my $args    = _get_args( shift, qw/binmode/ );
+      my $binmode = $args->{binmode};
+      $binmode = ( ( caller(0) )[10] || {} )->{'open<'} unless defined $binmode;
+      my $fh = $self->filehandle( { locked => 1 }, "<", $binmode );
+      if ( ( defined($binmode) ? $binmode : "" ) eq ":unix"
+          and my $size = -s $fh )
+      {
+          my $buf;
+          read $fh, $buf, $size; # File::Slurp in a nutshell
+          return $buf;
+      }
+      else {
+          local $/;
+          return scalar <$fh>;
+      }
+  }
+  
+  sub slurp_raw { $_[1] = { binmode => ":unix" }; goto &slurp }
+  
+  sub slurp_utf8 {
+      if ( defined($HAS_UU) ? $HAS_UU : ( $HAS_UU = _check_UU() ) ) {
+          return Unicode::UTF8::decode_utf8( slurp( $_[0], { binmode => ":unix" } ) );
+      }
+      elsif ( defined($HAS_PU) ? $HAS_PU : ( $HAS_PU = _check_PU() ) ) {
+          $_[1] = { binmode => ":unix:utf8_strict" };
+          goto &slurp;
+      }
+      else {
+          $_[1] = { binmode => ":raw:encoding(UTF-8)" };
+          goto &slurp;
+      }
+  }
+  
+  #pod =method spew, spew_raw, spew_utf8
+  #pod
+  #pod     path("foo.txt")->spew(@data);
+  #pod     path("foo.txt")->spew(\@data);
+  #pod     path("foo.txt")->spew({binmode => ":raw"}, @data);
+  #pod     path("foo.txt")->spew_raw(@data);
+  #pod     path("foo.txt")->spew_utf8(@data);
+  #pod
+  #pod Writes data to a file atomically.  The file is written to a temporary file in
+  #pod the same directory, then renamed over the original.  An optional hash reference
+  #pod may be used to pass options.  The only option is C<binmode>, which is passed to
+  #pod C<binmode()> on the handle used for writing.
+  #pod
+  #pod C<spew_raw> is like C<spew> with a C<binmode> of C<:unix> for a fast,
+  #pod unbuffered, raw write.
+  #pod
+  #pod C<spew_utf8> is like C<spew> with a C<binmode> of C<:unix:encoding(UTF-8)>
+  #pod (or L<PerlIO::utf8_strict>).  If L<Unicode::UTF8> 0.58+ is installed, a raw
+  #pod spew will be done instead on the data encoded with C<Unicode::UTF8>.
+  #pod
+  #pod B<NOTE>: because the file is written to a temporary file and then renamed, the
+  #pod new file will wind up with permissions based on your current umask.  This is a
+  #pod feature to protect you from a race condition that would otherwise give
+  #pod different permissions than you might expect.  If you really want to keep the
+  #pod original mode flags, use L</append> with the C<truncate> option.
+  #pod
+  #pod Current API available since 0.011.
+  #pod
+  #pod =cut
+  
+  # XXX add "unsafe" option to disable flocking and atomic?  Check benchmarks on append() first.
+  sub spew {
+      my ( $self, @data ) = @_;
+      my $args = ( @data && ref $data[0] eq 'HASH' ) ? shift @data : {};
+      $args = _get_args( $args, qw/binmode/ );
+      my $binmode = $args->{binmode};
+      # get default binmode from caller's lexical scope (see "perldoc open")
+      $binmode = ( ( caller(0) )[10] || {} )->{'open>'} unless defined $binmode;
+  
+      # spewing need to follow the link
+      # and create the tempfile in the same dir
+      my $resolved_path = $self->_resolve_symlinks;
+  
+      my $temp = path( $resolved_path . $$ . int( rand( 2**31 ) ) );
+      my $fh = $temp->filehandle( { exclusive => 1, locked => 1 }, ">", $binmode );
+      print {$fh} map { ref eq 'ARRAY' ? @$_ : $_ } @data;
+      close $fh or $self->_throw( 'close', $temp->[PATH] );
+  
+      return $temp->move($resolved_path);
+  }
+  
+  sub spew_raw { splice @_, 1, 0, { binmode => ":unix" }; goto &spew }
+  
+  sub spew_utf8 {
+      if ( defined($HAS_UU) ? $HAS_UU : ( $HAS_UU = _check_UU() ) ) {
+          my $self = shift;
+          spew(
+              $self,
+              { binmode => ":unix" },
+              map { Unicode::UTF8::encode_utf8($_) } map { ref eq 'ARRAY' ? @$_ : $_ } @_
+          );
+      }
+      elsif ( defined($HAS_PU) ? $HAS_PU : ( $HAS_PU = _check_PU() ) ) {
+          splice @_, 1, 0, { binmode => ":unix:utf8_strict" };
+          goto &spew;
+      }
+      else {
+          splice @_, 1, 0, { binmode => ":unix:encoding(UTF-8)" };
+          goto &spew;
+      }
+  }
+  
+  #pod =method stat, lstat
+  #pod
+  #pod     $stat = path("foo.txt")->stat;
+  #pod     $stat = path("/some/symlink")->lstat;
+  #pod
+  #pod Like calling C<stat> or C<lstat> from L<File::stat>.
+  #pod
+  #pod Current API available since 0.001.
+  #pod
+  #pod =cut
+  
+  # XXX break out individual stat() components as subs?
+  sub stat {
+      my $self = shift;
+      require File::stat;
+      return File::stat::stat( $self->[PATH] ) || $self->_throw('stat');
+  }
+  
+  sub lstat {
+      my $self = shift;
+      require File::stat;
+      return File::stat::lstat( $self->[PATH] ) || $self->_throw('lstat');
+  }
+  
+  #pod =method stringify
+  #pod
+  #pod     $path = path("foo.txt");
+  #pod     say $path->stringify; # same as "$path"
+  #pod
+  #pod Returns a string representation of the path.  Unlike C<canonpath>, this method
+  #pod returns the path standardized with Unix-style C</> directory separators.
+  #pod
+  #pod Current API available since 0.001.
+  #pod
+  #pod =cut
+  
+  sub stringify { $_[0]->[PATH] }
+  
+  #pod =method subsumes
+  #pod
+  #pod     path("foo/bar")->subsumes("foo/bar/baz"); # true
+  #pod     path("/foo/bar")->subsumes("/foo/baz");   # false
+  #pod
+  #pod Returns true if the first path is a prefix of the second path at a directory
+  #pod boundary.
+  #pod
+  #pod This B<does not> resolve parent directory entries (C<..>) or symlinks:
+  #pod
+  #pod     path("foo/bar")->subsumes("foo/bar/../baz"); # true
+  #pod
+  #pod If such things are important to you, ensure that both paths are resolved to
+  #pod the filesystem with C<realpath>:
+  #pod
+  #pod     my $p1 = path("foo/bar")->realpath;
+  #pod     my $p2 = path("foo/bar/../baz")->realpath;
+  #pod     if ( $p1->subsumes($p2) ) { ... }
+  #pod
+  #pod Current API available since 0.048.
+  #pod
+  #pod =cut
+  
+  sub subsumes {
+      my $self = shift;
+      Carp::croak("subsumes() requires a defined, positive-length argument")
+        unless defined $_[0];
+      my $other = path(shift);
+  
+      # normalize absolute vs relative
+      if ( $self->is_absolute && !$other->is_absolute ) {
+          $other = $other->absolute;
+      }
+      elsif ( $other->is_absolute && !$self->is_absolute ) {
+          $self = $self->absolute;
+      }
+  
+      # normalize volume vs non-volume; do this after absolute path
+      # adjustments above since that might add volumes already
+      if ( length $self->volume && !length $other->volume ) {
+          $other = $other->absolute;
+      }
+      elsif ( length $other->volume && !length $self->volume ) {
+          $self = $self->absolute;
+      }
+  
+      if ( $self->[PATH] eq '.' ) {
+          return !!1; # cwd subsumes everything relative
+      }
+      elsif ( $self->is_rootdir ) {
+          # a root directory ("/", "c:/") already ends with a separator
+          return $other->[PATH] =~ m{^\Q$self->[PATH]\E};
+      }
+      else {
+          # exact match or prefix breaking at a separator
+          return $other->[PATH] =~ m{^\Q$self->[PATH]\E(?:/|$)};
+      }
+  }
+  
+  #pod =method touch
+  #pod
+  #pod     path("foo.txt")->touch;
+  #pod     path("foo.txt")->touch($epoch_secs);
+  #pod
+  #pod Like the Unix C<touch> utility.  Creates the file if it doesn't exist, or else
+  #pod changes the modification and access times to the current time.  If the first
+  #pod argument is the epoch seconds then it will be used.
+  #pod
+  #pod Returns the path object so it can be easily chained with other methods:
+  #pod
+  #pod     # won't die if foo.txt doesn't exist
+  #pod     $content = path("foo.txt")->touch->slurp;
+  #pod
+  #pod Current API available since 0.015.
+  #pod
+  #pod =cut
+  
+  sub touch {
+      my ( $self, $epoch ) = @_;
+      if ( !-e $self->[PATH] ) {
+          my $fh = $self->openw;
+          close $fh or $self->_throw('close');
+      }
+      if ( defined $epoch ) {
+          utime $epoch, $epoch, $self->[PATH]
+            or $self->_throw("utime ($epoch)");
+      }
+      else {
+          # literal undef prevents warnings :-(
+          utime undef, undef, $self->[PATH]
+            or $self->_throw("utime ()");
+      }
+      return $self;
+  }
+  
+  #pod =method touchpath
+  #pod
+  #pod     path("bar/baz/foo.txt")->touchpath;
+  #pod
+  #pod Combines C<mkpath> and C<touch>.  Creates the parent directory if it doesn't exist,
+  #pod before touching the file.  Returns the path object like C<touch> does.
+  #pod
+  #pod Current API available since 0.022.
+  #pod
+  #pod =cut
+  
+  sub touchpath {
+      my ($self) = @_;
+      my $parent = $self->parent;
+      $parent->mkpath unless $parent->exists;
+      $self->touch;
+  }
+  
+  #pod =method visit
+  #pod
+  #pod     path("/tmp")->visit( \&callback, \%options );
+  #pod
+  #pod Executes a callback for each child of a directory.  It returns a hash
+  #pod reference with any state accumulated during iteration.
+  #pod
+  #pod The options are the same as for L</iterator> (which it uses internally):
+  #pod C<recurse> and C<follow_symlinks>.  Both default to false.
+  #pod
+  #pod The callback function will receive a C<Path::Tiny> object as the first argument
+  #pod and a hash reference to accumulate state as the second argument.  For example:
+  #pod
+  #pod     # collect files sizes
+  #pod     my $sizes = path("/tmp")->visit(
+  #pod         sub {
+  #pod             my ($path, $state) = @_;
+  #pod             return if $path->is_dir;
+  #pod             $state->{$path} = -s $path;
+  #pod         },
+  #pod         { recurse => 1 }
+  #pod     );
+  #pod
+  #pod For convenience, the C<Path::Tiny> object will also be locally aliased as the
+  #pod C<$_> global variable:
+  #pod
+  #pod     # print paths matching /foo/
+  #pod     path("/tmp")->visit( sub { say if /foo/ }, { recurse => 1} );
+  #pod
+  #pod If the callback returns a B<reference> to a false scalar value, iteration will
+  #pod terminate.  This is not the same as "pruning" a directory search; this just
+  #pod stops all iteration and returns the state hash reference.
+  #pod
+  #pod     # find up to 10 files larger than 100K
+  #pod     my $files = path("/tmp")->visit(
+  #pod         sub {
+  #pod             my ($path, $state) = @_;
+  #pod             $state->{$path}++ if -s $path > 102400
+  #pod             return \0 if keys %$state == 10;
+  #pod         },
+  #pod         { recurse => 1 }
+  #pod     );
+  #pod
+  #pod If you want more flexible iteration, use a module like L<Path::Iterator::Rule>.
+  #pod
+  #pod Current API available since 0.062.
+  #pod
+  #pod =cut
+  
+  sub visit {
+      my $self = shift;
+      my $cb   = shift;
+      my $args = _get_args( shift, qw/recurse follow_symlinks/ );
+      Carp::croak("Callback for visit() must be a code reference")
+        unless defined($cb) && ref($cb) eq 'CODE';
+      my $next  = $self->iterator($args);
+      my $state = {};
+      while ( my $file = $next->() ) {
+          local $_ = $file;
+          my $r = $cb->( $file, $state );
+          last if ref($r) eq 'SCALAR' && !$$r;
+      }
+      return $state;
+  }
+  
+  #pod =method volume
+  #pod
+  #pod     $vol = path("/tmp/foo.txt")->volume;   # ""
+  #pod     $vol = path("C:/tmp/foo.txt")->volume; # "C:"
+  #pod
+  #pod Returns the volume portion of the path.  This is equivalent
+  #pod to what L<File::Spec> would give from C<splitpath> and thus
+  #pod usually is the empty string on Unix-like operating systems or the
+  #pod drive letter for an absolute path on C<MSWin32>.
+  #pod
+  #pod Current API available since 0.001.
+  #pod
+  #pod =cut
+  
+  sub volume {
+      my ($self) = @_;
+      $self->_splitpath unless defined $self->[VOL];
+      return $self->[VOL];
+  }
+  
+  package Path::Tiny::Error;
+  
+  our @CARP_NOT = qw/Path::Tiny/;
+  
+  use overload ( q{""} => sub { (shift)->{msg} }, fallback => 1 );
+  
+  sub throw {
+      my ( $class, $op, $file, $err ) = @_;
+      chomp( my $trace = Carp::shortmess );
+      my $msg = "Error $op on '$file': $err$trace\n";
+      die bless { op => $op, file => $file, err => $err, msg => $msg }, $class;
+  }
   
   1;
-PERL_5.22.1_FILE_SPEC_VMS
-
-$fatpacked{"perl/5.22.1/File/Spec/Win32.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PERL_5.22.1_FILE_SPEC_WIN32';
-  package File::Spec::Win32;
   
-  use strict;
   
-  use vars qw(@ISA $VERSION);
-  require File::Spec::Unix;
+  # vim: ts=4 sts=4 sw=4 et:
   
-  $VERSION = '3.62';
-  $VERSION =~ tr/_//d;
+  __END__
   
-  @ISA = qw(File::Spec::Unix);
+  =pod
   
-  # Some regexes we use for path splitting
-  my $DRIVE_RX = '[a-zA-Z]:';
-  my $UNC_RX = '(?:\\\\\\\\|//)[^\\\\/]+[\\\\/][^\\\\/]+';
-  my $VOL_RX = "(?:$DRIVE_RX|$UNC_RX)";
-  
+  =encoding UTF-8
   
   =head1 NAME
   
-  File::Spec::Win32 - methods for Win32 file specs
+  Path::Tiny - File path utility
+  
+  =head1 VERSION
+  
+  version 0.098
   
   =head1 SYNOPSIS
   
-   require File::Spec::Win32; # Done internally by File::Spec if needed
+    use Path::Tiny;
+  
+    # creating Path::Tiny objects
+  
+    $dir = path("/tmp");
+    $foo = path("foo.txt");
+  
+    $subdir = $dir->child("foo");
+    $bar = $subdir->child("bar.txt");
+  
+    # stringifies as cleaned up path
+  
+    $file = path("./foo.txt");
+    print $file; # "foo.txt"
+  
+    # reading files
+  
+    $guts = $file->slurp;
+    $guts = $file->slurp_utf8;
+  
+    @lines = $file->lines;
+    @lines = $file->lines_utf8;
+  
+    ($head) = $file->lines( {count => 1} );
+    ($tail) = $file->lines( {count => -1} );
+  
+    # writing files
+  
+    $bar->spew( @data );
+    $bar->spew_utf8( @data );
+  
+    # reading directories
+  
+    for ( $dir->children ) { ... }
+  
+    $iter = $dir->iterator;
+    while ( my $next = $iter->() ) { ... }
   
   =head1 DESCRIPTION
   
-  See File::Spec::Unix for a documentation of the methods provided
-  there. This package overrides the implementation of these methods, not
-  the semantics.
+  This module provides a small, fast utility for working with file paths.  It is
+  friendlier to use than L<File::Spec> and provides easy access to functions from
+  several other core file handling modules.  It aims to be smaller and faster
+  than many alternatives on CPAN, while helping people do many common things in
+  consistent and less error-prone ways.
+  
+  Path::Tiny does not try to work for anything except Unix-like and Win32
+  platforms.  Even then, it might break if you try something particularly obscure
+  or tortuous.  (Quick!  What does this mean:
+  C<< ///../../..//./././a//b/.././c/././ >>?  And how does it differ on Win32?)
+  
+  All paths are forced to have Unix-style forward slashes.  Stringifying
+  the object gives you back the path (after some clean up).
+  
+  File input/output methods C<flock> handles before reading or writing,
+  as appropriate (if supported by the platform).
+  
+  The C<*_utf8> methods (C<slurp_utf8>, C<lines_utf8>, etc.) operate in raw
+  mode.  On Windows, that means they will not have CRLF translation from the
+  C<:crlf> IO layer.  Installing L<Unicode::UTF8> 0.58 or later will speed up
+  C<*_utf8> situations in many cases and is highly recommended.
+  Alternatively, installing L<PerlIO::utf8_strict> 0.003 or later will be
+  used in place of the default C<:encoding(UTF-8)>.
+  
+  This module depends heavily on PerlIO layers for correct operation and thus
+  requires Perl 5.008001 or later.
+  
+  =head1 CONSTRUCTORS
+  
+  =head2 path
+  
+      $path = path("foo/bar");
+      $path = path("/tmp", "file.txt"); # list
+      $path = path(".");                # cwd
+      $path = path("~user/file.txt");   # tilde processing
+  
+  Constructs a C<Path::Tiny> object.  It doesn't matter if you give a file or
+  directory path.  It's still up to you to call directory-like methods only on
+  directories and file-like methods only on files.  This function is exported
+  automatically by default.
+  
+  The first argument must be defined and have non-zero length or an exception
+  will be thrown.  This prevents subtle, dangerous errors with code like
+  C<< path( maybe_undef() )->remove_tree >>.
+  
+  If the first component of the path is a tilde ('~') then the component will be
+  replaced with the output of C<glob('~')>.  If the first component of the path
+  is a tilde followed by a user name then the component will be replaced with
+  output of C<glob('~username')>.  Behaviour for non-existent users depends on
+  the output of C<glob> on the system.
+  
+  On Windows, if the path consists of a drive identifier without a path component
+  (C<C:> or C<D:>), it will be expanded to the absolute path of the current
+  directory on that volume using C<Cwd::getdcwd()>.
+  
+  If called with a single C<Path::Tiny> argument, the original is returned unless
+  the original is holding a temporary file or directory reference in which case a
+  stringified copy is made.
+  
+      $path = path("foo/bar");
+      $temp = Path::Tiny->tempfile;
+  
+      $p2 = path($path); # like $p2 = $path
+      $t2 = path($temp); # like $t2 = path( "$temp" )
+  
+  This optimizes copies without proliferating references unexpectedly if a copy is
+  made by code outside your control.
+  
+  Current API available since 0.017.
+  
+  =head2 new
+  
+      $path = Path::Tiny->new("foo/bar");
+  
+  This is just like C<path>, but with method call overhead.  (Why would you
+  do that?)
+  
+  Current API available since 0.001.
+  
+  =head2 cwd
+  
+      $path = Path::Tiny->cwd; # path( Cwd::getcwd )
+      $path = cwd; # optional export
+  
+  Gives you the absolute path to the current directory as a C<Path::Tiny> object.
+  This is slightly faster than C<< path(".")->absolute >>.
+  
+  C<cwd> may be exported on request and used as a function instead of as a
+  method.
+  
+  Current API available since 0.018.
+  
+  =head2 rootdir
+  
+      $path = Path::Tiny->rootdir; # /
+      $path = rootdir;             # optional export 
+  
+  Gives you C<< File::Spec->rootdir >> as a C<Path::Tiny> object if you're too
+  picky for C<path("/")>.
+  
+  C<rootdir> may be exported on request and used as a function instead of as a
+  method.
+  
+  Current API available since 0.018.
+  
+  =head2 tempfile, tempdir
+  
+      $temp = Path::Tiny->tempfile( @options );
+      $temp = Path::Tiny->tempdir( @options );
+      $temp = tempfile( @options ); # optional export
+      $temp = tempdir( @options );  # optional export
+  
+  C<tempfile> passes the options to C<< File::Temp->new >> and returns a C<Path::Tiny>
+  object with the file name.  The C<TMPDIR> option is enabled by default.
+  
+  The resulting C<File::Temp> object is cached. When the C<Path::Tiny> object is
+  destroyed, the C<File::Temp> object will be as well.
+  
+  C<File::Temp> annoyingly requires you to specify a custom template in slightly
+  different ways depending on which function or method you call, but
+  C<Path::Tiny> lets you ignore that and can take either a leading template or a
+  C<TEMPLATE> option and does the right thing.
+  
+      $temp = Path::Tiny->tempfile( "customXXXXXXXX" );             # ok
+      $temp = Path::Tiny->tempfile( TEMPLATE => "customXXXXXXXX" ); # ok
+  
+  The tempfile path object will be normalized to have an absolute path, even if
+  created in a relative directory using C<DIR>.  If you want it to have
+  the C<realpath> instead, pass a leading options hash like this:
+  
+      $real_temp = tempfile({realpath => 1}, @options);
+  
+  C<tempdir> is just like C<tempfile>, except it calls
+  C<< File::Temp->newdir >> instead.
+  
+  Both C<tempfile> and C<tempdir> may be exported on request and used as
+  functions instead of as methods.
+  
+  B<Note>: for tempfiles, the filehandles from File::Temp are closed and not
+  reused.  This is not as secure as using File::Temp handles directly, but is
+  less prone to deadlocks or access problems on some platforms.  Think of what
+  C<Path::Tiny> gives you to be just a temporary file B<name> that gets cleaned
+  up.
+  
+  B<Note 2>: if you don't want these cleaned up automatically when the object
+  is destroyed, File::Temp requires different options for directories and
+  files.  Use C<< CLEANUP => 0 >> for directories and C<< UNLINK => 0 >> for
+  files.
+  
+  B<Note 3>: Don't lose the temporary object by chaining a method call instead
+  of storing it:
+  
+      my $lost = tempdir()->child("foo"); # tempdir cleaned up right away
+  
+  Current API available since 0.097.
+  
+  =head1 METHODS
+  
+  =head2 absolute
+  
+      $abs = path("foo/bar")->absolute;
+      $abs = path("foo/bar")->absolute("/tmp");
+  
+  Returns a new C<Path::Tiny> object with an absolute path (or itself if already
+  absolute).  Unless an argument is given, the current directory is used as the
+  absolute base path.  The argument must be absolute or you won't get an absolute
+  result.
+  
+  This will not resolve upward directories ("foo/../bar") unless C<canonpath>
+  in L<File::Spec> would normally do so on your platform.  If you need them
+  resolved, you must call the more expensive C<realpath> method instead.
+  
+  On Windows, an absolute path without a volume component will have it added
+  based on the current drive.
+  
+  Current API available since 0.001.
+  
+  =head2 append, append_raw, append_utf8
+  
+      path("foo.txt")->append(@data);
+      path("foo.txt")->append(\@data);
+      path("foo.txt")->append({binmode => ":raw"}, @data);
+      path("foo.txt")->append_raw(@data);
+      path("foo.txt")->append_utf8(@data);
+  
+  Appends data to a file.  The file is locked with C<flock> prior to writing.  An
+  optional hash reference may be used to pass options.  Valid options are:
   
   =over 4
   
-  =item devnull
+  =item *
   
-  Returns a string representation of the null device.
+  C<binmode>: passed to C<binmode()> on the handle used for writing.
   
-  =cut
+  =item *
   
-  sub devnull {
-      return "nul";
-  }
-  
-  sub rootdir { '\\' }
-  
-  
-  =item tmpdir
-  
-  Returns a string representation of the first existing directory
-  from the following list:
-  
-      $ENV{TMPDIR}
-      $ENV{TEMP}
-      $ENV{TMP}
-      SYS:/temp
-      C:\system\temp
-      C:/temp
-      /tmp
-      /
-  
-  The SYS:/temp is preferred in Novell NetWare and the C:\system\temp
-  for Symbian (the File::Spec::Win32 is used also for those platforms).
-  
-  If running under taint mode, and if the environment
-  variables are tainted, they are not used.
-  
-  =cut
-  
-  sub tmpdir {
-      my $tmpdir = $_[0]->_cached_tmpdir(qw(TMPDIR TEMP TMP));
-      return $tmpdir if defined $tmpdir;
-      $tmpdir = $_[0]->_tmpdir( map( $ENV{$_}, qw(TMPDIR TEMP TMP) ),
-  			      'SYS:/temp',
-  			      'C:\system\temp',
-  			      'C:/temp',
-  			      '/tmp',
-  			      '/'  );
-      $_[0]->_cache_tmpdir($tmpdir, qw(TMPDIR TEMP TMP));
-  }
-  
-  =item case_tolerant
-  
-  MSWin32 case-tolerance depends on GetVolumeInformation() $ouFsFlags == FS_CASE_SENSITIVE,
-  indicating the case significance when comparing file specifications.
-  Since XP FS_CASE_SENSITIVE is effectively disabled for the NT subsubsystem.
-  See http://cygwin.com/ml/cygwin/2007-07/msg00891.html
-  Default: 1
-  
-  =cut
-  
-  sub case_tolerant {
-    eval { require Win32API::File; } or return 1;
-    my $drive = shift || "C:";
-    my $osFsType = "\0"x256;
-    my $osVolName = "\0"x256;
-    my $ouFsFlags = 0;
-    Win32API::File::GetVolumeInformation($drive, $osVolName, 256, [], [], $ouFsFlags, $osFsType, 256 );
-    if ($ouFsFlags & Win32API::File::FS_CASE_SENSITIVE()) { return 0; }
-    else { return 1; }
-  }
-  
-  =item file_name_is_absolute
-  
-  As of right now, this returns 2 if the path is absolute with a
-  volume, 1 if it's absolute with no volume, 0 otherwise.
-  
-  =cut
-  
-  sub file_name_is_absolute {
-  
-      my ($self,$file) = @_;
-  
-      if ($file =~ m{^($VOL_RX)}o) {
-        my $vol = $1;
-        return ($vol =~ m{^$UNC_RX}o ? 2
-  	      : $file =~ m{^$DRIVE_RX[\\/]}o ? 2
-  	      : 0);
-      }
-      return $file =~  m{^[\\/]} ? 1 : 0;
-  }
-  
-  =item catfile
-  
-  Concatenate one or more directory names and a filename to form a
-  complete path ending with a filename
-  
-  =cut
-  
-  sub catfile {
-      shift;
-  
-      # Legacy / compatibility support
-      #
-      shift, return _canon_cat( "/", @_ )
-  	if $_[0] eq "";
-  
-      # Compatibility with File::Spec <= 3.26:
-      #     catfile('A:', 'foo') should return 'A:\foo'.
-      return _canon_cat( ($_[0].'\\'), @_[1..$#_] )
-          if $_[0] =~ m{^$DRIVE_RX\z}o;
-  
-      return _canon_cat( @_ );
-  }
-  
-  sub catdir {
-      shift;
-  
-      # Legacy / compatibility support
-      #
-      return ""
-      	unless @_;
-      shift, return _canon_cat( "/", @_ )
-  	if $_[0] eq "";
-  
-      # Compatibility with File::Spec <= 3.26:
-      #     catdir('A:', 'foo') should return 'A:\foo'.
-      return _canon_cat( ($_[0].'\\'), @_[1..$#_] )
-          if $_[0] =~ m{^$DRIVE_RX\z}o;
-  
-      return _canon_cat( @_ );
-  }
-  
-  sub path {
-      my @path = split(';', $ENV{PATH});
-      s/"//g for @path;
-      @path = grep length, @path;
-      unshift(@path, ".");
-      return @path;
-  }
-  
-  =item canonpath
-  
-  No physical check on the filesystem, but a logical cleanup of a
-  path. On UNIX eliminated successive slashes and successive "/.".
-  On Win32 makes 
-  
-  	dir1\dir2\dir3\..\..\dir4 -> \dir\dir4 and even
-  	dir1\dir2\dir3\...\dir4   -> \dir\dir4
-  
-  =cut
-  
-  sub canonpath {
-      # Legacy / compatibility support
-      #
-      return $_[1] if !defined($_[1]) or $_[1] eq '';
-      return _canon_cat( $_[1] );
-  }
-  
-  =item splitpath
-  
-     ($volume,$directories,$file) = File::Spec->splitpath( $path );
-     ($volume,$directories,$file) = File::Spec->splitpath( $path,
-                                                           $no_file );
-  
-  Splits a path into volume, directory, and filename portions. Assumes that 
-  the last file is a path unless the path ends in '\\', '\\.', '\\..'
-  or $no_file is true.  On Win32 this means that $no_file true makes this return 
-  ( $volume, $path, '' ).
-  
-  Separators accepted are \ and /.
-  
-  Volumes can be drive letters or UNC sharenames (\\server\share).
-  
-  The results can be passed to L</catpath> to get back a path equivalent to
-  (usually identical to) the original path.
-  
-  =cut
-  
-  sub splitpath {
-      my ($self,$path, $nofile) = @_;
-      my ($volume,$directory,$file) = ('','','');
-      if ( $nofile ) {
-          $path =~ 
-              m{^ ( $VOL_RX ? ) (.*) }sox;
-          $volume    = $1;
-          $directory = $2;
-      }
-      else {
-          $path =~ 
-              m{^ ( $VOL_RX ? )
-                  ( (?:.*[\\/](?:\.\.?\Z(?!\n))?)? )
-                  (.*)
-               }sox;
-          $volume    = $1;
-          $directory = $2;
-          $file      = $3;
-      }
-  
-      return ($volume,$directory,$file);
-  }
-  
-  
-  =item splitdir
-  
-  The opposite of L<catdir()|File::Spec/catdir>.
-  
-      @dirs = File::Spec->splitdir( $directories );
-  
-  $directories must be only the directory portion of the path on systems 
-  that have the concept of a volume or that have path syntax that differentiates
-  files from directories.
-  
-  Unlike just splitting the directories on the separator, leading empty and 
-  trailing directory entries can be returned, because these are significant
-  on some OSs. So,
-  
-      File::Spec->splitdir( "/a/b/c" );
-  
-  Yields:
-  
-      ( '', 'a', 'b', '', 'c', '' )
-  
-  =cut
-  
-  sub splitdir {
-      my ($self,$directories) = @_ ;
-      #
-      # split() likes to forget about trailing null fields, so here we
-      # check to be sure that there will not be any before handling the
-      # simple case.
-      #
-      if ( $directories !~ m|[\\/]\Z(?!\n)| ) {
-          return split( m|[\\/]|, $directories );
-      }
-      else {
-          #
-          # since there was a trailing separator, add a file name to the end, 
-          # then do the split, then replace it with ''.
-          #
-          my( @directories )= split( m|[\\/]|, "${directories}dummy" ) ;
-          $directories[ $#directories ]= '' ;
-          return @directories ;
-      }
-  }
-  
-  
-  =item catpath
-  
-  Takes volume, directory and file portions and returns an entire path. Under
-  Unix, $volume is ignored, and this is just like catfile(). On other OSs,
-  the $volume become significant.
-  
-  =cut
-  
-  sub catpath {
-      my ($self,$volume,$directory,$file) = @_;
-  
-      # If it's UNC, make sure the glue separator is there, reusing
-      # whatever separator is first in the $volume
-      my $v;
-      $volume .= $v
-          if ( (($v) = $volume =~ m@^([\\/])[\\/][^\\/]+[\\/][^\\/]+\Z(?!\n)@s) &&
-               $directory =~ m@^[^\\/]@s
-             ) ;
-  
-      $volume .= $directory ;
-  
-      # If the volume is not just A:, make sure the glue separator is 
-      # there, reusing whatever separator is first in the $volume if possible.
-      if ( $volume !~ m@^[a-zA-Z]:\Z(?!\n)@s &&
-           $volume =~ m@[^\\/]\Z(?!\n)@      &&
-           $file   =~ m@[^\\/]@
-         ) {
-          $volume =~ m@([\\/])@ ;
-          my $sep = $1 ? $1 : '\\' ;
-          $volume .= $sep ;
-      }
-  
-      $volume .= $file ;
-  
-      return $volume ;
-  }
-  
-  sub _same {
-    lc($_[1]) eq lc($_[2]);
-  }
-  
-  sub rel2abs {
-      my ($self,$path,$base ) = @_;
-  
-      my $is_abs = $self->file_name_is_absolute($path);
-  
-      # Check for volume (should probably document the '2' thing...)
-      return $self->canonpath( $path ) if $is_abs == 2;
-  
-      if ($is_abs) {
-        # It's missing a volume, add one
-        my $vol = ($self->splitpath( $self->_cwd() ))[0];
-        return $self->canonpath( $vol . $path );
-      }
-  
-      if ( !defined( $base ) || $base eq '' ) {
-        require Cwd ;
-        $base = Cwd::getdcwd( ($self->splitpath( $path ))[0] ) if defined &Cwd::getdcwd ;
-        $base = $self->_cwd() unless defined $base ;
-      }
-      elsif ( ! $self->file_name_is_absolute( $base ) ) {
-        $base = $self->rel2abs( $base ) ;
-      }
-      else {
-        $base = $self->canonpath( $base ) ;
-      }
-  
-      my ( $path_directories, $path_file ) =
-        ($self->splitpath( $path, 1 ))[1,2] ;
-  
-      my ( $base_volume, $base_directories ) =
-        $self->splitpath( $base, 1 ) ;
-  
-      $path = $self->catpath( 
-  			   $base_volume, 
-  			   $self->catdir( $base_directories, $path_directories ), 
-  			   $path_file
-  			  ) ;
-  
-      return $self->canonpath( $path ) ;
-  }
+  C<truncate>: truncates the file after locking and before appending
   
   =back
   
-  =head2 Note For File::Spec::Win32 Maintainers
+  The C<truncate> option is a way to replace the contents of a file
+  B<in place>, unlike L</spew> which writes to a temporary file and then
+  replaces the original (if it exists).
   
-  Novell NetWare inherits its File::Spec behaviour from File::Spec::Win32.
+  C<append_raw> is like C<append> with a C<binmode> of C<:unix> for fast,
+  unbuffered, raw write.
   
-  =head1 COPYRIGHT
+  C<append_utf8> is like C<append> with a C<binmode> of
+  C<:unix:encoding(UTF-8)> (or L<PerlIO::utf8_strict>).  If L<Unicode::UTF8>
+  0.58+ is installed, a raw append will be done instead on the data encoded
+  with C<Unicode::UTF8>.
   
-  Copyright (c) 2004,2007 by the Perl 5 Porters.  All rights reserved.
+  Current API available since 0.060.
   
-  This program is free software; you can redistribute it and/or modify
-  it under the same terms as Perl itself.
+  =head2 assert
+  
+      $path = path("foo.txt")->assert( sub { $_->exists } );
+  
+  Returns the invocant after asserting that a code reference argument returns
+  true.  When the assertion code reference runs, it will have the invocant
+  object in the C<$_> variable.  If it returns false, an exception will be
+  thrown.  The assertion code reference may also throw its own exception.
+  
+  If no assertion is provided, the invocant is returned without error.
+  
+  Current API available since 0.062.
+  
+  =head2 basename
+  
+      $name = path("foo/bar.txt")->basename;        # bar.txt
+      $name = path("foo.txt")->basename('.txt');    # foo
+      $name = path("foo.txt")->basename(qr/.txt/);  # foo
+      $name = path("foo.txt")->basename(@suffixes);
+  
+  Returns the file portion or last directory portion of a path.
+  
+  Given a list of suffixes as strings or regular expressions, any that match at
+  the end of the file portion or last directory portion will be removed before
+  the result is returned.
+  
+  Current API available since 0.054.
+  
+  =head2 canonpath
+  
+      $canonical = path("foo/bar")->canonpath; # foo\bar on Windows
+  
+  Returns a string with the canonical format of the path name for
+  the platform.  In particular, this means directory separators
+  will be C<\> on Windows.
+  
+  Current API available since 0.001.
+  
+  =head2 child
+  
+      $file = path("/tmp")->child("foo.txt"); # "/tmp/foo.txt"
+      $file = path("/tmp")->child(@parts);
+  
+  Returns a new C<Path::Tiny> object relative to the original.  Works
+  like C<catfile> or C<catdir> from File::Spec, but without caring about
+  file or directories.
+  
+  Current API available since 0.001.
+  
+  =head2 children
+  
+      @paths = path("/tmp")->children;
+      @paths = path("/tmp")->children( qr/\.txt$/ );
+  
+  Returns a list of C<Path::Tiny> objects for all files and directories
+  within a directory.  Excludes "." and ".." automatically.
+  
+  If an optional C<qr//> argument is provided, it only returns objects for child
+  names that match the given regular expression.  Only the base name is used
+  for matching:
+  
+      @paths = path("/tmp")->children( qr/^foo/ );
+      # matches children like the glob foo*
+  
+  Current API available since 0.028.
+  
+  =head2 chmod
+  
+      path("foo.txt")->chmod(0777);
+      path("foo.txt")->chmod("0755");
+      path("foo.txt")->chmod("go-w");
+      path("foo.txt")->chmod("a=r,u+wx");
+  
+  Sets file or directory permissions.  The argument can be a numeric mode, a
+  octal string beginning with a "0" or a limited subset of the symbolic mode use
+  by F</bin/chmod>.
+  
+  The symbolic mode must be a comma-delimited list of mode clauses.  Clauses must
+  match C<< qr/\A([augo]+)([=+-])([rwx]+)\z/ >>, which defines "who", "op" and
+  "perms" parameters for each clause.  Unlike F</bin/chmod>, all three parameters
+  are required for each clause, multiple ops are not allowed and permissions
+  C<stugoX> are not supported.  (See L<File::chmod> for more complex needs.)
+  
+  Current API available since 0.053.
+  
+  =head2 copy
+  
+      path("/tmp/foo.txt")->copy("/tmp/bar.txt");
+  
+  Copies the current path to the given destination using L<File::Copy>'s
+  C<copy> function. Upon success, returns the C<Path::Tiny> object for the
+  newly copied file.
+  
+  Current API available since 0.070.
+  
+  =head2 digest
+  
+      $obj = path("/tmp/foo.txt")->digest;        # SHA-256
+      $obj = path("/tmp/foo.txt")->digest("MD5"); # user-selected
+      $obj = path("/tmp/foo.txt")->digest( { chunk_size => 1e6 }, "MD5" );
+  
+  Returns a hexadecimal digest for a file.  An optional hash reference of options may
+  be given.  The only option is C<chunk_size>.  If C<chunk_size> is given, that many
+  bytes will be read at a time.  If not provided, the entire file will be slurped
+  into memory to compute the digest.
+  
+  Any subsequent arguments are passed to the constructor for L<Digest> to select
+  an algorithm.  If no arguments are given, the default is SHA-256.
+  
+  Current API available since 0.056.
+  
+  =head2 dirname (deprecated)
+  
+      $name = path("/tmp/foo.txt")->dirname; # "/tmp/"
+  
+  Returns the directory portion you would get from calling
+  C<< File::Spec->splitpath( $path->stringify ) >> or C<"."> for a path without a
+  parent directory portion.  Because L<File::Spec> is inconsistent, the result
+  might or might not have a trailing slash.  Because of this, this method is
+  B<deprecated>.
+  
+  A better, more consistently approach is likely C<< $path->parent->stringify >>,
+  which will not have a trailing slash except for a root directory.
+  
+  Deprecated in 0.056.
+  
+  =head2 edit, edit_raw, edit_utf8
+  
+      path("foo.txt")->edit( \&callback, $options );
+      path("foo.txt")->edit_utf8( \&callback );
+      path("foo.txt")->edit_raw( \&callback );
+  
+  These are convenience methods that allow "editing" a file using a single
+  callback argument. They slurp the file using C<slurp>, place the contents
+  inside a localized C<$_> variable, call the callback function (without
+  arguments), and then write C<$_> (presumably mutated) back to the
+  file with C<spew>.
+  
+  An optional hash reference may be used to pass options.  The only option is
+  C<binmode>, which is passed to C<slurp> and C<spew>.
+  
+  C<edit_utf8> and C<edit_raw> act like their respective C<slurp_*> and
+  C<spew_*> methods.
+  
+  Current API available since 0.077.
+  
+  =head2 edit_lines, edit_lines_utf8, edit_lines_raw
+  
+      path("foo.txt")->edit_lines( \&callback, $options );
+      path("foo.txt")->edit_lines_utf8( \&callback );
+      path("foo.txt")->edit_lines_raw( \&callback );
+  
+  These are convenience methods that allow "editing" a file's lines using a
+  single callback argument.  They iterate over the file: for each line, the
+  line is put into a localized C<$_> variable, the callback function is
+  executed (without arguments) and then C<$_> is written to a temporary file.
+  When iteration is finished, the temporary file is atomically renamed over
+  the original.
+  
+  An optional hash reference may be used to pass options.  The only option is
+  C<binmode>, which is passed to the method that open handles for reading and
+  writing.
+  
+  C<edit_lines_utf8> and C<edit_lines_raw> act like their respective
+  C<slurp_*> and C<spew_*> methods.
+  
+  Current API available since 0.077.
+  
+  =head2 exists, is_file, is_dir
+  
+      if ( path("/tmp")->exists ) { ... }     # -e
+      if ( path("/tmp")->is_dir ) { ... }     # -d
+      if ( path("/tmp")->is_file ) { ... }    # -e && ! -d
+  
+  Implements file test operations, this means the file or directory actually has
+  to exist on the filesystem.  Until then, it's just a path.
+  
+  B<Note>: C<is_file> is not C<-f> because C<-f> is not the opposite of C<-d>.
+  C<-f> means "plain file", excluding symlinks, devices, etc. that often can be
+  read just like files.
+  
+  Use C<-f> instead if you really mean to check for a plain file.
+  
+  Current API available since 0.053.
+  
+  =head2 filehandle
+  
+      $fh = path("/tmp/foo.txt")->filehandle($mode, $binmode);
+      $fh = path("/tmp/foo.txt")->filehandle({ locked => 1 }, $mode, $binmode);
+      $fh = path("/tmp/foo.txt")->filehandle({ exclusive => 1  }, $mode, $binmode);
+  
+  Returns an open file handle.  The C<$mode> argument must be a Perl-style
+  read/write mode string ("<" ,">", "<<", etc.).  If a C<$binmode>
+  is given, it is set during the C<open> call.
+  
+  An optional hash reference may be used to pass options.
+  
+  The C<locked> option governs file locking; if true, handles opened for writing,
+  appending or read-write are locked with C<LOCK_EX>; otherwise, they are
+  locked with C<LOCK_SH>.  When using C<locked>, ">" or "+>" modes will delay
+  truncation until after the lock is acquired.
+  
+  The C<exclusive> option causes the open() call to fail if the file already
+  exists.  This corresponds to the O_EXCL flag to sysopen / open(2).
+  C<exclusive> implies C<locked> and will set it for you if you forget it.
+  
+  See C<openr>, C<openw>, C<openrw>, and C<opena> for sugar.
+  
+  Current API available since 0.066.
+  
+  =head2 is_absolute, is_relative
+  
+      if ( path("/tmp")->is_absolute ) { ... }
+      if ( path("/tmp")->is_relative ) { ... }
+  
+  Booleans for whether the path appears absolute or relative.
+  
+  Current API available since 0.001.
+  
+  =head2 is_rootdir
+  
+      while ( ! $path->is_rootdir ) {
+          $path = $path->parent;
+          ...
+      }
+  
+  Boolean for whether the path is the root directory of the volume.  I.e. the
+  C<dirname> is C<q[/]> and the C<basename> is C<q[]>.
+  
+  This works even on C<MSWin32> with drives and UNC volumes:
+  
+      path("C:/")->is_rootdir;             # true
+      path("//server/share/")->is_rootdir; #true
+  
+  Current API available since 0.038.
+  
+  =head2 iterator
+  
+      $iter = path("/tmp")->iterator( \%options );
+  
+  Returns a code reference that walks a directory lazily.  Each invocation
+  returns a C<Path::Tiny> object or undef when the iterator is exhausted.
+  
+      $iter = path("/tmp")->iterator;
+      while ( $path = $iter->() ) {
+          ...
+      }
+  
+  The current and parent directory entries ("." and "..") will not
+  be included.
+  
+  If the C<recurse> option is true, the iterator will walk the directory
+  recursively, breadth-first.  If the C<follow_symlinks> option is also true,
+  directory links will be followed recursively.  There is no protection against
+  loops when following links. If a directory is not readable, it will not be
+  followed.
+  
+  The default is the same as:
+  
+      $iter = path("/tmp")->iterator( {
+          recurse         => 0,
+          follow_symlinks => 0,
+      } );
+  
+  For a more powerful, recursive iterator with built-in loop avoidance, see
+  L<Path::Iterator::Rule>.
+  
+  See also L</visit>.
+  
+  Current API available since 0.016.
+  
+  =head2 lines, lines_raw, lines_utf8
+  
+      @contents = path("/tmp/foo.txt")->lines;
+      @contents = path("/tmp/foo.txt")->lines(\%options);
+      @contents = path("/tmp/foo.txt")->lines_raw;
+      @contents = path("/tmp/foo.txt")->lines_utf8;
+  
+      @contents = path("/tmp/foo.txt")->lines( { chomp => 1, count => 4 } );
+  
+  Returns a list of lines from a file.  Optionally takes a hash-reference of
+  options.  Valid options are C<binmode>, C<count> and C<chomp>.
+  
+  If C<binmode> is provided, it will be set on the handle prior to reading.
+  
+  If a positive C<count> is provided, that many lines will be returned from the
+  start of the file.  If a negative C<count> is provided, the entire file will be
+  read, but only C<abs(count)> will be kept and returned.  If C<abs(count)>
+  exceeds the number of lines in the file, all lines will be returned.
+  
+  If C<chomp> is set, any end-of-line character sequences (C<CR>, C<CRLF>, or
+  C<LF>) will be removed from the lines returned.
+  
+  Because the return is a list, C<lines> in scalar context will return the number
+  of lines (and throw away the data).
+  
+      $number_of_lines = path("/tmp/foo.txt")->lines;
+  
+  C<lines_raw> is like C<lines> with a C<binmode> of C<:raw>.  We use C<:raw>
+  instead of C<:unix> so PerlIO buffering can manage reading by line.
+  
+  C<lines_utf8> is like C<lines> with a C<binmode> of C<:raw:encoding(UTF-8)>
+  (or L<PerlIO::utf8_strict>).  If L<Unicode::UTF8> 0.58+ is installed, a raw
+  UTF-8 slurp will be done and then the lines will be split.  This is
+  actually faster than relying on C<:encoding(UTF-8)>, though a bit memory
+  intensive.  If memory use is a concern, consider C<openr_utf8> and
+  iterating directly on the handle.
+  
+  Current API available since 0.065.
+  
+  =head2 mkpath
+  
+      path("foo/bar/baz")->mkpath;
+      path("foo/bar/baz")->mkpath( \%options );
+  
+  Like calling C<make_path> from L<File::Path>.  An optional hash reference
+  is passed through to C<make_path>.  Errors will be trapped and an exception
+  thrown.  Returns the list of directories created or an empty list if
+  the directories already exist, just like C<make_path>.
+  
+  Current API available since 0.001.
+  
+  =head2 move
+  
+      path("foo.txt")->move("bar.txt");
+  
+  Move the current path to the given destination path using Perl's
+  built-in L<rename|perlfunc/rename> function. Returns the result
+  of the C<rename> function.
+  
+  Current API available since 0.001.
+  
+  =head2 openr, openw, openrw, opena
+  
+      $fh = path("foo.txt")->openr($binmode);  # read
+      $fh = path("foo.txt")->openr_raw;
+      $fh = path("foo.txt")->openr_utf8;
+  
+      $fh = path("foo.txt")->openw($binmode);  # write
+      $fh = path("foo.txt")->openw_raw;
+      $fh = path("foo.txt")->openw_utf8;
+  
+      $fh = path("foo.txt")->opena($binmode);  # append
+      $fh = path("foo.txt")->opena_raw;
+      $fh = path("foo.txt")->opena_utf8;
+  
+      $fh = path("foo.txt")->openrw($binmode); # read/write
+      $fh = path("foo.txt")->openrw_raw;
+      $fh = path("foo.txt")->openrw_utf8;
+  
+  Returns a file handle opened in the specified mode.  The C<openr> style methods
+  take a single C<binmode> argument.  All of the C<open*> methods have
+  C<open*_raw> and C<open*_utf8> equivalents that use C<:raw> and
+  C<:raw:encoding(UTF-8)>, respectively.
+  
+  An optional hash reference may be used to pass options.  The only option is
+  C<locked>.  If true, handles opened for writing, appending or read-write are
+  locked with C<LOCK_EX>; otherwise, they are locked for C<LOCK_SH>.
+  
+      $fh = path("foo.txt")->openrw_utf8( { locked => 1 } );
+  
+  See L</filehandle> for more on locking.
+  
+  Current API available since 0.011.
+  
+  =head2 parent
+  
+      $parent = path("foo/bar/baz")->parent; # foo/bar
+      $parent = path("foo/wibble.txt")->parent; # foo
+  
+      $parent = path("foo/bar/baz")->parent(2); # foo
+  
+  Returns a C<Path::Tiny> object corresponding to the parent directory of the
+  original directory or file. An optional positive integer argument is the number
+  of parent directories upwards to return.  C<parent> by itself is equivalent to
+  C<parent(1)>.
+  
+  Current API available since 0.014.
+  
+  =head2 realpath
+  
+      $real = path("/baz/foo/../bar")->realpath;
+      $real = path("foo/../bar")->realpath;
+  
+  Returns a new C<Path::Tiny> object with all symbolic links and upward directory
+  parts resolved using L<Cwd>'s C<realpath>.  Compared to C<absolute>, this is
+  more expensive as it must actually consult the filesystem.
+  
+  If the parent path can't be resolved (e.g. if it includes directories that
+  don't exist), an exception will be thrown:
+  
+      $real = path("doesnt_exist/foo")->realpath; # dies
+  
+  However, if the parent path exists and only the last component (e.g. filename)
+  doesn't exist, the realpath will be the realpath of the parent plus the
+  non-existent last component:
+  
+      $real = path("./aasdlfasdlf")->realpath; # works
+  
+  The underlying L<Cwd> module usually worked this way on Unix, but died on
+  Windows (and some Unixes) if the full path didn't exist.  As of version 0.064,
+  it's safe to use anywhere.
+  
+  Current API available since 0.001.
+  
+  =head2 relative
+  
+      $rel = path("/tmp/foo/bar")->relative("/tmp"); # foo/bar
+  
+  Returns a C<Path::Tiny> object with a path relative to a new base path
+  given as an argument.  If no argument is given, the current directory will
+  be used as the new base path.
+  
+  If either path is already relative, it will be made absolute based on the
+  current directly before determining the new relative path.
+  
+  The algorithm is roughly as follows:
+  
+  =over 4
+  
+  =item *
+  
+  If the original and new base path are on different volumes, an exception will be thrown.
+  
+  =item *
+  
+  If the original and new base are identical, the relative path is C<".">.
+  
+  =item *
+  
+  If the new base subsumes the original, the relative path is the original path with the new base chopped off the front
+  
+  =item *
+  
+  If the new base does not subsume the original, a common prefix path is determined (possibly the root directory) and the relative path will consist of updirs (C<"..">) to reach the common prefix, followed by the original path less the common prefix.
+  
+  =back
+  
+  Unlike C<File::Spec::rel2abs>, in the last case above, the calculation based
+  on a common prefix takes into account symlinks that could affect the updir
+  process.  Given an original path "/A/B" and a new base "/A/C",
+  (where "A", "B" and "C" could each have multiple path components):
+  
+  =over 4
+  
+  =item *
+  
+  Symlinks in "A" don't change the result unless the last component of A is a symlink and the first component of "C" is an updir.
+  
+  =item *
+  
+  Symlinks in "B" don't change the result and will exist in the result as given.
+  
+  =item *
+  
+  Symlinks and updirs in "C" must be resolved to actual paths, taking into account the possibility that not all path components might exist on the filesystem.
+  
+  =back
+  
+  Current API available since 0.001.  New algorithm (that accounts for
+  symlinks) available since 0.079.
+  
+  =head2 remove
+  
+      path("foo.txt")->remove;
+  
+  This is just like C<unlink>, except for its error handling: if the path does
+  not exist, it returns false; if deleting the file fails, it throws an
+  exception.
+  
+  Current API available since 0.012.
+  
+  =head2 remove_tree
+  
+      # directory
+      path("foo/bar/baz")->remove_tree;
+      path("foo/bar/baz")->remove_tree( \%options );
+      path("foo/bar/baz")->remove_tree( { safe => 0 } ); # force remove
+  
+  Like calling C<remove_tree> from L<File::Path>, but defaults to C<safe> mode.
+  An optional hash reference is passed through to C<remove_tree>.  Errors will be
+  trapped and an exception thrown.  Returns the number of directories deleted,
+  just like C<remove_tree>.
+  
+  If you want to remove a directory only if it is empty, use the built-in
+  C<rmdir> function instead.
+  
+      rmdir path("foo/bar/baz/");
+  
+  Current API available since 0.013.
+  
+  =head2 sibling
+  
+      $foo = path("/tmp/foo.txt");
+      $sib = $foo->sibling("bar.txt");        # /tmp/bar.txt
+      $sib = $foo->sibling("baz", "bam.txt"); # /tmp/baz/bam.txt
+  
+  Returns a new C<Path::Tiny> object relative to the parent of the original.
+  This is slightly more efficient than C<< $path->parent->child(...) >>.
+  
+  Current API available since 0.058.
+  
+  =head2 slurp, slurp_raw, slurp_utf8
+  
+      $data = path("foo.txt")->slurp;
+      $data = path("foo.txt")->slurp( {binmode => ":raw"} );
+      $data = path("foo.txt")->slurp_raw;
+      $data = path("foo.txt")->slurp_utf8;
+  
+  Reads file contents into a scalar.  Takes an optional hash reference which may
+  be used to pass options.  The only available option is C<binmode>, which is
+  passed to C<binmode()> on the handle used for reading.
+  
+  C<slurp_raw> is like C<slurp> with a C<binmode> of C<:unix> for
+  a fast, unbuffered, raw read.
+  
+  C<slurp_utf8> is like C<slurp> with a C<binmode> of
+  C<:unix:encoding(UTF-8)> (or L<PerlIO::utf8_strict>).  If L<Unicode::UTF8>
+  0.58+ is installed, a raw slurp will be done instead and the result decoded
+  with C<Unicode::UTF8>.  This is just as strict and is roughly an order of
+  magnitude faster than using C<:encoding(UTF-8)>.
+  
+  B<Note>: C<slurp> and friends lock the filehandle before slurping.  If
+  you plan to slurp from a file created with L<File::Temp>, be sure to
+  close other handles or open without locking to avoid a deadlock:
+  
+      my $tempfile = File::Temp->new(EXLOCK => 0);
+      my $guts = path($tempfile)->slurp;
+  
+  Current API available since 0.004.
+  
+  =head2 spew, spew_raw, spew_utf8
+  
+      path("foo.txt")->spew(@data);
+      path("foo.txt")->spew(\@data);
+      path("foo.txt")->spew({binmode => ":raw"}, @data);
+      path("foo.txt")->spew_raw(@data);
+      path("foo.txt")->spew_utf8(@data);
+  
+  Writes data to a file atomically.  The file is written to a temporary file in
+  the same directory, then renamed over the original.  An optional hash reference
+  may be used to pass options.  The only option is C<binmode>, which is passed to
+  C<binmode()> on the handle used for writing.
+  
+  C<spew_raw> is like C<spew> with a C<binmode> of C<:unix> for a fast,
+  unbuffered, raw write.
+  
+  C<spew_utf8> is like C<spew> with a C<binmode> of C<:unix:encoding(UTF-8)>
+  (or L<PerlIO::utf8_strict>).  If L<Unicode::UTF8> 0.58+ is installed, a raw
+  spew will be done instead on the data encoded with C<Unicode::UTF8>.
+  
+  B<NOTE>: because the file is written to a temporary file and then renamed, the
+  new file will wind up with permissions based on your current umask.  This is a
+  feature to protect you from a race condition that would otherwise give
+  different permissions than you might expect.  If you really want to keep the
+  original mode flags, use L</append> with the C<truncate> option.
+  
+  Current API available since 0.011.
+  
+  =head2 stat, lstat
+  
+      $stat = path("foo.txt")->stat;
+      $stat = path("/some/symlink")->lstat;
+  
+  Like calling C<stat> or C<lstat> from L<File::stat>.
+  
+  Current API available since 0.001.
+  
+  =head2 stringify
+  
+      $path = path("foo.txt");
+      say $path->stringify; # same as "$path"
+  
+  Returns a string representation of the path.  Unlike C<canonpath>, this method
+  returns the path standardized with Unix-style C</> directory separators.
+  
+  Current API available since 0.001.
+  
+  =head2 subsumes
+  
+      path("foo/bar")->subsumes("foo/bar/baz"); # true
+      path("/foo/bar")->subsumes("/foo/baz");   # false
+  
+  Returns true if the first path is a prefix of the second path at a directory
+  boundary.
+  
+  This B<does not> resolve parent directory entries (C<..>) or symlinks:
+  
+      path("foo/bar")->subsumes("foo/bar/../baz"); # true
+  
+  If such things are important to you, ensure that both paths are resolved to
+  the filesystem with C<realpath>:
+  
+      my $p1 = path("foo/bar")->realpath;
+      my $p2 = path("foo/bar/../baz")->realpath;
+      if ( $p1->subsumes($p2) ) { ... }
+  
+  Current API available since 0.048.
+  
+  =head2 touch
+  
+      path("foo.txt")->touch;
+      path("foo.txt")->touch($epoch_secs);
+  
+  Like the Unix C<touch> utility.  Creates the file if it doesn't exist, or else
+  changes the modification and access times to the current time.  If the first
+  argument is the epoch seconds then it will be used.
+  
+  Returns the path object so it can be easily chained with other methods:
+  
+      # won't die if foo.txt doesn't exist
+      $content = path("foo.txt")->touch->slurp;
+  
+  Current API available since 0.015.
+  
+  =head2 touchpath
+  
+      path("bar/baz/foo.txt")->touchpath;
+  
+  Combines C<mkpath> and C<touch>.  Creates the parent directory if it doesn't exist,
+  before touching the file.  Returns the path object like C<touch> does.
+  
+  Current API available since 0.022.
+  
+  =head2 visit
+  
+      path("/tmp")->visit( \&callback, \%options );
+  
+  Executes a callback for each child of a directory.  It returns a hash
+  reference with any state accumulated during iteration.
+  
+  The options are the same as for L</iterator> (which it uses internally):
+  C<recurse> and C<follow_symlinks>.  Both default to false.
+  
+  The callback function will receive a C<Path::Tiny> object as the first argument
+  and a hash reference to accumulate state as the second argument.  For example:
+  
+      # collect files sizes
+      my $sizes = path("/tmp")->visit(
+          sub {
+              my ($path, $state) = @_;
+              return if $path->is_dir;
+              $state->{$path} = -s $path;
+          },
+          { recurse => 1 }
+      );
+  
+  For convenience, the C<Path::Tiny> object will also be locally aliased as the
+  C<$_> global variable:
+  
+      # print paths matching /foo/
+      path("/tmp")->visit( sub { say if /foo/ }, { recurse => 1} );
+  
+  If the callback returns a B<reference> to a false scalar value, iteration will
+  terminate.  This is not the same as "pruning" a directory search; this just
+  stops all iteration and returns the state hash reference.
+  
+      # find up to 10 files larger than 100K
+      my $files = path("/tmp")->visit(
+          sub {
+              my ($path, $state) = @_;
+              $state->{$path}++ if -s $path > 102400
+              return \0 if keys %$state == 10;
+          },
+          { recurse => 1 }
+      );
+  
+  If you want more flexible iteration, use a module like L<Path::Iterator::Rule>.
+  
+  Current API available since 0.062.
+  
+  =head2 volume
+  
+      $vol = path("/tmp/foo.txt")->volume;   # ""
+      $vol = path("C:/tmp/foo.txt")->volume; # "C:"
+  
+  Returns the volume portion of the path.  This is equivalent
+  to what L<File::Spec> would give from C<splitpath> and thus
+  usually is the empty string on Unix-like operating systems or the
+  drive letter for an absolute path on C<MSWin32>.
+  
+  Current API available since 0.001.
+  
+  =for Pod::Coverage openr_utf8 opena_utf8 openw_utf8 openrw_utf8
+  openr_raw opena_raw openw_raw openrw_raw
+  IS_BSD IS_WIN32 FREEZE THAW TO_JSON abs2rel
+  
+  =head1 EXCEPTION HANDLING
+  
+  Simple usage errors will generally croak.  Failures of underlying Perl
+  functions will be thrown as exceptions in the class
+  C<Path::Tiny::Error>.
+  
+  A C<Path::Tiny::Error> object will be a hash reference with the following fields:
+  
+  =over 4
+  
+  =item *
+  
+  C<op> — a description of the operation, usually function call and any extra info
+  
+  =item *
+  
+  C<file> — the file or directory relating to the error
+  
+  =item *
+  
+  C<err> — hold C<$!> at the time the error was thrown
+  
+  =item *
+  
+  C<msg> — a string combining the above data and a Carp-like short stack trace
+  
+  =back
+  
+  Exception objects will stringify as the C<msg> field.
+  
+  =head1 CAVEATS
+  
+  =head2 Subclassing not supported
+  
+  For speed, this class is implemented as an array based object and uses many
+  direction function calls internally.  You must not subclass it and expect
+  things to work properly.
+  
+  =head2 File locking
+  
+  If flock is not supported on a platform, it will not be used, even if
+  locking is requested.
+  
+  See additional caveats below.
+  
+  =head3 NFS and BSD
+  
+  On BSD, Perl's flock implementation may not work to lock files on an
+  NFS filesystem.  Path::Tiny has some heuristics to detect this
+  and will warn once and let you continue in an unsafe mode.  If you
+  want this failure to be fatal, you can fatalize the 'flock' warnings
+  category:
+  
+      use warnings FATAL => 'flock';
+  
+  =head3 AIX and locking
+  
+  AIX requires a write handle for locking.  Therefore, calls that normally
+  open a read handle and take a shared lock instead will open a read-write
+  handle and take an exclusive lock.  If the user does not have write
+  permission, no lock will be used.
+  
+  =head2 utf8 vs UTF-8
+  
+  All the C<*_utf8> methods by default use C<:encoding(UTF-8)> -- either as
+  C<:unix:encoding(UTF-8)> (unbuffered) or C<:raw:encoding(UTF-8)> (buffered) --
+  which is strict against the Unicode spec and disallows illegal Unicode
+  codepoints or UTF-8 sequences.
+  
+  Unfortunately, C<:encoding(UTF-8)> is very, very slow.  If you install
+  L<Unicode::UTF8> 0.58 or later, that module will be used by some C<*_utf8>
+  methods to encode or decode data after a raw, binary input/output operation,
+  which is much faster.  Alternatively, if you install L<PerlIO::utf8_strict>,
+  that will be used instead of C<:encoding(UTF-8)> and is also very fast.
+  
+  If you need the performance and can accept the security risk,
+  C<< slurp({binmode => ":unix:utf8"}) >> will be faster than C<:unix:encoding(UTF-8)>
+  (but not as fast as C<Unicode::UTF8>).
+  
+  Note that the C<*_utf8> methods read in B<raw> mode.  There is no CRLF
+  translation on Windows.  If you must have CRLF translation, use the regular
+  input/output methods with an appropriate binmode:
+  
+    $path->spew_utf8($data);                            # raw
+    $path->spew({binmode => ":encoding(UTF-8)"}, $data; # LF -> CRLF
+  
+  =head2 Default IO layers and the open pragma
+  
+  If you have Perl 5.10 or later, file input/output methods (C<slurp>, C<spew>,
+  etc.) and high-level handle opening methods ( C<filehandle>, C<openr>,
+  C<openw>, etc. ) respect default encodings set by the C<-C> switch or lexical
+  L<open> settings of the caller.  For UTF-8, this is almost certainly slower
+  than using the dedicated C<_utf8> methods if you have L<Unicode::UTF8>.
+  
+  =head1 TYPE CONSTRAINTS AND COERCION
+  
+  A standard L<MooseX::Types> library is available at
+  L<MooseX::Types::Path::Tiny>.  A L<Type::Tiny> equivalent is available as
+  L<Types::Path::Tiny>.
   
   =head1 SEE ALSO
   
-  See L<File::Spec> and L<File::Spec::Unix>.  This package overrides the
-  implementation of these methods, not the semantics.
+  These are other file/path utilities, which may offer a different feature
+  set than C<Path::Tiny>.
+  
+  =over 4
+  
+  =item *
+  
+  L<File::chmod>
+  
+  =item *
+  
+  L<File::Fu>
+  
+  =item *
+  
+  L<IO::All>
+  
+  =item *
+  
+  L<Path::Class>
+  
+  =back
+  
+  These iterators may be slightly faster than the recursive iterator in
+  C<Path::Tiny>:
+  
+  =over 4
+  
+  =item *
+  
+  L<Path::Iterator::Rule>
+  
+  =item *
+  
+  L<File::Next>
+  
+  =back
+  
+  There are probably comparable, non-Tiny tools.  Let me know if you want me to
+  add a module to the list.
+  
+  This module was featured in the L<2013 Perl Advent Calendar|http://www.perladvent.org/2013/2013-12-18.html>.
+  
+  =for :stopwords cpan testmatrix url annocpan anno bugtracker rt cpants kwalitee diff irc mailto metadata placeholders metacpan
+  
+  =head1 SUPPORT
+  
+  =head2 Bugs / Feature Requests
+  
+  Please report any bugs or feature requests through the issue tracker
+  at L<https://github.com/dagolden/Path-Tiny/issues>.
+  You will be notified automatically of any progress on your issue.
+  
+  =head2 Source Code
+  
+  This is open source software.  The code repository is available for
+  public review and contribution under the terms of the license.
+  
+  L<https://github.com/dagolden/Path-Tiny>
+  
+    git clone https://github.com/dagolden/Path-Tiny.git
+  
+  =head1 AUTHOR
+  
+  David Golden <dagolden@cpan.org>
+  
+  =head1 CONTRIBUTORS
+  
+  =for stopwords Alex Efros Chris Williams David Steinbrunner Doug Bell Gabor Szabo Gabriel Andrade George Hartzell Geraud Continsouzas Goro Fuji Graham Knop Ollis James Hunt John Karr Karen Etheridge Mark Ellis Martin Kjeldsen Michael G. Schwern Nigel Gregoire Philippe Bruhat (BooK) Regina Verbae Roy Ivy III Shlomi Fish Smylers Tatsuhiko Miyagawa Toby Inkster Yanick Champoux 김도형 - Keedi Kim
+  
+  =over 4
+  
+  =item *
+  
+  Alex Efros <powerman@powerman.name>
+  
+  =item *
+  
+  Chris Williams <bingos@cpan.org>
+  
+  =item *
+  
+  David Steinbrunner <dsteinbrunner@pobox.com>
+  
+  =item *
+  
+  Doug Bell <madcityzen@gmail.com>
+  
+  =item *
+  
+  Gabor Szabo <szabgab@cpan.org>
+  
+  =item *
+  
+  Gabriel Andrade <gabiruh@gmail.com>
+  
+  =item *
+  
+  George Hartzell <hartzell@cpan.org>
+  
+  =item *
+  
+  Geraud Continsouzas <geraud@scsi.nc>
+  
+  =item *
+  
+  Goro Fuji <gfuji@cpan.org>
+  
+  =item *
+  
+  Graham Knop <haarg@haarg.org>
+  
+  =item *
+  
+  Graham Ollis <plicease@cpan.org>
+  
+  =item *
+  
+  James Hunt <james@niftylogic.com>
+  
+  =item *
+  
+  John Karr <brainbuz@brainbuz.org>
+  
+  =item *
+  
+  Karen Etheridge <ether@cpan.org>
+  
+  =item *
+  
+  Mark Ellis <mark.ellis@cartridgesave.co.uk>
+  
+  =item *
+  
+  Martin Kjeldsen <mk@bluepipe.dk>
+  
+  =item *
+  
+  Michael G. Schwern <mschwern@cpan.org>
+  
+  =item *
+  
+  Nigel Gregoire <nigelgregoire@gmail.com>
+  
+  =item *
+  
+  Philippe Bruhat (BooK) <book@cpan.org>
+  
+  =item *
+  
+  Regina Verbae <regina-verbae@users.noreply.github.com>
+  
+  =item *
+  
+  Roy Ivy III <rivy@cpan.org>
+  
+  =item *
+  
+  Shlomi Fish <shlomif@shlomifish.org>
+  
+  =item *
+  
+  Smylers <Smylers@stripey.com>
+  
+  =item *
+  
+  Tatsuhiko Miyagawa <miyagawa@bulknews.net>
+  
+  =item *
+  
+  Toby Inkster <tobyink@cpan.org>
+  
+  =item *
+  
+  Yanick Champoux <yanick@babyl.dyndns.org>
+  
+  =item *
+  
+  김도형 - Keedi Kim <keedi@cpan.org>
+  
+  =back
+  
+  =head1 COPYRIGHT AND LICENSE
+  
+  This software is Copyright (c) 2014 by David Golden.
+  
+  This is free software, licensed under:
+  
+    The Apache License, Version 2.0, January 2004
   
   =cut
+PATH_TINY
+
+$fatpacked{"TOML.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'TOML';
+  package TOML;
   
+  # -------------------------------------------------------------------
+  # TOML - Parser for Tom's Obvious, Minimal Language.
+  #
+  # Copyright (C) 2013 Darren Chamberlain <darren@cpan.org>
+  # -------------------------------------------------------------------
   
-  sub _canon_cat				# @path -> path
-  {
-      my ($first, @rest) = @_;
+  use 5.008005;
+  use strict;
+  use warnings;
+  use Exporter 'import';
   
-      my $volume = $first =~ s{ \A ([A-Za-z]:) ([\\/]?) }{}x	# drive letter
-      	       ? ucfirst( $1 ).( $2 ? "\\" : "" )
-  	       : $first =~ s{ \A (?:\\\\|//) ([^\\/]+)
-  				 (?: [\\/] ([^\\/]+) )?
-  	       			 [\\/]? }{}xs			# UNC volume
-  	       ? "\\\\$1".( defined $2 ? "\\$2" : "" )."\\"
-  	       : $first =~ s{ \A [\\/] }{}x			# root dir
-  	       ? "\\"
-  	       : "";
-      my $path   = join "\\", $first, @rest;
+  our ($VERSION, @EXPORT, @_NAMESPACE, $PARSER);
   
-      $path =~ tr#\\/#\\\\#s;		# xx/yy --> xx\yy & xx\\yy --> xx\yy
+  use B;
+  use Carp qw(croak);
+  use TOML::Parser 0.03;
   
-      					# xx/././yy --> xx/yy
-      $path =~ s{(?:
-  		(?:\A|\\)		# at begin or after a slash
-  		\.
-  		(?:\\\.)*		# and more
-  		(?:\\|\z) 		# at end or followed by slash
-  	       )+			# performance boost -- I do not know why
-  	     }{\\}gx;
+  $VERSION = "0.97";
+  @EXPORT = qw(from_toml to_toml);
+  $PARSER = TOML::Parser->new(inflate_boolean  => sub { $_[0] });
   
-      # XXX I do not know whether more dots are supported by the OS supporting
-      #     this ... annotation (NetWare or symbian but not MSWin32).
-      #     Then .... could easily become ../../.. etc:
-      # Replace \.\.\. by (\.\.\.+)  and substitute with
-      # { $1 . ".." . "\\.." x (length($2)-2) }gex
-  	     				# ... --> ../..
-      $path =~ s{ (\A|\\)			# at begin or after a slash
-      		\.\.\.
-  		(?=\\|\z) 		# at end or followed by slash
-  	     }{$1..\\..}gx;
-      					# xx\yy\..\zz --> xx\zz
-      while ( $path =~ s{(?:
-  		(?:\A|\\)		# at begin or after a slash
-  		[^\\]+			# rip this 'yy' off
-  		\\\.\.
-  		(?<!\A\.\.\\\.\.)	# do *not* replace ^..\..
-  		(?<!\\\.\.\\\.\.)	# do *not* replace \..\..
-  		(?:\\|\z) 		# at end or followed by slash
-  	       )+			# performance boost -- I do not know why
-  	     }{\\}sx ) {}
+  sub to_toml {
+      my $stuff = shift;
+      local @_NAMESPACE = ();
+      _to_toml($stuff);
+  }
   
-      $path =~ s#\A\\##;			# \xx --> xx  NOTE: this is *not* root
-      $path =~ s#\\\z##;			# xx\ --> xx
+  sub _to_toml {
+      my ($stuff) = @_;
   
-      if ( $volume =~ m#\\\z# )
-      {					# <vol>\.. --> <vol>\
-  	$path =~ s{ \A			# at begin
-  		    \.\.
-  		    (?:\\\.\.)*		# and more
-  		    (?:\\|\z) 		# at end or followed by slash
-  		 }{}x;
-  
-  	return $1			# \\HOST\SHARE\ --> \\HOST\SHARE
-  	    if    $path eq ""
-  	      and $volume =~ m#\A(\\\\.*)\\\z#s;
+      if (ref $stuff eq 'HASH') {
+          my $res = '';
+          my @keys = sort keys %$stuff;
+          for my $key (grep { ref $stuff->{$_} ne 'HASH' } @keys) {
+              my $val = $stuff->{$key};
+              $res .= "$key = " . _serialize($val) . "\n";
+          }
+          for my $key (grep { ref $stuff->{$_} eq 'HASH' } @keys) {
+              my $val = $stuff->{$key};
+              local @_NAMESPACE = (@_NAMESPACE, $key);
+              $res .= sprintf("[%s]\n", join(".", @_NAMESPACE));
+              $res .= _to_toml($val);
+          }
+          return $res;
+      } else {
+          croak("You cannot convert non-HashRef values to TOML");
       }
-      return $path ne "" || $volume ? $volume.$path : ".";
+  }
+  
+  sub _serialize {
+      my $value = shift;
+      my $b_obj = B::svref_2object(\$value);
+      my $flags = $b_obj->FLAGS;
+  
+      return $value
+          if $flags & ( B::SVp_IOK | B::SVp_NOK ) and !( $flags & B::SVp_POK ); # SvTYPE is IV or NV?
+  
+      my $type = ref($value);
+      if (!$type) {
+          return string_to_json($value);
+      } elsif ($type eq 'ARRAY') {
+          return sprintf('[%s]', join(", ", map { _serialize($_) } @$value));
+      } elsif ($type eq 'SCALAR') {
+          if (defined $$value) {
+              if ($$value eq '0') {
+                  return 'false';
+              } elsif ($$value eq '1') {
+                  return 'true';
+              } else {
+                  croak("cannot encode reference to scalar");
+              }
+          }
+          croak("cannot encode reference to scalar");
+      }
+      croak("Bad type in to_toml: $type");
+  }
+  
+  my %esc = (
+      "\n" => '\n',
+      "\r" => '\r',
+      "\t" => '\t',
+      "\f" => '\f',
+      "\b" => '\b',
+      "\"" => '\"',
+      "\\" => '\\\\',
+      "\'" => '\\\'',
+  );
+  sub string_to_json {
+      my ($arg) = @_;
+  
+      $arg =~ s/([\x22\x5c\n\r\t\f\b])/$esc{$1}/g;
+      $arg =~ s/([\x00-\x08\x0b\x0e-\x1f])/'\\u00' . unpack('H2', $1)/eg;
+  
+      return '"' . $arg . '"';
+  }
+  
+  sub from_toml {
+      my $string = shift;
+      local $@;
+      my $toml = eval { $PARSER->parse($string) };
+      return wantarray ? ($toml, $@) : $toml;
   }
   
   1;
-PERL_5.22.1_FILE_SPEC_WIN32
+  
+  __END__
+  
+  =encoding utf-8
+  
+  =for stopwords versa
+  
+  =head1 NAME
+  
+  TOML - Parser for Tom's Obvious, Minimal Language.
+  
+  =head1 SYNOPSIS
+  
+      use TOML qw(from_toml to_toml);
+  
+      # Parsing toml
+      my $toml = slurp("~/.foo.toml");
+      my $data = from_toml($toml);
+  
+      # With error checking
+      my ($data, $err) = from_toml($toml);
+      unless ($data) {
+          die "Error parsing toml: $err";
+      }
+  
+      # Creating toml
+      my $toml = to_toml($data); 
+  
+  =head1 DESCRIPTION
+  
+  C<TOML> implements a parser for Tom's Obvious, Minimal Language, as
+  defined at L<https://github.com/mojombo/toml>. C<TOML> exports two
+  subroutines, C<from_toml> and C<to_toml>,
+  
+  =head1 FAQ
+  
+  =over 4
+  
+  =item How change how to de-serialize?
+  
+  You can change C<$TOML::PARSER> for change how to de-serialize.
+  
+  example:
+  
+      use TOML;
+      use TOML::Parser;
+  
+      local $TOML::PARSER = TOML::Parser->new(
+          inflate_boolean => sub { $_[0] eq 'true' ? \1 : \0 },
+      );
+  
+      my $data = TOML::from_toml('foo = true');
+  
+  =back
+  
+  =head1 FUNCTIONS
+  
+  =over 4
+  
+  =item from_toml
+  
+  C<from_toml> transforms a string containing toml to a perl data
+  structure or vice versa. This data structure complies with the tests
+  provided at L<https://github.com/mojombo/toml/tree/master/tests>.
+  
+  If called in list context, C<from_toml> produces a (C<hash>,
+  C<error_string>) tuple, where C<error_string> is C<undef> on
+  non-errors. If there is an error, then C<hash> will be undefined and
+  C<error_string> will contains (scant) details about said error.
+  
+  =item to_toml
+  
+  C<to_toml> transforms a perl data structure into toml-formatted
+  string.
+  
+  =back
+  
+  =head1 SEE ALSO
+  
+  L<TOML::Parser>
+  
+  =head1 LICENSE
+  
+  This program is free software; you can redistribute it and/or
+  modify it under the terms of the GNU General Public License as
+  published by the Free Software Foundation; version 2.
+  
+  This program is distributed in the hope that it will be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+  General Public License for more details.
+  
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+  02111-1301 USA
+  
+  =head1 AUTHOR
+  
+  Darren Chamberlain <darren@cpan.org>
+  
+  =head1 CONTRIBUTORS
+  
+  =over 4
+  
+  =item Tokuhiro Matsuno <tokuhirom@cpan.org>
+  
+  =item Matthias Bethke <matthias@towiski.de>
+  
+  =item Sergey Romanov <complefor@rambler.ru>
+  
+  =item karupanerura <karupa@cpan.org>
+  
+  =back
+TOML
+
+$fatpacked{"TOML/Parser.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'TOML_PARSER';
+  package TOML::Parser;
+  use 5.008005;
+  use strict;
+  use warnings;
+  use Encode;
+  
+  our $VERSION = "0.07";
+  
+  use TOML::Parser::Tokenizer qw/:constant/;
+  use TOML::Parser::Tokenizer::Strict;
+  use TOML::Parser::Util qw/unescape_str/;
+  use Types::Serialiser;
+  
+  sub new {
+      my $class = shift;
+      my $args  = (@_ == 1 and ref $_[0] eq 'HASH') ? +shift : +{ @_ };
+      return bless +{
+          inflate_datetime => sub { $_[0] },
+          inflate_boolean  => sub { $_[0] eq 'true' ? Types::Serialiser::true : Types::Serialiser::false },
+          strict_mode      => 0,
+          %$args,
+      } => $class;
+  }
+  
+  sub parse_file {
+      my ($self, $file) = @_;
+      open my $fh, '<:encoding(utf-8)', $file or die $!;
+      return $self->parse_fh($fh);
+  }
+  
+  sub parse_fh {
+      my ($self, $fh) = @_;
+      my $src = do { local $/; <$fh> };
+      return $self->parse($src);
+  }
+  
+  sub _tokenizer_class {
+      my $self = shift;
+      return $self->{strict_mode} ? 'TOML::Parser::Tokenizer::Strict' : 'TOML::Parser::Tokenizer';
+  }
+  
+  our @TOKENS;
+  our $ROOT;
+  our $CONTEXT;
+  sub parse {
+      my ($self, $src) = @_;
+  
+      local $ROOT    = {};
+      local $CONTEXT = $ROOT;
+      local @TOKENS  = $self->_tokenizer_class->tokenize($src);
+      return $self->_parse_tokens();
+  }
+  
+  sub _parse_tokens {
+      my $self = shift;
+  
+      while (my $token = shift @TOKENS) {
+          $self->_parse_token($token);
+      }
+  
+      return $CONTEXT;
+  }
+  
+  sub _parse_token {
+      my ($self, $token) = @_;
+  
+      my ($type, $val) = @$token;
+      if ($type eq TOKEN_TABLE) {
+          $self->_parse_table($val);
+      }
+      elsif ($type eq TOKEN_ARRAY_OF_TABLE) {
+          $self->_parse_array_of_table($val);
+      }
+      elsif (my ($key, $value) = $self->_parse_key_and_value($token)) {
+          die "Duplicate key. key:$key" if exists $CONTEXT->{$key};
+          $CONTEXT->{$key} = $value;
+      }
+      elsif ($type eq TOKEN_COMMENT) {
+          # pass through
+      }
+      else {
+          die "Unknown case. type:$type";
+      }
+  }
+  
+  sub _parse_key_and_value {
+      my ($self, $token) = @_;
+  
+      my ($type, $val) = @$token;
+      if ($type eq TOKEN_KEY) {
+          my $token = shift @TOKENS;
+  
+          my $key = $val;
+          my $value = $self->_parse_value_token($token);
+          return ($key, $value);
+      }
+  
+      return;
+  }
+  
+  sub _parse_table {
+      my ($self, $keys) = @_;
+      my @keys = @$keys;
+  
+      local $CONTEXT = $ROOT;
+      for my $k (@keys) {
+          if (exists $CONTEXT->{$k}) {
+              $CONTEXT = ref $CONTEXT->{$k} eq 'ARRAY' ? $CONTEXT->{$k}->[-1] :
+                         ref $CONTEXT->{$k} eq 'HASH'  ? $CONTEXT->{$k}       :
+                         die "invalid structure. @{[ join '.', @keys ]} cannot be `Table`";
+          }
+          else {
+              $CONTEXT = $CONTEXT->{$k} ||= +{};
+          }
+      }
+  
+      $self->_parse_tokens();
+  }
+  
+  sub _parse_array_of_table {
+      my ($self, $keys) = @_;
+      my @keys     = @$keys;
+      my $last_key = pop @keys;
+  
+      local $CONTEXT = $ROOT;
+      for my $k (@keys) {
+          if (exists $CONTEXT->{$k}) {
+              $CONTEXT = ref $CONTEXT->{$k} eq 'ARRAY' ? $CONTEXT->{$k}->[-1] :
+                         ref $CONTEXT->{$k} eq 'HASH'  ? $CONTEXT->{$k}       :
+                         die "invalid structure. @{[ join '.', @keys ]} cannot be `Array of table`.";
+          }
+          else {
+              $CONTEXT = $CONTEXT->{$k} ||= +{};
+          }
+      }
+  
+      $CONTEXT->{$last_key} = [] unless exists $CONTEXT->{$last_key};
+      die "invalid structure. @{[ join '.', @keys ]} cannot be `Array of table`" unless ref $CONTEXT->{$last_key} eq 'ARRAY';
+      push @{ $CONTEXT->{$last_key} } => $CONTEXT = {};
+  
+      $self->_parse_tokens();
+  }
+  
+  sub _parse_value_token {
+      my $self  = shift;
+      my $token = shift;
+  
+      my ($type, $val) = @$token;
+      if ($type eq TOKEN_COMMENT) {
+          return; # pass through
+      }
+      elsif ($type eq TOKEN_INTEGER || $type eq TOKEN_FLOAT) {
+          $val =~ tr/_//d;
+          return 0+$val;
+      }
+      elsif ($type eq TOKEN_BOOLEAN) {
+          return $self->inflate_boolean($val);
+      }
+      elsif ($type eq TOKEN_DATETIME) {
+          return $self->inflate_datetime($val);
+      }
+      elsif ($type eq TOKEN_STRING) {
+          return unescape_str($val);
+      }
+      elsif ($type eq TOKEN_MULTI_LINE_STRING_BEGIN) {
+          my $value = $self->_parse_value_token(shift @TOKENS);
+          $value =~ s/\A\s+//msg;
+          $value =~ s/\\\s+//msg;
+          if (my $token = shift @TOKENS) {
+              my ($type) = @$token;
+              return $value if $type eq TOKEN_MULTI_LINE_STRING_END;
+              die "Unexpected token: $type";
+          }
+      }
+      elsif ($type eq TOKEN_INLINE_TABLE_BEGIN) {
+          my %data;
+          while (my $token = shift @TOKENS) {
+              last if $token->[0] eq TOKEN_INLINE_TABLE_END;
+              my ($key, $value) = $self->_parse_key_and_value($token);
+              die "Duplicate key. key:$key" if exists $data{$key};
+              $data{$key} = $value;
+          }
+          return \%data;
+      }
+      elsif ($type eq TOKEN_ARRAY_BEGIN) {
+          my @data;
+  
+          my $last_token;
+          while (my $token = shift @TOKENS) {
+              last if $token->[0] eq TOKEN_ARRAY_END;
+              if ($self->{strict_mode} && $token->[0] ne TOKEN_COMMENT) {
+                  die "Unexpected token: $token->[0]" if defined $last_token && $token->[0] ne $last_token->[0];
+              }
+              push @data => $self->_parse_value_token($token);
+              $last_token = $token;
+          }
+          return \@data;
+      }
+  
+      die "Unexpected token: $type";
+  }
+  
+  sub inflate_datetime {
+      my $self = shift;
+      return $self->{inflate_datetime}->(@_);
+  }
+  
+  sub inflate_boolean {
+      my $self = shift;
+      return $self->{inflate_boolean}->(@_);
+  }
+  
+  1;
+  __END__
+  
+  =encoding utf-8
+  
+  =for stopwords versa
+  
+  =head1 NAME
+  
+  TOML::Parser - simple toml parser
+  
+  =head1 SYNOPSIS
+  
+      use TOML::Parser;
+  
+      my $parser = TOML::Parser->new;
+      my $data   = $parser->parse($toml);
+  
+  =head1 DESCRIPTION
+  
+  TOML::Parser is a simple toml parser.
+  
+  This data structure complies with the tests
+  provided at L<https://github.com/toml-lang/toml/tree/v0.4.0/tests>.
+  
+  The v0.4.0 specification is supported.
+  
+  =head1 METHODS
+  
+  =over
+  
+  =item my $parser = TOML::Parser->new(\%args)
+  
+  Creates a new TOML::Parser instance.
+  
+      use TOML::Parser;
+  
+      # create new parser
+      my $parser = TOML::Parser->new();
+  
+  Arguments can be:
+  
+  =over
+  
+  =item * C<inflate_datetime>
+  
+  If use it, You can replace inflate C<datetime> process.
+  The subroutine of default is C<identity>. C<e.g.) sub { $_[0] }>
+  
+      use TOML::Parser;
+      use DateTime;
+      use DateTime::Format::ISO8601;
+  
+      # create new parser
+      my $parser = TOML::Parser->new(
+          inflate_datetime => sub {
+              my $dt = shift;
+              return DateTime::Format::ISO8601->parse_datetime($dt);
+          },
+      );
+  
+  =item * C<inflate_boolean>
+  
+  If use it, You can replace inflate boolean process.
+  The return value of default subroutine is C<Types::Serialiser::true> or C<Types::Serialiser::false>.
+  
+      use TOML::Parser;
+  
+      # create new parser
+      my $parser = TOML::Parser->new(
+          inflate_boolean => sub {
+              my $boolean = shift;
+              return $boolean eq 'true' ? 1 : 0;
+          },
+      );
+  
+  =item * C<strict_mode>
+  
+  TOML::Parser is using a more flexible rule for compatibility with old TOML of default.
+  If make this option true value, You can parse a toml with strict rule.
+  
+      use TOML::Parser;
+  
+      # create new parser
+      my $parser = TOML::Parser->new(
+          strict_mode => 1
+      );
+  
+  =back
+  
+  =item my $data = $parser->parse_file($path)
+  
+  =item my $data = $parser->parse_fh($fh)
+  
+  =item my $data = $parser->parse($src)
+  
+  Transforms a string containing toml to a perl data structure or vice versa.
+  
+  =back
+  
+  =head1 SEE ALSO
+  
+  L<TOML>
+  
+  =head1 LICENSE
+  
+  Copyright (C) karupanerura.
+  
+  This library is free software; you can redistribute it and/or modify
+  it under the same terms as Perl itself.
+  
+  =head1 AUTHOR
+  
+  karupanerura E<lt>karupa@cpan.orgE<gt>
+  
+  =head1 CONTRIBUTOR
+  
+  Olivier Mengué E<lt>dolmen@cpan.orgE<gt>
+  
+  =cut
+TOML_PARSER
+
+$fatpacked{"TOML/Parser/Tokenizer.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'TOML_PARSER_TOKENIZER';
+  package TOML::Parser::Tokenizer;
+  use 5.008005;
+  use strict;
+  use warnings;
+  
+  use Exporter 5.57 'import';
+  
+  use constant DEBUG => $ENV{TOML_PARSER_TOKENIZER_DEBUG} ? 1 : 0;
+  
+  BEGIN {
+      my @TOKENS = map uc, qw/
+          comment
+          table
+          array_of_table
+          key
+          integer
+          float
+          boolean
+          datetime
+          string
+          multi_line_string_begin
+          multi_line_string_end
+          inline_table_begin
+          inline_table_end
+          array_begin
+          array_end
+      /;
+      my %CONSTANTS = map {
+          ("TOKEN_$_" => $_)
+      } @TOKENS;
+  
+      require constant;
+      constant->import(\%CONSTANTS);
+  
+      # Exporter
+      our @EXPORT_OK   = keys %CONSTANTS;
+      our %EXPORT_TAGS = (
+          constant => [keys %CONSTANTS],
+      );
+  };
+  
+  sub grammar_regexp {
+      return +{
+          comment        => qr{#(.*)},
+          table          => {
+              start => qr{\[},
+              key   => qr{(?:"(.*?)(?<!(?<!\\)\\)"|\'(.*?)(?<!(?<!\\)\\)\'|([^.\s\\\]]+))},
+              sep   => qr{\.},
+              end   => qr{\]},
+          },
+          array_of_table => {
+              start => qr{\[\[},
+              key   => qr{(?:"(.*?)(?<!(?<!\\)\\)"|\'(.*?)(?<!(?<!\\)\\)\'|([^.\s\\\]]+))},
+              sep   => qr{\.},
+              end   => qr{\]\]},
+          },
+          key            => qr{(?:"(.*?)(?<!(?<!\\)\\)"|\'(.*?)(?<!(?<!\\)\\)\'|([^\s]+))\s*=},
+          value          => {
+              datetime => qr{([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[-+][0-9]{2}:[0-9]{2}))},
+              float    => qr{([-+]?(?:[0-9_]+(?:\.[0-9_]+)?[eE][-+]?[0-9_]+|[0-9_]*\.[0-9_]+))},
+              integer  => qr{([-+]?[0-9_]+)},
+              boolean  => qr{(true|false)},
+              string   => qr{(?:"(.*?)(?<!(?<!\\)\\)"|\'(.*?)(?<!(?<!\\)\\)\')},
+              mlstring => qr{("""|''')},
+              inline   => {
+                  start => qr{\{},
+                  sep   => qr{\s*,\s*},
+                  end   => qr{\}},
+              },
+              array    => {
+                  start => qr{\[},
+                  sep   => qr{\s*,\s*},
+                  end   => qr{\]},
+              },
+          },
+      };
+  }
+  
+  sub tokenize {
+      my ($class, $src) = @_;
+  
+      local $_ = $src;
+      return $class->_tokenize();
+  }
+  
+  sub _tokenize {
+      my $class = shift;
+      my $grammar_regexp = $class->grammar_regexp();
+  
+      my @tokens;
+      until (/\G\z/mgco) {
+          if (/\G$grammar_regexp->{comment}/mgc) {
+              warn "[TOKEN] COMMENT: $1" if DEBUG;
+              $class->_skip_whitespace();
+              push @tokens => [TOKEN_COMMENT, $1 || ''];
+          }
+          elsif (/\G$grammar_regexp->{array_of_table}->{start}/mgc) {
+              push @tokens => $class->_tokenize_array_of_table();
+          }
+          elsif (/\G$grammar_regexp->{table}->{start}/mgc) {
+              push @tokens => $class->_tokenize_table();
+          }
+          elsif (my @t = $class->_tokenize_key_and_value()) {
+              push @tokens => @t;
+          }
+          elsif (/\G\s+/mgco) {
+              # pass through
+              $class->_skip_whitespace();
+          }
+          else {
+              $class->_syntax_error();
+          }
+      }
+      return @tokens;
+  }
+  
+  sub _tokenize_key_and_value {
+      my $class = shift;
+      my $grammar_regexp = $class->grammar_regexp();
+  
+      my @tokens;
+      if (/\G$grammar_regexp->{key}/mgc) {
+          my $key = $1 || $2 || $3;
+          warn "[TOKEN] KEY: $key" if DEBUG;
+          $class->_skip_whitespace();
+          push @tokens => [TOKEN_KEY, $key];
+          push @tokens => $class->_tokenize_value();
+          return @tokens;
+      }
+  
+      return;
+  }
+  
+  sub _tokenize_value {
+      my $class = shift;
+      my $grammar_regexp = $class->grammar_regexp();
+      warn "[CALL] _tokenize_value" if DEBUG;
+  
+      if (/\G$grammar_regexp->{comment}/mgc) {
+          warn "[TOKEN] COMMENT: $1" if DEBUG;
+          $class->_skip_whitespace();
+          return [TOKEN_COMMENT, $1 || ''];
+      }
+      elsif (/\G$grammar_regexp->{value}->{datetime}/mgc) {
+          warn "[TOKEN] DATETIME: $1" if DEBUG;
+          $class->_skip_whitespace();
+          return [TOKEN_DATETIME, $1];
+      }
+      elsif (/\G$grammar_regexp->{value}->{float}/mgc) {
+          warn "[TOKEN] FLOAT: $1" if DEBUG;
+          $class->_skip_whitespace();
+          return [TOKEN_FLOAT, $1];
+      }
+      elsif (/\G$grammar_regexp->{value}->{integer}/mgc) {
+          warn "[TOKEN] INTEGER: $1" if DEBUG;
+          $class->_skip_whitespace();
+          return [TOKEN_INTEGER, $1];
+      }
+      elsif (/\G$grammar_regexp->{value}->{boolean}/mgc) {
+          warn "[TOKEN] BOOLEAN: $1" if DEBUG;
+          $class->_skip_whitespace();
+          return [TOKEN_BOOLEAN, $1];
+      }
+      elsif (/\G$grammar_regexp->{value}->{mlstring}/mgc) {
+          warn "[TOKEN] BOOLEAN: $1" if DEBUG;
+          return (
+              [TOKEN_MULTI_LINE_STRING_BEGIN],
+              $class->_extract_multi_line_string($1),
+              [TOKEN_MULTI_LINE_STRING_END],
+          );
+      }
+      elsif (/\G$grammar_regexp->{value}->{string}/mgc) {
+          warn "[TOKEN] STRING: $1" if DEBUG;
+          $class->_skip_whitespace();
+          return [TOKEN_STRING, defined $1 ? $1 : defined $2 ? $2 : ''];
+      }
+      elsif (/\G$grammar_regexp->{value}->{inline}->{start}/mgc) {
+          warn "[TOKEN] INLINE TABLE" if DEBUG;
+          $class->_skip_whitespace();
+          return (
+              [TOKEN_INLINE_TABLE_BEGIN],
+              $class->_tokenize_inline_table(),
+              [TOKEN_INLINE_TABLE_END],
+          );
+      }
+      elsif (/\G$grammar_regexp->{value}->{array}->{start}/mgc) {
+          warn "[TOKEN] ARRAY" if DEBUG;
+          $class->_skip_whitespace();
+          return (
+              [TOKEN_ARRAY_BEGIN],
+              $class->_tokenize_array(),
+              [TOKEN_ARRAY_END],
+          );
+      }
+  
+      $class->_syntax_error();
+  }
+  
+  sub _tokenize_table {
+      my $class = shift;
+  
+      my $grammar_regexp = $class->grammar_regexp()->{table};
+      warn "[CALL] _tokenize_table" if DEBUG;
+  
+      $class->_skip_whitespace();
+  
+      my @expected = ($grammar_regexp->{key});
+  
+      my @keys;
+   LOOP:
+      while (1) {
+          for my $rx (@expected) {
+              if (/\G$rx/smgc) {
+                  if ($rx eq $grammar_regexp->{key}) {
+                      my $key = $1 || $2 || $3;
+                      warn "[TOKEN] table key: $key" if DEBUG;
+                      push @keys => $key;
+                      @expected = ($grammar_regexp->{sep}, $grammar_regexp->{end});
+                  }
+                  elsif ($rx eq $grammar_regexp->{sep}) {
+                      warn "[TOKEN] table key separator" if DEBUG;
+                      @expected = ($grammar_regexp->{key});
+                  }
+                  elsif ($rx eq $grammar_regexp->{end}) {
+                      warn "[TOKEN] table key end" if DEBUG;
+                      @expected = ();
+                      last LOOP;
+                  }
+                  $class->_skip_whitespace();
+                  next LOOP;
+              }
+          }
+  
+          $class->_syntax_error();
+      }
+  
+      warn "[TOKEN] TABLE: @{[ join '.', @keys ]}" if DEBUG;
+      return [TOKEN_TABLE, \@keys];
+  }
+  
+  sub _tokenize_array_of_table {
+      my $class = shift;
+  
+      my $grammar_regexp = $class->grammar_regexp()->{array_of_table};
+      warn "[CALL] _tokenize_array_of_table" if DEBUG;
+  
+      $class->_skip_whitespace();
+  
+      my @expected = ($grammar_regexp->{key});
+  
+      my @keys;
+   LOOP:
+      while (1) {
+          for my $rx (@expected) {
+              if (/\G$rx/smgc) {
+                  if ($rx eq $grammar_regexp->{key}) {
+                      my $key = $1 || $2 || $3;
+                      warn "[TOKEN] table key: $key" if DEBUG;
+                      push @keys => $key;
+                      @expected = ($grammar_regexp->{sep}, $grammar_regexp->{end});
+                  }
+                  elsif ($rx eq $grammar_regexp->{sep}) {
+                      warn "[TOKEN] table key separator" if DEBUG;
+                      @expected = ($grammar_regexp->{key});
+                  }
+                  elsif ($rx eq $grammar_regexp->{end}) {
+                      warn "[TOKEN] table key end" if DEBUG;
+                      @expected = ();
+                      last LOOP;
+                  }
+                  $class->_skip_whitespace();
+                  next LOOP;
+              }
+          }
+  
+          $class->_syntax_error();
+      }
+  
+      warn "[TOKEN] ARRAY_OF_TABLE: @{[ join '.', @keys ]}" if DEBUG;
+      return [TOKEN_ARRAY_OF_TABLE, \@keys];
+  }
+  
+  sub _extract_multi_line_string {
+      my ($class, $delimiter) = @_;
+      if (/\G(.+?)\Q$delimiter/smgc) {
+          warn "[TOKEN] MULTI LINE STRING: $1" if DEBUG;
+          $class->_skip_whitespace();
+          return [TOKEN_STRING, $1];
+      }
+      $class->_syntax_error();
+  }
+  
+  sub _tokenize_inline_table {
+      my $class = shift;
+      my $grammar_regexp = $class->grammar_regexp()->{value}->{inline};
+      warn "[CALL] _tokenize_inline_table" if DEBUG;
+      return if /\G(?:$grammar_regexp->{sep})?$grammar_regexp->{end}/smgc;
+  
+      my @tokens = $class->_tokenize_key_and_value();
+      while (/\G$grammar_regexp->{sep}/smgc || !/\G$grammar_regexp->{end}/mgc) {
+          last if /\G$grammar_regexp->{end}/mgc;
+          warn "[CONTEXT] _tokenize_inline_table [loop]" if DEBUG;
+          $class->_skip_whitespace();
+          push @tokens => $class->_tokenize_key_and_value();
+          $class->_skip_whitespace();
+      }
+  
+      return @tokens;
+  }
+  
+  sub _tokenize_array {
+      my $class = shift;
+      my $grammar_regexp = $class->grammar_regexp()->{value}->{array};
+      warn "[CALL] _tokenize_array" if DEBUG;
+      return if /\G(?:$grammar_regexp->{sep})?$grammar_regexp->{end}/smgc;
+  
+      my @tokens = $class->_tokenize_value();
+      while (/\G$grammar_regexp->{sep}/smgc || !/\G$grammar_regexp->{end}/mgc) {
+          last if /\G$grammar_regexp->{end}/mgc;
+          warn "[CONTEXT] _tokenize_array [loop]" if DEBUG;
+          $class->_skip_whitespace();
+          push @tokens => $class->_tokenize_value();
+          $class->_skip_whitespace();
+      }
+  
+      return @tokens;
+  }
+  
+  sub _skip_whitespace {
+      my $class = shift;
+      if (/\G\s+/smgco) {
+          # pass through
+          warn "[PASS] WHITESPACE" if DEBUG;
+      }
+  }
+  
+  sub _syntax_error { shift->_error('Syntax Error') }
+  
+  sub _error {
+      my ($class, $msg) = @_;
+  
+      my $src   = $_;
+      my $line  = 1;
+      my $start = pos $src || 0;
+      while ($src =~ /$/smgco and pos $src <= pos) {
+          $start = pos $src;
+          $line++;
+      }
+      my $end = pos $src;
+      my $len = pos() - $start;
+      $len-- if $len > 0;
+  
+      my $trace = join "\n",
+          "${msg}: line:$line",
+          substr($src, $start || 0, $end - $start),
+          (' ' x $len) . '^';
+      die $trace, "\n";
+  }
+  
+  1;
+  __END__
+TOML_PARSER_TOKENIZER
+
+$fatpacked{"TOML/Parser/Tokenizer/Strict.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'TOML_PARSER_TOKENIZER_STRICT';
+  package TOML::Parser::Tokenizer::Strict;
+  use 5.008005;
+  use strict;
+  use warnings;
+  
+  use parent qw/TOML::Parser::Tokenizer/;
+  BEGIN { import TOML::Parser::Tokenizer qw/:constant/ }
+  
+  sub grammar_regexp {
+      my $grammar_regexp = {%{ shift->SUPER::grammar_regexp() }};
+      $grammar_regexp->{table}                 = {%{ $grammar_regexp->{table} }};
+      $grammar_regexp->{array_of_table}        = {%{ $grammar_regexp->{array_of_table} }};
+      $grammar_regexp->{table}->{key}          = qr{(?:"(.*?)(?<!(?<!\\)\\)"|([A-Za-z0-9_-]+))};
+      $grammar_regexp->{array_of_table}->{key} = qr{(?:"(.*?)(?<!(?<!\\)\\)"|([A-Za-z0-9_-]+))};
+      $grammar_regexp->{key}                   = qr{(?:"(.*?)(?<!(?<!\\)\\)"|([A-Za-z0-9_-]+))\s*=};
+      return $grammar_regexp;
+  }
+  
+  1;
+  __END__
+TOML_PARSER_TOKENIZER_STRICT
+
+$fatpacked{"TOML/Parser/Util.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'TOML_PARSER_UTIL';
+  package TOML::Parser::Util;
+  use 5.008005;
+  use strict;
+  use warnings;
+  
+  use Exporter 5.57 'import';
+  our @EXPORT_OK = qw/unescape_str/;
+  
+  sub unescape_str {
+      my $str = shift;
+  
+      $str =~ s!\\b !\x08!xmgo;      # backspace       (U+0008)
+      $str =~ s!\\t !\x09!xmgo;      # tab             (U+0009)
+      $str =~ s!\\n !\x0A!xmgo;      # linefeed        (U+000A)
+      $str =~ s!\\f !\x0C!xmgo;      # form feed       (U+000C)
+      $str =~ s!\\r !\x0D!xmgo;      # carriage return (U+000D)
+      $str =~ s!\\" !\x22!xmgo;      # quote           (U+0022)
+      $str =~ s!\\/ !\x2F!xmgo;      # slash           (U+002F)
+      $str =~ s!\\\\!\x5C!xmgo;      # backslash       (U+005C)
+      $str =~ s{\\u([0-9A-Fa-f]{4})}{# unicode         (U+XXXX)
+          chr hex $1
+      }xmgeo;
+      $str =~ s{\\U([0-9A-Fa-f]{8})}{# unicode         (U+XXXXXXXX)
+          chr hex $1
+      }xmgeo;
+  
+      return $str;
+  }
+  
+  1;
+  __END__
+TOML_PARSER_UTIL
+
+$fatpacked{"Types/Serialiser.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'TYPES_SERIALISER';
+  =head1 NAME
+  
+  Types::Serialiser - simple data types for common serialisation formats
+  
+  =encoding utf-8
+  
+  =head1 SYNOPSIS
+  
+  =head1 DESCRIPTION
+  
+  This module provides some extra datatypes that are used by common
+  serialisation formats such as JSON or CBOR. The idea is to have a
+  repository of simple/small constants and containers that can be shared by
+  different implementations so they become interoperable between each other.
+  
+  =cut
+  
+  package Types::Serialiser;
+  
+  use common::sense; # required to suppress annoying warnings
+  
+  our $VERSION = '1.0';
+  
+  =head1 SIMPLE SCALAR CONSTANTS
+  
+  Simple scalar constants are values that are overloaded to act like simple
+  Perl values, but have (class) type to differentiate them from normal Perl
+  scalars. This is necessary because these have different representations in
+  the serialisation formats.
+  
+  =head2 BOOLEANS (Types::Serialiser::Boolean class)
+  
+  This type has only two instances, true and false. A natural representation
+  for these in Perl is C<1> and C<0>, but serialisation formats need to be
+  able to differentiate between them and mere numbers.
+  
+  =over 4
+  
+  =item $Types::Serialiser::true, Types::Serialiser::true
+  
+  This value represents the "true" value. In most contexts is acts like
+  the number C<1>. It is up to you whether you use the variable form
+  (C<$Types::Serialiser::true>) or the constant form (C<Types::Serialiser::true>).
+  
+  The constant is represented as a reference to a scalar containing C<1> -
+  implementations are allowed to directly test for this.
+  
+  =item $Types::Serialiser::false, Types::Serialiser::false
+  
+  This value represents the "false" value. In most contexts is acts like
+  the number C<0>. It is up to you whether you use the variable form
+  (C<$Types::Serialiser::false>) or the constant form (C<Types::Serialiser::false>).
+  
+  The constant is represented as a reference to a scalar containing C<0> -
+  implementations are allowed to directly test for this.
+  
+  =item $is_bool = Types::Serialiser::is_bool $value
+  
+  Returns true iff the C<$value> is either C<$Types::Serialiser::true> or
+  C<$Types::Serialiser::false>.
+  
+  For example, you could differentiate between a perl true value and a
+  C<Types::Serialiser::true> by using this:
+  
+     $value && Types::Serialiser::is_bool $value
+  
+  =item $is_true = Types::Serialiser::is_true $value
+  
+  Returns true iff C<$value> is C<$Types::Serialiser::true>.
+  
+  =item $is_false = Types::Serialiser::is_false $value
+  
+  Returns false iff C<$value> is C<$Types::Serialiser::false>.
+  
+  =back
+  
+  =head2 ERROR (Types::Serialiser::Error class)
+  
+  This class has only a single instance, C<error>. It is used to signal
+  an encoding or decoding error. In CBOR for example, and object that
+  couldn't be encoded will be represented by a CBOR undefined value, which
+  is represented by the error value in Perl.
+  
+  =over 4
+  
+  =item $Types::Serialiser::error, Types::Serialiser::error
+  
+  This value represents the "error" value. Accessing values of this type
+  will throw an exception.
+  
+  The constant is represented as a reference to a scalar containing C<undef>
+  - implementations are allowed to directly test for this.
+  
+  =item $is_error = Types::Serialiser::is_error $value
+  
+  Returns false iff C<$value> is C<$Types::Serialiser::error>.
+  
+  =back
+  
+  =cut
+  
+  BEGIN {
+     # for historical reasons, and to avoid extra dependencies in JSON::PP,
+     # we alias *Types::Serialiser::Boolean with JSON::PP::Boolean.
+     package JSON::PP::Boolean;
+  
+     *Types::Serialiser::Boolean:: = *JSON::PP::Boolean::;
+  }
+  
+  {
+     # this must done before blessing to work around bugs
+     # in perl < 5.18 (it seems to be fixed in 5.18).
+     package Types::Serialiser::BooleanBase;
+  
+     use overload
+        "0+"     => sub { ${$_[0]} },
+        "++"     => sub { $_[0] = ${$_[0]} + 1 },
+        "--"     => sub { $_[0] = ${$_[0]} - 1 },
+        fallback => 1;
+  
+     @Types::Serialiser::Boolean::ISA = Types::Serialiser::BooleanBase::;
+  }
+  
+  our $true  = do { bless \(my $dummy = 1), Types::Serialiser::Boolean:: };
+  our $false = do { bless \(my $dummy = 0), Types::Serialiser::Boolean:: };
+  our $error = do { bless \(my $dummy    ), Types::Serialiser::Error::   };
+  
+  sub true  () { $true  }
+  sub false () { $false }
+  sub error () { $error }
+  
+  sub is_bool  ($) {           UNIVERSAL::isa $_[0], Types::Serialiser::Boolean:: }
+  sub is_true  ($) {  $_[0] && UNIVERSAL::isa $_[0], Types::Serialiser::Boolean:: }
+  sub is_false ($) { !$_[0] && UNIVERSAL::isa $_[0], Types::Serialiser::Boolean:: }
+  sub is_error ($) {           UNIVERSAL::isa $_[0], Types::Serialiser::Error::   }
+  
+  package Types::Serialiser::Error;
+  
+  sub error {
+     require Carp;
+     Carp::croak ("caught attempt to use the Types::Serialiser::error value");
+  };
+  
+  use overload
+     "0+"     => \&error,
+     "++"     => \&error,
+     "--"     => \&error,
+     fallback => 1;
+  
+  =head1 NOTES FOR XS USERS
+  
+  The recommended way to detect whether a scalar is one of these objects
+  is to check whether the stash is the C<Types::Serialiser::Boolean> or
+  C<Types::Serialiser::Error> stash, and then follow the scalar reference to
+  see if it's C<1> (true), C<0> (false) or C<undef> (error).
+  
+  While it is possible to use an isa test, directly comparing stash pointers
+  is faster and guaranteed to work.
+  
+  For historical reasons, the C<Types::Serialiser::Boolean> stash is
+  just an alias for C<JSON::PP::Boolean>. When printed, the classname
+  with usually be C<JSON::PP::Boolean>, but isa tests and stash pointer
+  comparison will normally work correctly (i.e. Types::Serialiser::true ISA
+  JSON::PP::Boolean, but also ISA Types::Serialiser::Boolean).
+  
+  =head1 A GENERIC OBJECT SERIALIATION PROTOCOL
+  
+  This section explains the object serialisation protocol used by
+  L<CBOR::XS>. It is meant to be generic enough to support any kind of
+  generic object serialiser.
+  
+  This protocol is called "the Types::Serialiser object serialisation
+  protocol".
+  
+  =head2 ENCODING
+  
+  When the encoder encounters an object that it cannot otherwise encode (for
+  example, L<CBOR::XS> can encode a few special types itself, and will first
+  attempt to use the special C<TO_CBOR> serialisation protocol), it will
+  look up the C<FREEZE> method on the object.
+  
+  Note that the C<FREEZE> method will normally be called I<during> encoding,
+  and I<MUST NOT> change the data structure that is being encoded in any
+  way, or it might cause memory corruption or worse.
+  
+  If it exists, it will call it with two arguments: the object to serialise,
+  and a constant string that indicates the name of the data model. For
+  example L<CBOR::XS> uses C<CBOR>, and the L<JSON> and L<JSON::XS> modules
+  (or any other JSON serialiser), would use C<JSON> as second argument.
+  
+  The C<FREEZE> method can then return zero or more values to identify the
+  object instance. The serialiser is then supposed to encode the class name
+  and all of these return values (which must be encodable in the format)
+  using the relevant form for Perl objects. In CBOR for example, there is a
+  registered tag number for encoded perl objects.
+  
+  The values that C<FREEZE> returns must be serialisable with the serialiser
+  that calls it. Therefore, it is recommended to use simple types such as
+  strings and numbers, and maybe array references and hashes (basically, the
+  JSON data model). You can always use a more complex format for a specific
+  data model by checking the second argument, the data model.
+  
+  The "data model" is not the same as the "data format" - the data model
+  indicates what types and kinds of return values can be returned from
+  C<FREEZE>. For example, in C<CBOR> it is permissible to return tagged CBOR
+  values, while JSON does not support these at all, so C<JSON> would be a
+  valid (but too limited) data model name for C<CBOR::XS>. similarly, a
+  serialising format that supports more or less the same data model as JSON
+  could use C<JSON> as data model without losing anything.
+  
+  =head2 DECODING
+  
+  When the decoder then encounters such an encoded perl object, it should
+  look up the C<THAW> method on the stored classname, and invoke it with the
+  classname, the constant string to identify the data model/data format, and
+  all the return values returned by C<FREEZE>.
+  
+  =head2 EXAMPLES
+  
+  See the C<OBJECT SERIALISATION> section in the L<CBOR::XS> manpage for
+  more details, an example implementation, and code examples.
+  
+  Here is an example C<FREEZE>/C<THAW> method pair:
+  
+     sub My::Object::FREEZE {
+        my ($self, $model) = @_;
+  
+        ($self->{type}, $self->{id}, $self->{variant})
+     }
+  
+     sub My::Object::THAW {
+        my ($class, $model, $type, $id, $variant) = @_;
+  
+        $class->new (type => $type, id => $id, variant => $variant)
+     }
+  
+  =head1 BUGS
+  
+  The use of L<overload> makes this module much heavier than it should be
+  (on my system, this module: 4kB RSS, overload: 260kB RSS).
+  
+  =head1 SEE ALSO
+  
+  Currently, L<JSON::XS> and L<CBOR::XS> use these types.
+  
+  =head1 AUTHOR
+  
+   Marc Lehmann <schmorp@schmorp.de>
+   http://home.schmorp.de/
+  
+  =cut
+  
+  1
+  
+TYPES_SERIALISER
+
+$fatpacked{"Types/Serialiser/Error.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'TYPES_SERIALISER_ERROR';
+  =head1 NAME
+  
+  Types::Serialiser::Error - dummy module for Types::Serialiser
+  
+  =head1 SYNOPSIS
+  
+   # do not "use" yourself
+  
+  =head1 DESCRIPTION
+  
+  This module exists only to provide overload resolution for Storable and
+  similar modules that assume that class name equals module name. See
+  L<Types::Serialiser> for more info about this class.
+  
+  =cut
+  
+  use Types::Serialiser ();
+  
+  =head1 AUTHOR
+  
+   Marc Lehmann <schmorp@schmorp.de>
+   http://home.schmorp.de/
+  
+  =cut
+  
+  1
+  
+TYPES_SERIALISER_ERROR
+
+$fatpacked{"x86_64-linux-gnu-thread-multi/common/sense.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'X86_64-LINUX-GNU-THREAD-MULTI_COMMON_SENSE';
+  package common::sense;
+  
+  our $VERSION = 3.74;
+  
+  # overload should be included
+  
+  sub import {
+     local $^W; # work around perl 5.16 spewing out warnings for next statement
+     # use warnings
+     ${^WARNING_BITS} ^= ${^WARNING_BITS} ^ "\x0c\x3f\x33\x00\x0f\xf0\x0f\xc0\xf0\xfc\x33\x00\x00\x00\xc0\x00\x00";
+     # use strict, use utf8; use feature;
+     $^H |= 0x1c820fc0;
+     @^H{qw(feature_evalbytes feature_switch feature_unicode feature___SUB__ feature_state feature_fc feature_say)} = (1) x 7;
+  }
+  
+  1
+X86_64-LINUX-GNU-THREAD-MULTI_COMMON_SENSE
 
 s/^  //mg for values %fatpacked;
 
