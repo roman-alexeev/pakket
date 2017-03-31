@@ -4,6 +4,7 @@ package Pakket::Uninstaller;
 
 use Moose;
 use MooseX::StrictConstructor;
+use Carp qw< croak >;
 use Path::Tiny qw< path  >;
 use Types::Path::Tiny qw< Path  >;
 use Log::Any qw< $log >;
@@ -31,7 +32,7 @@ sub get_list_of_packages_for_uninstall {
     my $self = shift;
 
     @{ $self->packages }
-        or die $log->critical('Did not receive any packages to uninstall');
+        or croak( $log->critical('Did not receive any packages to uninstall') );
 
     my $info_file  = $self->load_info_file($self->active_dir);
     my @packages_for_uninstall
@@ -93,9 +94,9 @@ sub get_packages_available_for_uninstall {
     my ( %to_delete, %to_delete_by_requirements );
     foreach my $package ( @{ $self->packages } ) {
         $installed_packages->{ $package->{category} }{ $package->{name} }
-            or die $log->critical(
+            or croak( $log->critical(
                 "Package $package->{category}/$package->{name} doesn't exists"
-            );
+            ) );
 
         $to_delete{ $package->{category} }{ $package->{name} }++ and next;
         push @queue, $package;
@@ -141,8 +142,11 @@ sub get_packages_available_for_uninstall {
                         {
                             $keep_it{$category}{$name}++ and next;
                             $to_delete_by_requirements{$category}{$name}
-                                and die $log->critical(
-                                "Can't uninstall package $category/$name, it's required by $package->{category}/$package->{name}"
+                                and croak(
+                                $log->critical(
+                                    "Can't uninstall package $category/$name, "
+                                   . "it's required by $package->{category}/$package->{name}"
+                                )
                                 );
                             push @queue,
                                 { 'category' => $category, 'name' => $name };

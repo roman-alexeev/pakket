@@ -6,6 +6,7 @@ package Pakket::Repository::Backend::DBI;
 use Moose;
 use MooseX::StrictConstructor;
 
+use Carp       qw< croak >;
 use DBI        qw< :sql_types >;
 use Types::DBI;
 use Path::Tiny qw< path >;
@@ -29,10 +30,10 @@ sub all_object_ids {
     my $stmt = $self->_prepare_statement($sql);
 
     if ( !$stmt->execute() ) {
-        die $log->criticalf(
+        croak( $log->criticalf(
             'Could not get remote all_object_ids: %s',
             $DBI::errstr,
-        );
+        ) );
     }
 
     my @all_object_ids = map +( $_->[0] ), @{ $stmt->fetchall_arrayref() };
@@ -44,11 +45,11 @@ sub _prepare_statement {
     my $stmt = $self->dbh->prepare($sql);
 
     if ( !$stmt ) {
-        die $log->criticalf(
+        croak( $log->criticalf(
             'Could not prepare statement [%s] => %s',
             $sql,
             $DBI::errstr,
-        );
+        ) );
     }
 
     return $stmt;
@@ -61,11 +62,11 @@ sub has_object {
 
     $stmt->bind_param( 1, $id, SQL_VARCHAR );
     if ( !$stmt->execute() ) {
-        die $log->criticalf(
+        croak( $log->criticalf(
             'Could not retrieve content for id %d: %s',
             $id,
             $DBI::errstr,
-        );
+        ) );
     }
 
     my $results = $stmt->fetchall_arrayref();
@@ -94,11 +95,11 @@ sub store_content {
 
         $stmt->bind_param( 1, $id, SQL_VARCHAR );
         if ( !$stmt->execute() ) {
-            die $log->criticalf(
+            croak( $log->criticalf(
                 'Could not delete content for id %d: %s',
                 $id,
                 $DBI::errstr,
-            );
+            ) );
         }
     }
     {
@@ -108,11 +109,11 @@ sub store_content {
         $stmt->bind_param( 1, $id,      SQL_VARCHAR );
         $stmt->bind_param( 2, $content, SQL_BLOB );
         if ( !$stmt->execute() ) {
-            die $log->criticalf(
+            croak( $log->criticalf(
                 'Could not insert content for id %d: %s',
                 $id,
                 $DBI::errstr,
-            );
+            ) );
         }
     }
 }
@@ -124,19 +125,19 @@ sub retrieve_content {
 
     $stmt->bind_param(1, $id, SQL_VARCHAR);
     if ( !$stmt->execute() ) {
-        die $log->criticalf(
+        croak( $log->criticalf(
             'Could not retrieve content for id %d: %s',
             $id,
             $DBI::errstr,
-        );
+        ) );
     }
 
     my $all_content = $stmt->fetchall_arrayref();
     if ( !$all_content || @{$all_content} != 1 ) {
-        die $log->criticalf(
+        croak( $log->criticalf(
             'Failed to retrieve exactly one row for id %d: %s',
             $id,
-        );
+        ) );
     }
 
     return $all_content->[0];

@@ -28,10 +28,10 @@ has 'backend' => (
 
 sub _build_backend {
     my $self = shift;
-    die $log->critical(
+    Carp::croak( $log->critical(
         'You did not specify a backend '
       . '(using parameter or builder)',
-    );
+    ) );
 }
 
 sub BUILD {
@@ -44,10 +44,10 @@ sub retrieve_package_file {
     my $file = $self->retrieve_location( $package->id );
 
     if ( !$file ) {
-        die $log->criticalf(
+        Carp::croak( $log->criticalf(
             'We do not have the %s for package %s',
             $type, $package->full_name,
-        );
+        ) );
     }
 
     my $dir = Path::Tiny->tempdir( 'CLEANUP' => 1 );
@@ -62,10 +62,10 @@ sub remove_package_file {
     my $file = $self->retrieve_location( $package->id );
 
     if ( !$file ) {
-        die $log->criticalf(
+        Carp::croak( $log->criticalf(
             'We do not have the %s for package %s',
             $type, $package->full_name,
-        );
+        ) );
     }
 
     $log->debug("Removing $type package");
@@ -120,8 +120,8 @@ sub freeze_location {
         $arch->add( $orig_path->basename, $orig_path->stringify, );
     } elsif ( $orig_path->is_dir ) {
         $orig_path->children
-            or
-            die $log->critical("Cannot freeze empty directory ($orig_path)");
+            or Carp::croak(
+            $log->critical("Cannot freeze empty directory ($orig_path)") );
 
         $orig_path->visit(
             sub {
@@ -136,7 +136,8 @@ sub freeze_location {
             { 'recurse' => 1 },
         );
     } else {
-        die $log->criticalf( "Unknown location type: %s", $orig_path );
+        Carp::croak(
+            $log->criticalf( "Unknown location type: %s", $orig_path ) );
     }
 
     my $file = Path::Tiny->tempfile();

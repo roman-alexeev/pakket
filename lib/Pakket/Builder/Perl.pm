@@ -71,7 +71,7 @@ sub build_package {
     my $success = $self->run_command_sequence(@seq);
 
     if ( !$success ) {
-        die $log->critical("Failed to build $package");
+        Carp::croak( $log->critical("Failed to build $package") );
     }
 
     $log->info("Done preparing $package");

@@ -5,6 +5,7 @@ use Moose;
 use MooseX::StrictConstructor;
 use JSON::MaybeXS;
 use File::Spec;
+use Carp              qw< croak >;
 use Path::Tiny        qw< path >;
 use Types::Path::Tiny qw< AbsPath >;
 use Log::Any          qw< $log >;
@@ -68,8 +69,8 @@ sub bundle {
         );
 
         -e $new_fullname
-            and die 'Odd. File already seems to exist in packaging dir. '
-                  . "Stopping.\n";
+            and croak( 'Odd. File already seems to exist in packaging dir. '
+                  . "Stopping.\n" );
 
         # create directories
         $new_fullname->parent->mkpath;
@@ -77,7 +78,7 @@ sub bundle {
         # regular file
         if ( $files->{$orig_file} eq '' ) {
             path($orig_file)->copy($new_fullname)
-                or die "Failed to copy $orig_file to $new_fullname\n";
+                or croak("Failed to copy $orig_file to $new_fullname\n");
 
             my $raw_mode = ( stat($orig_file) )[2];
             my $mode_str = sprintf '%04o', $raw_mode & oct('07777');

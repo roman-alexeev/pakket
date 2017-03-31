@@ -3,6 +3,7 @@ package Pakket::Builder::NodeJS;
 
 use Moose;
 use MooseX::StrictConstructor;
+use Carp       qw< croak >;
 use English    qw< -no_match_vars >;
 use Log::Any   qw< $log >;
 use Path::Tiny qw< path >;
@@ -38,7 +39,7 @@ sub build_package {
         $opts );
 
     if ( !$success ) {
-        die $log->critical("Failed to build $package");
+        croak( $log->critical("Failed to build $package") );
     }
 
     $log->info("Done preparing $package");

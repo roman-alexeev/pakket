@@ -4,6 +4,7 @@ package Pakket::Requirement;
 use Moose;
 use MooseX::StrictConstructor;
 
+use Carp              qw< croak >;
 use Log::Any          qw< $log >;
 use Pakket::Constants qw<
     PAKKET_PACKAGE_SPEC
@@ -43,7 +44,7 @@ sub new_from_string {
     my ( $class, $req_str ) = @_;
 
     if ( $req_str !~ PAKKET_PACKAGE_SPEC() ) {
-        die $log->critical("Cannot parse $req_str");
+        croak( $log->critical("Cannot parse $req_str") );
     } else {
         # This shuts up Perl::Critic
         return $class->new(

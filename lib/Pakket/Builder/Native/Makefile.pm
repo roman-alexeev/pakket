@@ -3,6 +3,7 @@ package Pakket::Builder::Native::Makefile;
 
 use Moose;
 use MooseX::StrictConstructor;
+use Carp qw< croak >;
 use Log::Any   qw< $log >;
 use Path::Tiny qw< path >;
 use Pakket::Log;
@@ -29,8 +30,8 @@ sub build_package {
     } elsif ( -f $build_dir->child('Configure') ) {
         $configurator = './Configure';
     } else {
-        die $log->critical( "Don't know how to configure $package"
-                . " (Cannot find executale 'configure' or 'config')" );
+        croak( $log->critical( "Don't know how to configure $package"
+                . " (Cannot find executale 'configure' or 'config')" ) );
     }
 
     my @seq = (
@@ -55,7 +56,7 @@ sub build_package {
     my $success = $self->run_command_sequence(@seq);
 
     if ( !$success ) {
-        die $log->critical("Failed to build $package");
+        croak( $log->critical("Failed to build $package") );
     }
 
     $log->info("Done preparing $package");

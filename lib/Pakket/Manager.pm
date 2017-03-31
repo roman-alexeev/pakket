@@ -3,6 +3,7 @@ package Pakket::Manager;
 
 use Moose;
 use Log::Any qw< $log >;
+use Carp     qw< croak >;
 
 use Pakket::Log;
 use Pakket::Scaffolder::Perl;
@@ -180,7 +181,7 @@ sub _get_scaffolder {
     $self->category eq 'perl'
         and return $self->_gen_scaffolder_perl;
 
-    die "failed to create a scaffolder\n";
+    croak("failed to create a scaffolder\n");
 }
 
 sub _gen_scaffolder_perl {
