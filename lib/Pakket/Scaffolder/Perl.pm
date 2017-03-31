@@ -413,7 +413,7 @@ sub create_spec_for {
                 }
 
                 $prereq_data->{ $dist } = +{
-                    'version' => ( $dep_requirements->requirements_for_module( $dist ) || 0 ),
+                    'version' => ( $dep_requirements->requirements_for_module( $module ) || 0 ),
                 };
             }
 
