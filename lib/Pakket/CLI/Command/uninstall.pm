@@ -7,7 +7,7 @@ use warnings;
 
 use Log::Any qw< $log >;
 use Log::Any::Adapter;
-use CLI::Helpers qw<output prompt>;
+use IO::Prompt::Tiny qw< prompt >;
 use Path::Tiny qw< path >;
 
 use Pakket::CLI '-command';
@@ -93,14 +93,15 @@ sub execute {
     my @packages_for_uninstall
         = $uninstaller->get_list_of_packages_for_uninstall();
 
-    output("We are going to remove:");
+    print "We are going to remove:\n";
     for my $package (@packages_for_uninstall) {
-        output("$package->{category}/$package->{name}");
+        print "* $package->{category}/$package->{name}\n";
     }
 
-    prompt( "Continue?", yn => 1 ) or return;
+    my $answer = prompt( 'Continue?', 'y' );
 
-    $uninstaller->uninstall();
+    lc $answer eq 'y'
+        and $uninstaller->uninstall();
 
     return;
 }
