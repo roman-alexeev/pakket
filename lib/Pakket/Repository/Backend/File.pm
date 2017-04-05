@@ -10,6 +10,7 @@ use Log::Any          qw< $log >;
 use Types::Path::Tiny qw< Path AbsPath >;
 use Digest::SHA       qw< sha1_hex >;
 use Pakket::Utils     qw< encode_json_canonical encode_json_pretty >;
+use Pakket::Constants qw< PAKKET_PACKAGE_SPEC >;
 
 with qw<
     Pakket::Role::Repository::Backend
@@ -63,6 +64,14 @@ sub _build_repo_index {
 sub all_object_ids {
     my $self           = shift;
     my @all_object_ids = keys %{ $self->repo_index };
+    return \@all_object_ids;
+}
+
+sub all_object_ids_by_name {
+    my ( $self, $name, $category ) = @_;
+    my @all_object_ids =
+        grep { $_ =~ PAKKET_PACKAGE_SPEC(); $1 eq $category and $2 eq $name }
+        keys %{ $self->repo_index };
     return \@all_object_ids;
 }
 

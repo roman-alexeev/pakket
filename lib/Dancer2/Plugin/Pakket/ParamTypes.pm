@@ -28,6 +28,18 @@ sub BUILD {
     );
 
     $self->register_type_action(
+        'MissingName' => sub {
+            send_error( 'Missing or incorrect Name', HTTP_USER_ERROR() );
+        },
+    );
+
+    $self->register_type_action(
+        'MissingCategory' => sub {
+            send_error( 'Missing or incorrect Category', HTTP_USER_ERROR() );
+        },
+    );
+
+    $self->register_type_action(
         'MissingContent' => sub {
             send_error( 'Missing or incorrect content', HTTP_USER_ERROR() );
         },

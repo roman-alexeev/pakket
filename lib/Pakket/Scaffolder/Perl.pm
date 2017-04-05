@@ -17,6 +17,7 @@ use Log::Any            qw< $log >;
 use Pakket::Package;
 use Pakket::Types;
 use Pakket::Utils::Perl qw< should_skip_module >;
+use Pakket::Constants   qw< PAKKET_PACKAGE_SPEC >;
 use Pakket::Scaffolder::Perl::Module;
 use Pakket::Scaffolder::Perl::CPANfile;
 
@@ -98,6 +99,13 @@ has 'cpan_02packages' => (
     'builder' => '_build_cpan_02packages',
 );
 
+has 'versioner' => (
+    'is'      => 'ro',
+    'isa'     => 'Pakket::Versioning',
+    'lazy'    => 1,
+    'builder' => '_build_versioner',
+);
+
 sub _build_metacpan_api {
     my $self = shift;
     return $ENV{'PAKKET_METACPAN_API'}
@@ -158,6 +166,10 @@ sub _build_cpan_02packages {
     }
 
     return $ret;
+}
+
+sub _build_versioner {
+    return Pakket::Versioning->new( 'type' => 'Perl' );
 }
 
 sub BUILDARGS {
@@ -285,10 +297,23 @@ sub unpack {
     return $target;
 }
 
+sub has_satisfying {
+    my ( $self, $name, $requirements ) = @_;
+    my $ver = $requirements->as_string_hash->{$name};
+    return unless $ver;
+
+    my @versions = map { $_ =~ PAKKET_PACKAGE_SPEC(); $3 }
+        @{ $self->spec_repo->all_object_ids_by_name($name, 'perl') };
+    return unless @versions;
+
+    return $self->versioner->is_satisfying($ver, @versions);
+}
+
 sub create_spec_for {
     my ( $self, $type, $name, $requirements ) = @_;
     return if $self->skip_name($name);
     return if $self->processed_dists->{ $name }++;
+    return if $self->has_satisfying($name, $requirements);
 
     my $release = $self->get_release_info($type, $name, $requirements);
     return if exists $release->{'skip'};
