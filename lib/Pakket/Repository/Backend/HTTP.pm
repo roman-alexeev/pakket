@@ -70,6 +70,23 @@ sub all_object_ids {
     return $content->{'object_ids'};
 }
 
+sub all_object_ids_by_name {
+    my ( $self, $name, $category ) = @_;
+    my $response = $self->http_client->get(
+        sprintf( '%s/all_object_ids_by_name?name=%s&category=%s',
+            $self->base_url, uri_escape($name), uri_escape($category),
+        )
+    );
+
+    if ( !$response->{'success'} ) {
+        croak( $log->criticalf( 'Could not get remote all_object_ids: %d -- %s',
+            $response->{'status'}, $response->{'reason'} ) );
+    }
+
+    my $content = decode_json( $response->{'content'} );
+    return $content->{'object_ids'};
+}
+
 sub has_object {
     my ( $self, $id ) = @_;
     my $response = $self->http_client->get(

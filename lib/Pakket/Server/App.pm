@@ -49,6 +49,17 @@ sub setup {
                 });
             };
 
+            get '/all_object_ids_by_name' => with_types [
+                [ 'query', 'name',     'Str', 'MissingName' ],
+                [ 'query', 'category', 'Str', 'MissingCategory' ],
+            ] => sub {
+                my $name     = query_parameters->get('name');
+                my $category = query_parameters->get('category');
+                return encode_json({
+                    'object_ids' => $repo->all_object_ids_by_name($name, $category),
+                });
+            };
+
             prefix '/retrieve' => sub {
                 get '/content' => with_types [
                     [ 'query', 'id', 'Str', 'MissingID' ],

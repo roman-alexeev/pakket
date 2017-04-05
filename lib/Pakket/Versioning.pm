@@ -85,6 +85,14 @@ sub latest {
     return $latest;
 }
 
+sub is_satisfying {
+    my ( $self, $req_string, @versions ) = @_;
+
+    # Filter all @versions based on $req_string
+    $self->filter_version( $req_string, \@versions );
+
+    return !!( @versions > 0 );
+}
 
 no Moose;
 __PACKAGE__->meta->make_immutable;
