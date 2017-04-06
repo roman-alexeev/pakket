@@ -6,8 +6,8 @@ use MooseX::StrictConstructor;
 use version 0.77;
 use Carp ();
 use Archive::Any;
-use CPAN::DistnameInfo;
 use CPAN::Meta::Prereqs;
+use Parse::CPAN::Packages::Fast;
 use JSON::MaybeXS       qw< decode_json encode_json >;
 use Ref::Util           qw< is_arrayref is_hashref >;
 use Path::Tiny          qw< path >;
@@ -94,7 +94,7 @@ has 'file_02packages' => (
 
 has 'cpan_02packages' => (
     'is'      => 'ro',
-    'isa'     => 'HashRef',
+    'isa'     => 'Parse::CPAN::Packages::Fast',
     'lazy'    => 1,
     'builder' => '_build_cpan_02packages',
 );
@@ -136,7 +136,6 @@ sub _build_spec_index {
 
 sub _build_cpan_02packages {
     my $self = shift;
-    my $ret  = +{};
     my ( $dir, $file );
 
     if ( $self->file_02packages ) {
@@ -150,22 +149,7 @@ sub _build_cpan_02packages {
         $self->ua->mirror( 'https://cpan.metacpan.org/modules/02packages.details.txt', $file );
     }
 
-    chomp( my @content = $file->lines_utf8 );
-    shift @content for 0..8; # remove headers
-
-    for my $c ( @content ) {
-        my ( $name, $latest, $path ) =
-            $c =~ /^([^\s]+)\s+([^\s]+)\s+([^\s]+)\s*$/;
-
-        my $d = CPAN::DistnameInfo->new($path);
-
-        $ret->{$name} = {
-            'distribution'   => $d->dist,
-            'latest_version' => $d->version,
-        };
-    }
-
-    return $ret;
+    return Parse::CPAN::Packages::Fast->new($file);
 }
 
 sub _build_versioner {
@@ -464,8 +448,8 @@ sub get_dist_name {
     my ( $self, $module_name ) = @_;
 
     # fist check if we can get it from 02packages
-    exists $self->cpan_02packages->{$module_name}
-        and return $self->cpan_02packages->{$module_name}{'distribution'};
+    my $mod = $self->cpan_02packages->package($module_name);
+    $mod and return $mod->distribution->dist;
 
     # fallback to metacpan check
     $module_name = $self->known_incorrect_name_fixes->{ $module_name }

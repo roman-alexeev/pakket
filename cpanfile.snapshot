@@ -2302,6 +2302,17 @@ DISTRIBUTIONS
       overload 0
       strict 0
       warnings 0
+  Parse-CPAN-Packages-Fast-0.09
+    pathname: S/SR/SREZIC/Parse-CPAN-Packages-Fast-0.09.tar.gz
+    provides:
+      Parse::CPAN::Packages::Fast 0.09
+      Parse::CPAN::Packages::Fast::Distribution 0.09
+      Parse::CPAN::Packages::Fast::Package 0.09
+    requirements:
+      CPAN::DistnameInfo 0
+      CPAN::Version 0
+      ExtUtils::MakeMaker 0
+      IO::Uncompress::Gunzip 0
   Path-Tiny-0.094
     pathname: D/DA/DAGOLDEN/Path-Tiny-0.094.tar.gz
     provides:
