@@ -101,7 +101,7 @@ sub latest_version_release {
         'type' => $types{$category},
     );
 
-    my $latest_version = $versioner->latest( $req_string, @versions );
+    my $latest_version = $versioner->latest( $category, $name, $req_string, @versions );
     $latest_version
         and return [ $latest_version, 1 ];
 

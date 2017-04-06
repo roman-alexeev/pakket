@@ -61,13 +61,13 @@ sub filter_version {
 }
 
 sub latest {
-    my ( $self, $req_string, @versions ) = @_;
+    my ( $self, $category, $name, $req_string, @versions ) = @_;
 
     # Filter all @versions based on $req_string
     $self->filter_version( $req_string, \@versions );
 
     @versions
-        or croak( $log->critical('No versions provided') );
+        or croak( $log->criticalf('No versions provided for %s/%s', $category, $name) );
 
     # latest_version
     my $latest;
