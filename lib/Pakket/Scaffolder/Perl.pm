@@ -283,14 +283,23 @@ sub unpack {
 
 sub has_satisfying {
     my ( $self, $name, $requirements ) = @_;
-    my $ver = $requirements->as_string_hash->{$name};
-    return unless $ver;
+    my $req_as_hash = $requirements->as_string_hash;
+
+    # fix requirement entries from module name to distribution
+    # so we can match to $name
+    for my $m ( keys %{ $req_as_hash } ) {
+        my $v = delete $req_as_hash->{$m};
+        next if $self->skip_name($m);
+        my $d = $self->get_dist_name($m);
+        $req_as_hash->{$d} = $v;
+    }
+    return unless exists $req_as_hash->{$name};
 
     my @versions = map { $_ =~ PAKKET_PACKAGE_SPEC(); $3 }
         @{ $self->spec_repo->all_object_ids_by_name($name, 'perl') };
     return unless @versions;
 
-    return $self->versioner->is_satisfying($ver, @versions);
+    return $self->versioner->is_satisfying($req_as_hash->{$name}, @versions);
 }
 
 sub create_spec_for {
