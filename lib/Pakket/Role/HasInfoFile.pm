@@ -7,6 +7,7 @@ use Log::Any qw< $log >;
 use JSON::MaybeXS qw< decode_json >;
 use Pakket::Utils qw< encode_json_pretty >;
 use Pakket::Constants qw<PAKKET_INFO_FILE>;
+use Pakket::Package;
 
 sub add_package_in_info_file {
     my ( $self, $parcel_dir, $dir, $package, $opts ) = @_;
@@ -70,6 +71,27 @@ sub save_info_file {
     my $info_file = $dir->child( PAKKET_INFO_FILE() );
 
     $info_file->spew_utf8( encode_json_pretty($install_data) );
+}
+
+sub load_installed_packages {
+    my ($self, $dir) = @_;
+
+    my $install_data = $self->load_info_file($dir);
+    my $packages = $install_data->{'installed_packages'};
+    my %packages = ();
+    for my $category (keys %$packages) {
+        for my $name (keys %{$packages->{$category}}) {
+            my $p = $packages->{$category}{$name};
+            my $package = Pakket::Package->new(
+                                'category' => $category,
+                                'name'     => $name,
+                                'version'  => $p->{'version'},
+                                'release'  => $p->{'release'},
+                            );
+            $packages{$package->full_name} = 1;
+        }
+    }
+    return \%packages;
 }
 
 no Moose::Role;

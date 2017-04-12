@@ -96,8 +96,9 @@ sub opt_spec {
             'from=s',
             'directory to install the packages from',
         ],
-        [ 'input-file=s', 'install eveything listed in this file' ],
-        [ 'config|c=s',   'configuration file' ],
+        [ 'input-file=s',   'install eveything listed in this file' ],
+        [ 'config|c=s',     'configuration file' ],
+        [ 'show-installed', 'print list of installed packages' ],
         [
             'verbose|v+',
             'verbose output (can be provided multiple times)',
@@ -125,6 +126,9 @@ sub execute {
         'config'     => $opt->{'config'},
         'pakket_dir' => $opt->{'config'}{'install_dir'},
     );
+
+    $opt->{'show_installed'}
+        and return $installer->show_installed();
 
     return $installer->install( @{ $opt->{'packages'} } );
 }

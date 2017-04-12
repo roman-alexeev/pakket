@@ -249,6 +249,12 @@ sub pre_install_checks {
     }
 }
 
+sub show_installed {
+    my $self = shift;
+    my $installed_packages = $self->load_installed_packages($self->active_dir);
+    print join("\n", sort keys %{$installed_packages} ) . "\n";
+}
+
 __PACKAGE__->meta->make_immutable;
 
 no Moose;
