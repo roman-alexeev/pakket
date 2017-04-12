@@ -99,6 +99,7 @@ sub opt_spec {
         [ 'input-file=s',   'install eveything listed in this file' ],
         [ 'config|c=s',     'configuration file' ],
         [ 'show-installed', 'print list of installed packages' ],
+        [ 'force|f',        'force reinstall if package exists' ],
         [
             'verbose|v+',
             'verbose output (can be provided multiple times)',
@@ -123,8 +124,9 @@ sub execute {
     my ( $self, $opt ) = @_;
 
     my $installer = Pakket::Installer->new(
-        'config'     => $opt->{'config'},
-        'pakket_dir' => $opt->{'config'}{'install_dir'},
+        'config'          => $opt->{'config'},
+        'pakket_dir'      => $opt->{'config'}{'install_dir'},
+        'force_reinstall' => $opt->{'force'},
     );
 
     $opt->{'show_installed'}
