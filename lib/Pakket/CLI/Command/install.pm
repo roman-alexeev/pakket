@@ -36,8 +36,19 @@ sub _determine_config {
     # Double check
     if ( !$config->{'repositories'}{'parcel'} ) {
         $self->usage_error(
-            "Missing where to install\n"
+            "Missing where to install from\n"
           . '(Create a configuration or use --from)',
+        );
+    }
+
+    if ( $opt->{'to'} ) {
+        $config->{'install_dir'} = $opt->{'to'};
+    }
+
+    if ( !$config->{'install_dir'} ) {
+        $self->usage_error(
+            "Missing where to install\n"
+          . '(Create a configuration or use --to)',
         );
     }
 
@@ -80,7 +91,6 @@ sub opt_spec {
         [
             'to=s',
             'directory to install the package in',
-            { 'required' => 1 },
         ],
         [
             'from=s',
@@ -102,7 +112,6 @@ sub validate_args {
     Log::Any::Adapter->set( 'Dispatch',
         'dispatcher' => Pakket::Log->build_logger( $opt->{'verbose'} ) );
 
-    $opt->{'pakket_dir'} = $opt->{'to'};
     $opt->{'config'}     = $self->_determine_config($opt);
     $opt->{'packages'}   = $self->_determine_packages( $opt, $args );
 
@@ -114,7 +123,7 @@ sub execute {
 
     my $installer = Pakket::Installer->new(
         'config'     => $opt->{'config'},
-        'pakket_dir' => $opt->{'pakket_dir'},
+        'pakket_dir' => $opt->{'config'}{'install_dir'},
     );
 
     return $installer->install( @{ $opt->{'packages'} } );
