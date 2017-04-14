@@ -5,7 +5,7 @@ use strict;
 use warnings;
 
 use Pakket::CLI '-command';
-use Pakket::Constants qw< PAKKET_PACKAGE_SPEC PAKKET_LATEST_VERSION >;
+use Pakket::Constants qw< PAKKET_PACKAGE_SPEC >;
 use Pakket::Config;
 use Pakket::Builder;
 use Pakket::Requirement;
@@ -104,7 +104,7 @@ sub validate_args {
         my $req;
         eval { $req = Pakket::Requirement->new_from_string($spec_str); 1; }
         or do {
-            my $error = $@ || 'Zombie';
+            my $error = $@ || 'Zombie error';
             $log->debug("Failed to create Pakket::Requirement: $error");
             $self->usage_error(
                 "We do not understand this package string: $spec_str",
