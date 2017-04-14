@@ -32,12 +32,23 @@ with qw<
     Pakket::Role::RunCommand
 >;
 
+has 'force_reinstall' => (
+    'is'      => 'ro',
+    'isa'     => 'Bool',
+    'default' => sub {0},
+);
+
 sub install {
     my ( $self, @packages ) = @_;
 
     if ( !@packages ) {
         $log->notice('Did not receive any parcels to deliver');
         return;
+    }
+
+    if ( !$self->force_reinstall ) {
+        @packages = $self->drop_installed_packages(@packages);
+        @packages or return;
     }
 
     my $installer_cache = {};
@@ -247,6 +258,27 @@ sub pre_install_checks {
             "Can't write to your installation directory ($dir)",
         ) );
     }
+}
+
+sub show_installed {
+    my $self = shift;
+    my $installed_packages = $self->load_installed_packages($self->active_dir);
+    print join("\n", sort keys %{$installed_packages} ) . "\n";
+}
+
+sub drop_installed_packages {
+    my $self = shift;
+    my @packages = @_;
+    my $installed_packages = $self->load_installed_packages($self->active_dir);
+    my @out;
+    for my $package (@packages) {
+        if ($installed_packages->{$package->full_name}) {
+            $log->infof( '%s already installed', $package->full_name );
+        } else {
+            push @out, $package;
+        }
+    }
+    return @out;
 }
 
 __PACKAGE__->meta->make_immutable;
