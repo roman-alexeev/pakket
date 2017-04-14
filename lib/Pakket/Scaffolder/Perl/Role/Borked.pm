@@ -23,6 +23,7 @@ has 'known_incorrect_version_fixes' => (
             'ExtUtils-Constant' => '0.23',
             'Getopt-Long'       => '2.49',
             'IO-Capture'        => '0.05',
+            'Statistics-Regression' => '0.53',
         }
     },
 );
