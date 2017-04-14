@@ -46,6 +46,12 @@ has 'file_02packages' => (
     'isa'       => 'Maybe[Str]',
 );
 
+has 'no_deps' => (
+    'is'        => 'ro',
+    'isa'       => 'Bool',
+    'default'   => 0,
+);
+
 sub _build_category {
     my $self = shift;
     $self->{'cpanfile'} and return 'perl';
@@ -188,8 +194,9 @@ sub _gen_scaffolder_perl {
     my $self = shift;
 
     my %params = (
-        'config' => $self->config,
-        'phases' => $self->phases,
+        'config'  => $self->config,
+        'phases'  => $self->phases,
+        'no_deps' => $self->no_deps,
     );
 
     if ( $self->cpanfile ) {

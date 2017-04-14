@@ -34,6 +34,7 @@ sub opt_spec {
         [ 'add=s%',       '(deps) add the following dependency (phase=category/name=version[:release])' ],
         [ 'remove=s%',    '(deps) add the following dependency (phase=category/name=version[:release])' ],
         [ 'cpan-02packages=s', '02packages file (optional)' ],
+        [ 'no-deps',      'do not add dependencies (top-level only)' ],
     );
 }
 
@@ -80,6 +81,7 @@ sub execute {
         phases          => $self->{'gen_phases'},
         package         => $package,
         file_02packages => $self->{'file_02packages'},
+        no_deps         => $self->{'opt'}{'no_deps'},
     );
 
     if ( $command eq 'add' ) {

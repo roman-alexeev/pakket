@@ -106,6 +106,12 @@ has 'versioner' => (
     'builder' => '_build_versioner',
 );
 
+has 'no_deps' => (
+    'is'      => 'ro',
+    'isa'     => 'Bool',
+    'default' => 0,
+);
+
 sub _build_metacpan_api {
     my $self = shift;
     return $ENV{'PAKKET_METACPAN_API'}
@@ -191,23 +197,25 @@ sub run {
     my %failed;
 
     # Bootstrap toolchain
-    for my $dist ( @{ $self->perl_bootstrap_modules } ) {
-        # TODO: check versions
-        if ( exists $self->spec_index->{$dist} ) {
-            $log->debugf( 'Skipping %s (already have version: %s)',
-                          $dist, $self->spec_index->{$dist} );
-            next;
-        }
+    if ( ! $self->no_deps ) {
+        for my $dist ( @{ $self->perl_bootstrap_modules } ) {
+            # TODO: check versions
+            if ( exists $self->spec_index->{$dist} ) {
+                $log->debugf( 'Skipping %s (already have version: %s)',
+                              $dist, $self->spec_index->{$dist} );
+                next;
+            }
 
-        $log->debugf( 'Bootstrapping config: %s', $dist );
-        my $requirements = $self->prereqs->requirements_for(qw< configure requires >);
-        eval {
-            $self->create_spec_for( dist => $dist, $requirements );
-            1;
-        } or do {
-            my $err = $@ || 'zombie error';
-            Carp::croak("Cannot bootstrap toolchain distribution: $dist ($err)\n");
-        };
+            $log->debugf( 'Bootstrapping config: %s', $dist );
+            my $requirements = $self->prereqs->requirements_for(qw< configure requires >);
+            eval {
+                $self->create_spec_for( dist => $dist, $requirements );
+                1;
+            } or do {
+                my $err = $@ || 'zombie error';
+                Carp::croak("Cannot bootstrap toolchain distribution: $dist ($err)\n");
+            };
+        }
     }
 
     # the rest
@@ -436,8 +444,10 @@ sub create_spec_for {
             }
 
             # recurse through those as well
-            $self->create_spec_for( 'dist' => $_, $dep_requirements )
-                for keys %{ $package_spec->{'Prereqs'}{'perl'}{$phase} };
+            if ( ! $self->no_deps ) {
+                $self->create_spec_for( 'dist' => $_, $dep_requirements )
+                    for keys %{ $package_spec->{'Prereqs'}{'perl'}{$phase} };
+            }
         }
     }
 
