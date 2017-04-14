@@ -52,6 +52,12 @@ has 'no_deps' => (
     'default'   => 0,
 );
 
+has 'is_local' => (
+    'is'        => 'ro',
+    'isa'       => 'Bool',
+    'default'   => 0,
+);
+
 sub _build_category {
     my $self = shift;
     $self->{'cpanfile'} and return 'perl';
@@ -194,9 +200,10 @@ sub _gen_scaffolder_perl {
     my $self = shift;
 
     my %params = (
-        'config'  => $self->config,
-        'phases'  => $self->phases,
-        'no_deps' => $self->no_deps,
+        'config'   => $self->config,
+        'phases'   => $self->phases,
+        'no_deps'  => ( $self->is_local ? 1 : $self->no_deps ),
+        'is_local' => $self->is_local,
     );
 
     if ( $self->cpanfile ) {
@@ -206,7 +213,7 @@ sub _gen_scaffolder_perl {
         $params{'module'}  = $self->package->name;
         $params{'version'} = defined $self->package->version
             # hack to pass exact version in prereq syntax
-            ? '=='.$self->package->version
+            ? ( $self->is_local ? '' : '==' ) . $self->package->version
             : undef;
     }
 
