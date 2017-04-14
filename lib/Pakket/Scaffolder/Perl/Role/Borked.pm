@@ -26,6 +26,7 @@ has 'known_incorrect_version_fixes' => (
             'Frontier-RPC'      => '0.07',
             'Getopt-Long'       => '2.49',
             'IO-Capture'        => '0.05',
+            'Statistics-Regression' => '0.53',
         }
     },
 );
