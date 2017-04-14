@@ -8,42 +8,42 @@ use Carp     qw< croak >;
 use Pakket::Log;
 use Pakket::Scaffolder::Perl;
 
-has config => (
-    is        => 'ro',
-    isa       => 'HashRef',
-    default   => sub { +{} },
+has 'config' => (
+    'is'        => 'ro',
+    'isa'       => 'HashRef',
+    'default'   => sub { +{} },
 );
 
-has category => (
-    is        => 'ro',
-    isa       => 'Str',
-    lazy      => 1,
-    builder   => '_build_category',
+has 'category' => (
+    'is'        => 'ro',
+    'isa'       => 'Str',
+    'lazy'      => 1,
+    'builder'   => '_build_category',
 );
 
-has cache_dir => (
-    is        => 'ro',
-    isa       => 'Maybe[Str]',
+has 'cache_dir' => (
+    'is'        => 'ro',
+    'isa'       => 'Maybe[Str]',
 );
 
-has cpanfile => (
-    is        => 'ro',
-    isa       => 'Maybe[Str]',
+has 'cpanfile' => (
+    'is'        => 'ro',
+    'isa'       => 'Maybe[Str]',
 );
 
-has package => (
-    is        => 'ro',
-    isa       => 'Maybe[Pakket::Package]',
+has 'package' => (
+    'is'        => 'ro',
+    'isa'       => 'Maybe[Pakket::Package]',
 );
 
-has phases => (
-    is        => 'ro',
-    isa       => 'Maybe[ArrayRef]',
+has 'phases' => (
+    'is'        => 'ro',
+    'isa'       => 'Maybe[ArrayRef]',
 );
 
-has file_02packages => (
-    is        => 'ro',
-    isa       => 'Maybe[Str]',
+has 'file_02packages' => (
+    'is'        => 'ro',
+    'isa'       => 'Maybe[Str]',
 );
 
 sub _build_category {
