@@ -6,6 +6,7 @@ use MooseX::StrictConstructor;
 use version 0.77;
 use Carp ();
 use Archive::Any;
+use CPAN::Meta;
 use CPAN::Meta::Prereqs;
 use Parse::CPAN::Packages::Fast;
 use JSON::MaybeXS       qw< decode_json encode_json >;
@@ -112,6 +113,12 @@ has 'no_deps' => (
     'default' => 0,
 );
 
+has 'is_local' => (
+    'is'      => 'ro',
+    'isa'     => 'Bool',
+    'default' => 0,
+);
+
 sub _build_metacpan_api {
     my $self = shift;
     return $ENV{'PAKKET_METACPAN_API'}
@@ -189,6 +196,11 @@ sub BUILDARGS {
             )->prereq_specs;
     }
 
+    if ( $args{'is_local'} ) {
+        $args{'cache_dir'} or
+            die "when using a local (is-local) package - you must specify a cache-dir (for source)";
+    }
+
     return \%args;
 }
 
@@ -208,6 +220,7 @@ sub run {
 
             $log->debugf( 'Bootstrapping config: %s', $dist );
             my $requirements = $self->prereqs->requirements_for(qw< configure requires >);
+
             eval {
                 $self->create_spec_for( dist => $dist, $requirements );
                 1;
@@ -312,9 +325,10 @@ sub has_satisfying {
 
 sub create_spec_for {
     my ( $self, $type, $name, $requirements ) = @_;
+
     return if $self->skip_name($name);
     return if $self->processed_dists->{ $name }++;
-    return if $self->has_satisfying($name, $requirements);
+    return if !$self->is_local and $self->has_satisfying($name, $requirements);
 
     my $release = $self->get_release_info($type, $name, $requirements);
     return if exists $release->{'skip'};
@@ -466,7 +480,10 @@ sub create_spec_for {
 sub get_dist_name {
     my ( $self, $module_name ) = @_;
 
-    # fist check if we can get it from 02packages
+    # if "is_local" don't use uptream sources
+    $self->is_local and return $module_name;
+
+    # check if we can get it from 02packages
     my $mod = $self->cpan_02packages->package($module_name);
     $mod and return $mod->distribution->dist;
 
@@ -513,8 +530,48 @@ sub get_dist_name {
     return $dist_name;
 }
 
+sub get_release_info_local {
+    my ( $self, $name, $requirements ) = @_;
+
+    my $req = $requirements->as_string_hash;
+    my $ver = $req->{$name} =~ s/^[=\ ]//r;
+    my $prereqs;
+
+    my $from_file = path( $self->cache_dir, $name . '-' . $ver . '.tar.gz' );
+    if ( $from_file->exists ) {
+        my $target = Path::Tiny->tempdir();
+        my $dir    = $self->unpack( $target, $from_file );
+        if ( $dir->child('META.json')->is_file or $dir->child('META.yaml')->is_file ) {
+            my $file = $dir->child('META.json')->is_file
+                ? $dir->child('META.json')
+                : $dir->child('META.yaml');
+            my $meta = CPAN::Meta->load_file( $file );
+            $prereqs = $meta->effective_prereqs->as_string_hash;
+            # YUCK, but for now, it will do the job.
+            for my $k1 ( keys %{ $prereqs } ) {
+                for my $k2 ( keys %{ $prereqs->{$k1} } ) {
+                    for my $k3 ( keys %{ $prereqs->{$k1}{$k2} } ) {
+                        $prereqs->{$k1}{$k2}{ $k3 =~ s{::}{-}gr } =
+                            delete $prereqs->{$k1}{$k2}{$k3};
+                    }
+                }
+            }
+        }
+    }
+
+    return +{
+        'distribution' => $name,
+        'version'      => $ver,
+        'prereqs'      => $prereqs,
+    };
+}
+
 sub get_release_info {
     my ( $self, $type, $name, $requirements ) = @_;
+
+    # if is_local is set - generate info without upstream data
+    $self->is_local
+        and return $self->get_release_info_local( $name, $requirements );
 
     my $dist_name = $type eq 'module'
         ? $self->get_dist_name($name)
@@ -522,7 +579,7 @@ sub get_release_info {
     return +{ 'skip' => 1 } if $self->skip_name($dist_name);
 
 
-    # first try the latest
+    # try the latest
 
     my $latest = $self->get_latest_release_info( $dist_name );
     return $latest

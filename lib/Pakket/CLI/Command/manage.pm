@@ -35,6 +35,7 @@ sub opt_spec {
         [ 'remove=s%',    '(deps) add the following dependency (phase=category/name=version[:release])' ],
         [ 'cpan-02packages=s', '02packages file (optional)' ],
         [ 'no-deps',      'do not add dependencies (top-level only)' ],
+        [ 'is-local',     'do not use upstream sources (i.e. CPAN)' ],
     );
 }
 
@@ -82,6 +83,7 @@ sub execute {
         package         => $package,
         file_02packages => $self->{'file_02packages'},
         no_deps         => $self->{'opt'}{'no_deps'},
+        is_local        => $self->{'opt'}{'is_local'},
     );
 
     if ( $command eq 'add' ) {
