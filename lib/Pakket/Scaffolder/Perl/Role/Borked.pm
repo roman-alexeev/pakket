@@ -21,6 +21,7 @@ has 'known_incorrect_version_fixes' => (
     'default' => sub {
         +{
             'Data-Swap'         => '0.08',
+            'Encode-HanConvert' => '0.35',
             'ExtUtils-Constant' => '0.23',
             'Getopt-Long'       => '2.49',
             'IO-Capture'        => '0.05',
