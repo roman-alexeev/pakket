@@ -23,6 +23,7 @@ has 'known_incorrect_version_fixes' => (
             'Data-Swap'         => '0.08',
             'Encode-HanConvert' => '0.35',
             'ExtUtils-Constant' => '0.23',
+            'Frontier-RPC'      => '0.07',
             'Getopt-Long'       => '2.49',
             'IO-Capture'        => '0.05',
         }
