@@ -20,6 +20,7 @@ has 'known_incorrect_version_fixes' => (
     'isa'     => 'HashRef',
     'default' => sub {
         +{
+            'Data-Swap'         => '0.08',
             'ExtUtils-Constant' => '0.23',
             'Getopt-Long'       => '2.49',
             'IO-Capture'        => '0.05',
