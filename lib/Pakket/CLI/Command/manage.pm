@@ -36,6 +36,7 @@ sub opt_spec {
         [ 'cpan-02packages=s', '02packages file (optional)' ],
         [ 'no-deps',      'do not add dependencies (top-level only)' ],
         [ 'is-local',     'do not use upstream sources (i.e. CPAN)' ],
+        [ 'requires-only', 'do not set recommended/suggested dependencies' ],
     );
 }
 
@@ -84,6 +85,7 @@ sub execute {
         file_02packages => $self->{'file_02packages'},
         no_deps         => $self->{'opt'}{'no_deps'},
         is_local        => $self->{'opt'}{'is_local'},
+        requires_only   => $self->{'opt'}{'requires_only'},
     );
 
     if ( $command eq 'add' ) {

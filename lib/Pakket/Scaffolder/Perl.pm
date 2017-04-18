@@ -119,6 +119,12 @@ has 'is_local' => (
     'default' => 0,
 );
 
+has 'types' => (
+    'is'      => 'ro',
+    'isa'     => 'ArrayRef',
+    'default' => sub { [qw< requires recommends suggests >] },
+);
+
 sub _build_metacpan_api {
     my $self = shift;
     return $ENV{'PAKKET_METACPAN_API'}
@@ -234,7 +240,7 @@ sub run {
     # the rest
     for my $phase ( @{ $self->phases } ) {
         $log->debugf( 'Phase: %s', $phase );
-        for my $type ( qw< requires recommends suggests > ) {
+        for my $type ( @{ $self->types } ) {
             next unless is_hashref( $self->modules->{ $phase }{ $type } );
 
             my $requirements = $self->prereqs->requirements_for( $phase, $type );
@@ -433,7 +439,7 @@ sub create_spec_for {
     for my $phase ( @{ $self->phases } ) {
         my $prereq_data = $package_spec->{'Prereqs'}{'perl'}{$phase} = +{};
 
-        for my $dep_type (qw< requires recommends suggests >) {
+        for my $dep_type ( @{ $self->types } ) {
             next unless is_hashref( $dep_modules->{ $phase }{ $dep_type } );
 
             my $dep_requirements = $dep_prereqs->requirements_for( $phase, $dep_type );

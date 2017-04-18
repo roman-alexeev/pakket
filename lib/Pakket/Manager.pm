@@ -58,6 +58,12 @@ has 'is_local' => (
     'default'   => 0,
 );
 
+has 'requires_only' => (
+    'is'        => 'ro',
+    'isa'       => 'Bool',
+    'default'   => 0,
+);
+
 sub _build_category {
     my $self = shift;
     $self->{'cpanfile'} and return 'perl';
@@ -204,6 +210,7 @@ sub _gen_scaffolder_perl {
         'phases'   => $self->phases,
         'no_deps'  => ( $self->is_local ? 1 : $self->no_deps ),
         'is_local' => $self->is_local,
+        ( 'types'  => ['requires'] )x!! $self->requires_only,
     );
 
     if ( $self->cpanfile ) {
