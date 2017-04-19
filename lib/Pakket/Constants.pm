@@ -29,11 +29,8 @@ use constant {
         $
     }xms,
 
-    'PAKKET_LATEST_VERSION'  => 'LATEST',
     'PAKKET_DEFAULT_RELEASE' => 1,
-
     'PAKKET_INFO_FILE'       => 'info.json',
-
     'PAKKET_VALID_PHASES'    => {
         'configure' => 1,
         'develop'   => 1,
@@ -47,7 +44,6 @@ our @EXPORT_OK = qw<
     PARCEL_FILES_DIR
     PARCEL_METADATA_FILE
     PAKKET_PACKAGE_SPEC
-    PAKKET_LATEST_VERSION
     PAKKET_DEFAULT_RELEASE
     PAKKET_INFO_FILE
     PAKKET_VALID_PHASES

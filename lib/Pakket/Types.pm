@@ -10,7 +10,6 @@ use Log::Any qw< $log >;
 use Safe::Isa;
 use Module::Runtime qw< require_module >;
 use Pakket::Constants qw<
-    PAKKET_LATEST_VERSION
     PAKKET_DEFAULT_RELEASE
     PAKKET_VALID_PHASES
 >;
@@ -37,13 +36,6 @@ subtype 'PakketRepositoryBackend', as 'Object', where {
 
 coerce 'PakketRepositoryBackend', from 'ArrayRef',
     via { return _coerce_backend_from_arrayref($_); };
-
-# PakketVersion
-
-subtype 'PakketVersion', as 'Str';
-
-coerce 'PakketVersion', from 'Undef',
-    via { return PAKKET_LATEST_VERSION() };
 
 # PakketRelease
 
