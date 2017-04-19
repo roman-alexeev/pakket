@@ -13,9 +13,9 @@ use version 0.77;
 
 use Pakket::Log qw< log_success log_fail >;
 use Pakket::Package;
+use Pakket::PackageQuery;
 use Pakket::Bundler;
 use Pakket::Installer;
-use Pakket::Requirement;
 use Pakket::Builder::NodeJS;
 use Pakket::Builder::Perl;
 use Pakket::Builder::Native;
@@ -182,7 +182,7 @@ sub bootstrap_build {
         );
         my ( $version, $release ) = @{$ver_rel};
 
-        $name => Pakket::Requirement->new(
+        $name => Pakket::PackageQuery->new(
             'name'     => $name,
             'category' => $category,
             'version'  => $version,
@@ -447,7 +447,7 @@ sub _recursive_build_phase {
 
         my ( $version, $release ) = @{$ver_rel};
 
-        my $req = Pakket::Requirement->new(
+        my $req = Pakket::PackageQuery->new(
             'category' => $category,
             'name'     => $prereq_name,
             'version'  => $version,

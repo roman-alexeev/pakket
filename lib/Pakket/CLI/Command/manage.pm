@@ -15,6 +15,7 @@ use Pakket::Config;
 use Pakket::Manager;
 use Pakket::Constants qw< PAKKET_VALID_PHASES >;
 use Pakket::Utils::Repository qw< gen_repo_config >;
+use Pakket::PackageQuery;
 
 sub abstract    { 'Scaffold a project' }
 sub description { 'Scaffold a project' }
@@ -264,7 +265,7 @@ sub _validate_args_show {
 sub _read_spec_str {
     my ( $self, $spec_str ) = @_;
 
-    my $spec = Pakket::Requirement->new_from_string($spec_str);
+    my $spec = Pakket::PackageQuery->new_from_string($spec_str);
 
     # add supported categories
     if ( !( $spec->category eq 'perl' or $spec->category eq 'native' ) ) {

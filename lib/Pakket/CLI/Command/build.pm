@@ -8,7 +8,7 @@ use Pakket::CLI '-command';
 use Pakket::Constants qw< PAKKET_PACKAGE_SPEC >;
 use Pakket::Config;
 use Pakket::Builder;
-use Pakket::Requirement;
+use Pakket::PackageQuery;
 use Pakket::Log;
 use Pakket::Utils::Repository qw< gen_repo_config >;
 
@@ -101,17 +101,17 @@ sub validate_args {
             );
         }
 
-        my $req;
-        eval { $req = Pakket::Requirement->new_from_string($spec_str); 1; }
+        my $query;
+        eval { $query = Pakket::PackageQuery->new_from_string($spec_str); 1; }
         or do {
             my $error = $@ || 'Zombie error';
-            $log->debug("Failed to create Pakket::Requirement: $error");
+            $log->debug("Failed to create PackageQuery: $error");
             $self->usage_error(
                 "We do not understand this package string: $spec_str",
             );
         };
 
-        push @{ $opt->{'prereqs'} }, $req;
+        push @{ $self->{'queries'} }, $query;
     }
 
     if ( $opt->{'build_dir'} ) {
@@ -134,7 +134,7 @@ sub execute {
         ), qw< build_dir keep_build_dir > ),
     );
 
-    $builder->build( @{ $opt->{'prereqs'} } );
+    $builder->build( @{ $self->{'queries'} } );
 }
 
 1;
