@@ -130,6 +130,13 @@ sub remove_package_spec {
     $log->info( sprintf("Removed %s from the spec repo.", $self->package->id ) );
 }
 
+sub remove_package_parcel {
+    my $self = shift;
+    my $repo = $self->_get_repo('parcel');
+    $repo->remove_package_parcel( $self->package );
+    $log->info( sprintf("Removed %s from the parcel repo.", $self->package->id ) );
+}
+
 sub add_dependency {
     my ( $self, $dependency ) = @_;
     $self->_package_dependency_edit($dependency, 'add');

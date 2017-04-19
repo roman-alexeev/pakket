@@ -68,7 +68,7 @@ sub execute {
         $self->{'cpanfile'} ? 'perl' :
         undef;
 
-    if ( $command =~ /^(?:add|remove|deps|show)$/ and !$self->{'cpanfile'} ) {
+    if ( $command =~ /^(?:add|remove|remove_parcel|deps|show)$/ and !$self->{'cpanfile'} ) {
         $package = Pakket::Package->new(
             'category' => $category,
             'name'     => $self->{'spec'}->name,
@@ -96,6 +96,10 @@ sub execute {
         # TODO: check we are allowed to remove package (dependencies)
         $manager->remove_package_spec;
         $manager->remove_package_source;
+
+    } elsif ( $command eq 'remove_parcel' ) {
+        # TODO: check we are allowed to remove package (dependencies)
+        $manager->remove_package_parcel;
 
     } elsif ( $command eq 'deps' ) {
         $self->{'opt'}{'add'}    and $manager->add_dependency( $self->{'dependency'} );
@@ -126,11 +130,12 @@ sub _validate_repos {
     my $self = shift;
 
     my %cmd2repo = (
-        'add'    => [ 'spec', 'source' ],
-        'remove' => [ 'spec', 'source' ],
-        'deps'   => [ 'spec' ],
-        'show'   => [ 'spec' ],
-        'list'   => {
+        'add'           => [ 'spec', 'source' ],
+        'remove'        => [ 'spec', 'source' ],
+        'remove_parcel' => [ 'parcel' ],
+        'deps'          => [ 'spec' ],
+        'show'          => [ 'spec' ],
+        'list'          => {
             spec   => [ 'spec'   ],
             parcel => [ 'parcel' ],
             source => [ 'source' ],
@@ -168,10 +173,10 @@ sub _validate_arg_command {
     my $self = shift;
 
     my $command = shift @{ $self->{'args'} }
-        or $self->usage_error("Must pick action (add/remove/deps/list/show)");
+        or $self->usage_error("Must pick action (add/remove/remove_parcel/deps/list/show)");
 
-    grep { $command eq $_ } qw< add remove deps list show >
-        or $self->usage_error( "Wrong command (add/remove/deps/list/show)" );
+    grep { $command eq $_ } qw< add remove remove_parcel deps list show >
+        or $self->usage_error( "Wrong command (add/remove/remove_parcel/deps/list/show)" );
 
     $self->{'command'} = $command;
 
@@ -180,6 +185,7 @@ sub _validate_arg_command {
     $command eq 'deps'   and $self->_validate_args_dependency;
     $command eq 'list'   and $self->_validate_args_list;
     $command eq 'show'   and $self->_validate_args_show;
+    $command eq 'remove_parcel' and $self->_validate_args_remove_parcel;
 }
 
 sub _validate_arg_cache_dir {
@@ -220,6 +226,11 @@ sub _validate_args_add {
 }
 
 sub _validate_args_remove {
+    my $self = shift;
+    $self->_read_set_spec_str;
+}
+
+sub _validate_args_remove_parcel {
     my $self = shift;
     $self->_read_set_spec_str;
 }
