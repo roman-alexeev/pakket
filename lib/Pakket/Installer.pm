@@ -14,8 +14,8 @@ use Archive::Any;
 use English               qw< -no_match_vars >;
 
 use Pakket::Repository::Parcel;
-use Pakket::Requirement;
 use Pakket::Package;
+use Pakket::PackageQuery;
 use Pakket::Log       qw< log_success log_fail >;
 use Pakket::Types     qw< PakketRepositoryBackend >;
 use Pakket::Utils     qw< is_writeable >;
@@ -135,7 +135,7 @@ sub install_package {
                 $prereq_name,
                 $prereq_data,
                 $dir,
-                $opts
+                $opts,
             );
         }
     }
@@ -164,7 +164,7 @@ sub install_prereq {
 
    my ( $version, $release ) = @{$ver_rel};
 
-   my $prereq = Pakket::Requirement->new(
+   my $query = Pakket::PackageQuery->new(
        'category' => $category,
        'name'     => $name,
        'version'  => $version,
@@ -172,7 +172,7 @@ sub install_prereq {
    );
 
    $self->install_package(
-       $prereq, $dir,
+       $query, $dir,
        { %{$opts}, 'as_prereq' => 1 },
    );
 }
