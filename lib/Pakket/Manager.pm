@@ -116,25 +116,11 @@ sub add_package {
     $self->_get_scaffolder->run;
 }
 
-sub remove_package_source {
-    my $self = shift;
-    my $repo = $self->_get_repo('source');
-    $repo->remove_package_source( $self->package );
-    $log->info( sprintf("Removed %s from the source repo.", $self->package->id ) );
-}
-
-sub remove_package_spec {
-    my $self = shift;
-    my $repo = $self->_get_repo('spec');
-    $repo->remove_package_spec( $self->package );
-    $log->info( sprintf("Removed %s from the spec repo.", $self->package->id ) );
-}
-
-sub remove_package_parcel {
-    my $self = shift;
-    my $repo = $self->_get_repo('parcel');
-    $repo->remove_package_parcel( $self->package );
-    $log->info( sprintf("Removed %s from the parcel repo.", $self->package->id ) );
+sub remove_package {
+    my ( $self, $type ) = @_;
+    my $repo = $self->_get_repo( $type );
+    $repo->remove_package_file( $type, $self->package );
+    $log->info( sprintf("Removed %s from the %s repo.", $self->package->id, $type ) );
 }
 
 sub add_dependency {

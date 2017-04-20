@@ -94,12 +94,12 @@ sub execute {
 
     } elsif ( $command eq 'remove' ) {
         # TODO: check we are allowed to remove package (dependencies)
-        $manager->remove_package_spec;
-        $manager->remove_package_source;
+        $manager->remove_package('spec');
+        $manager->remove_package('source');
 
     } elsif ( $command eq 'remove_parcel' ) {
         # TODO: check we are allowed to remove package (dependencies)
-        $manager->remove_package_parcel;
+        $manager->remove_package('parcel');
 
     } elsif ( $command eq 'deps' ) {
         $self->{'opt'}{'add'}    and $manager->add_dependency( $self->{'dependency'} );
