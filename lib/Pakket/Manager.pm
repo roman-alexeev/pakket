@@ -33,7 +33,6 @@ has 'cpanfile' => (
 
 has 'package' => (
     'is'        => 'ro',
-    'isa'       => 'Maybe[Pakket::Package]',
 );
 
 has 'phases' => (
@@ -210,11 +209,15 @@ sub _gen_scaffolder_perl {
         $params{'cpanfile'} = $self->cpanfile;
 
     } else {
+        my $version = $self->package->version;
+        # hack to pass exact version in prereq syntax
+        defined $version
+            and !$self->is_local
+            and ref($self->package) eq 'Pakket::PackageQuery'
+            and $version =~ s/^/== /;
+
         $params{'module'}  = $self->package->name;
-        $params{'version'} = defined $self->package->version
-            # hack to pass exact version in prereq syntax
-            ? ( $self->is_local ? '' : '==' ) . $self->package->version
-            : undef;
+        $params{'version'} = $version;
     }
 
     $self->cache_dir

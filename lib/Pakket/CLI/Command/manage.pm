@@ -13,9 +13,13 @@ use Pakket::CLI '-command';
 use Pakket::Log;
 use Pakket::Config;
 use Pakket::Manager;
-use Pakket::Constants qw< PAKKET_VALID_PHASES >;
-use Pakket::Utils::Repository qw< gen_repo_config >;
 use Pakket::PackageQuery;
+use Pakket::Requirement;
+use Pakket::Utils::Repository qw< gen_repo_config >;
+use Pakket::Constants qw<
+    PAKKET_PACKAGE_SPEC
+    PAKKET_VALID_PHASES
+>;
 
 sub abstract    { 'Scaffold a project' }
 sub description { 'Scaffold a project' }
@@ -59,7 +63,6 @@ sub validate_args {
 
 sub execute {
     my $self = shift;
-    my $package;
 
     my $command = $self->{'command'};
 
@@ -68,21 +71,12 @@ sub execute {
         $self->{'cpanfile'} ? 'perl' :
         undef;
 
-    if ( $command =~ /^(?:add|remove|remove_parcel|deps|show)$/ and !$self->{'cpanfile'} ) {
-        $package = Pakket::Package->new(
-            'category' => $category,
-            'name'     => $self->{'spec'}->name,
-            'version'  => $self->{'spec'}->version,
-            'release'  => $self->{'spec'}->release,
-        );
-    }
-
     my $manager = Pakket::Manager->new(
         config          => $self->{'config'},
         cpanfile        => $self->{'cpanfile'},
         cache_dir       => $self->{'cache_dir'},
         phases          => $self->{'gen_phases'},
-        package         => $package,
+        package         => $self->{'spec'},
         file_02packages => $self->{'file_02packages'},
         no_deps         => $self->{'opt'}{'no_deps'},
         is_local        => $self->{'opt'}{'is_local'},
@@ -276,7 +270,13 @@ sub _validate_args_show {
 sub _read_spec_str {
     my ( $self, $spec_str ) = @_;
 
-    my $spec = Pakket::PackageQuery->new_from_string($spec_str);
+    my $spec;
+    if ( $self->{'command'} eq 'add' ) {
+        my ( $c, $n, $v, $r ) = $spec_str =~ PAKKET_PACKAGE_SPEC();
+        !defined $v and $spec = Pakket::Requirement->new( category => $c, name => $n );
+    }
+
+    $spec //= Pakket::PackageQuery->new_from_string($spec_str);
 
     # add supported categories
     if ( !( $spec->category eq 'perl' or $spec->category eq 'native' ) ) {
