@@ -180,7 +180,7 @@ sub delete_package {
         my ( $type, $file_name ) = $file =~ /(\w+)\/(.+)/;
         my $path = $self->work_dir->child($file_name);
         $log->debugf( "Deleting file %s", $path );
-        if ( !$path->remove ) {
+        if ($path->exists and !$path->remove ) {
             $log->error("Could not remove $path: $!");
         }
 
