@@ -126,7 +126,7 @@ sub execute {
     my $installer = Pakket::Installer->new(
         'config'          => $opt->{'config'},
         'pakket_dir'      => $opt->{'config'}{'install_dir'},
-        'force_reinstall' => $opt->{'force'},
+        'force' => $opt->{'force'},
     );
 
     $opt->{'show_installed'}
