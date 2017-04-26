@@ -16,6 +16,7 @@ use English               qw< -no_match_vars >;
 use Pakket::Repository::Parcel;
 use Pakket::Package;
 use Pakket::PackageQuery;
+use Pakket::Versioning;
 use Pakket::Log       qw< log_success log_fail >;
 use Pakket::Types     qw< PakketRepositoryBackend >;
 use Pakket::Utils     qw< is_writeable >;
@@ -55,6 +56,11 @@ sub install {
     }
 
     my $packages_to_install = $self->get_list_all_packages_to_install(@packages);
+
+    if ($self->check_critical_version_conflicts($installed_packages,
+                                                    $packages_to_install)) {
+        $self->force or return;
+    }
 
     my $installer_cache = {};
 
@@ -334,6 +340,53 @@ sub get_list_all_packages_to_install {
     }
 
     return \%packages_to_install;
+}
+
+sub check_critical_version_conflicts {
+    my ($self, $installed_packages, $packages_to_install) = @_;
+    my ($errs, %checked);
+    for my $package_name (keys %$packages_to_install) {
+        $checked{$package_name}++ and next;
+
+        my $installed  = $installed_packages->{$package_name} or next;
+        my $to_install = $packages_to_install->{$package_name};
+
+        my $installed_version  = $installed->{'package'}{'version'};
+        my $version_to_install = $to_install->{'version'};
+
+        if ($version_to_install ne $installed_version) {
+            $log->debug("$package_name upgrade version: ".
+                        "$installed_version => $version_to_install");
+
+            # FIXME: copypaste from Pakket::Repositary.pm
+            # this map looks wrong in each code where we need Pakket::Versioning
+            # may be move it in library or inside Pakket::Versioning
+            my %types = (
+                'perl' => 'Perl',
+            );
+            my $type = $types{$to_install->{'category'}};
+
+            # FIXME: probably $versioner should be a method of
+            # Package or Package.version
+            my $versioner = Pakket::Versioning->new('type' => $type);
+
+            for my $parent_name (keys %{$installed->{'used_by'}}) {
+                $packages_to_install->{$parent_name} and next;
+                #$log->debug("$package_name is used by $parent_name");
+
+                my $required_version = $installed_packages->{$parent_name}
+                                        {'prereqs'}{$package_name}->version;
+                if (!$versioner->is_satisfying($required_version,
+                                                    $version_to_install)) {
+                    $errs++;
+                    $log->error("$parent_name require $package_name version ".
+                                "$required_version (incompatible ".
+                                "with $version_to_install)");
+                }
+            }
+        }
+    }
+    return $errs;
 }
 
 __PACKAGE__->meta->make_immutable;
