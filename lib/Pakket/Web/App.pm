@@ -8,7 +8,7 @@ use Path::Tiny ();
 use Pakket::Web::Repo;
 use constant {
     'PATHS' => [
-        $ENV{'PAKKET_WEB_CONFIG'},
+        $ENV{'PAKKET_WEB_CONFIG'} || (),
         '~/.pakket-web.json',
         '/etc/pakket-web.json',
     ],
