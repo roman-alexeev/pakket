@@ -8,7 +8,7 @@ use Path::Tiny      qw< path >;
 use Log::Any::Adapter;
 
 use Pakket::CLI '-command';
-use Pakket::Server;
+use Pakket::Web::Server;
 use Pakket::Log;
 
 sub abstract    { 'Serve objects' }
@@ -30,7 +30,7 @@ sub validate_args {
 
 sub execute {
     my ( $self, $opt ) = @_;
-    my $server = Pakket::Server->new(
+    my $server = Pakket::Web::Server->new(
         # default main object
         map( +(
             defined $opt->{$_}
