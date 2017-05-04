@@ -82,6 +82,7 @@ sub latest_version_release {
     # Category -> Versioning type class
     my %types = (
         'perl' => 'Perl',
+        'native' => 'Perl',
     );
 
     my @versions;
