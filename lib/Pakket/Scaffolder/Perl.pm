@@ -152,9 +152,9 @@ sub _build_spec_index {
     my $self = shift;
     my $spec_index = $self->spec_repo->all_object_ids;
     my %spec_index;
-    for my $s ( @{ $spec_index } ) {
-        $s =~ PAKKET_PACKAGE_SPEC();
-        $spec_index{$2}{$3} = 1;
+    for ( @{ $spec_index } ) {
+        m{^.*?/(.*)=(.*?)$};
+        $spec_index{$1}{$2} = 1;
     }
     return \%spec_index;
 }
