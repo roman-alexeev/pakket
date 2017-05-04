@@ -121,8 +121,8 @@ has 'no_bootstrap' => (
 
 has 'is_local' => (
     'is'      => 'ro',
-    'isa'     => 'Bool',
-    'default' => 0,
+    'isa'     => 'HashRef',
+    'default' => sub { +{} },
 );
 
 has 'types' => (
@@ -208,11 +208,6 @@ sub BUILDARGS {
             )->prereq_specs;
     }
 
-    if ( $args{'is_local'} ) {
-        $args{'cache_dir'} or
-            die "when using a local (is-local) package - you must specify a cache-dir (for source)";
-    }
-
     return \%args;
 }
 
@@ -221,7 +216,7 @@ sub run {
     my %failed;
 
     # Bootstrap toolchain
-    if ( ! ( $self->no_bootstrap or $self->no_deps ) ) {
+    if ( !( $self->no_bootstrap or $self->no_deps ) ) {
         for my $dist ( @{ $self->perl_bootstrap_modules } ) {
             # TODO: check versions
             if ( exists $self->spec_index->{$dist} ) {
@@ -338,9 +333,9 @@ sub has_satisfying {
 sub create_spec_for {
     my ( $self, $type, $name, $requirements ) = @_;
 
-    return if $self->processed_dists->{ $name }++;
     return if $self->skip_name($name);
-    return if !$self->is_local and $self->has_satisfying($name, $requirements);
+    return if $self->processed_dists->{ $name }++;
+    return if $self->has_satisfying($name, $requirements);
 
     my $release = $self->get_release_info($type, $name, $requirements);
     return if exists $release->{'skip'};
@@ -374,7 +369,7 @@ sub create_spec_for {
             $full_name
         );
 
-    } else {
+    } elsif ( ! $self->is_local->{ $dist_name } ) {
         # Download if source doesn't exist in cache
         my $download     = 1;
         my $download_url = $self->rewrite_download_url( $release->{'download_url'} );
@@ -409,21 +404,18 @@ sub create_spec_for {
                     $self->download_dir,
                     ( $download_url =~ s{^.+/}{}r )
                 );
-
                 $self->ua->mirror( $download_url, $source_file );
-
-                my $target = Path::Tiny->tempdir();
-                my $dir    = $self->unpack( $target, $source_file );
-
-                $self->source_repo->store_package_source(
-                    $package, $dir,
-                );
-
+                $self->upload_unpacked( $package, $source_file );
             }
             else {
                 $log->errorf( "--- can't find download_url for %s-%s", $dist_name, $rel_version );
             }
         }
+
+    } else {
+        # probably the wrong way to do this:
+        my @files = path( $self->cache_dir )->children( qr{^$name-.*\.tar.gz});
+        $self->upload_unpacked( $package, $files[-1] );
     }
 
 
@@ -489,11 +481,23 @@ sub create_spec_for {
     $log->infof( '%sDone: %s (%s)', $self->spaces, $dist_name, $rel_version );
 }
 
+sub upload_unpacked {
+    my ( $self, $package, $file ) = @_;
+
+    my $target = Path::Tiny->tempdir();
+    my $dir    = $self->unpack( $target, $file );
+
+    $self->source_repo->store_package_source(
+        $package, $dir,
+    );
+}
+
 sub get_dist_name {
     my ( $self, $module_name ) = @_;
 
     # if "is_local" don't use uptream sources
-    $self->is_local and return $module_name;
+    exists $self->is_local->{$module_name}
+        and return ( $module_name =~ s{::}{-}gr );
 
     # check if we can get it from 02packages
     my $mod = $self->cpan_02packages->package($module_name);
@@ -553,17 +557,17 @@ sub get_release_info_local {
     if ( $from_file->exists ) {
         my $target = Path::Tiny->tempdir();
         my $dir    = $self->unpack( $target, $from_file );
-        if ( $dir->child('META.json')->is_file or $dir->child('META.yaml')->is_file ) {
+        if ( $dir->child('META.json')->is_file or $dir->child('META.yml')->is_file ) {
             my $file = $dir->child('META.json')->is_file
                 ? $dir->child('META.json')
-                : $dir->child('META.yaml');
+                : $dir->child('META.yml');
             my $meta = CPAN::Meta->load_file( $file );
             $prereqs = $meta->effective_prereqs->as_string_hash;
             # YUCK, but for now, it will do the job.
             for my $k1 ( keys %{ $prereqs } ) {
                 for my $k2 ( keys %{ $prereqs->{$k1} } ) {
                     for my $k3 ( keys %{ $prereqs->{$k1}{$k2} } ) {
-                        $prereqs->{$k1}{$k2}{ $k3 =~ s{::}{-}gr } =
+                        $prereqs->{$k1}{$k2}{ $self->get_dist_name($k3) } =
                             delete $prereqs->{$k1}{$k2}{$k3};
                     }
                 }
@@ -582,7 +586,7 @@ sub get_release_info {
     my ( $self, $type, $name, $requirements ) = @_;
 
     # if is_local is set - generate info without upstream data
-    $self->is_local
+    exists $self->is_local->{$name}
         and return $self->get_release_info_local( $name, $requirements );
 
     my $dist_name = $type eq 'module'

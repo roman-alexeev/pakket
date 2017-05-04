@@ -40,7 +40,7 @@ sub opt_spec {
         [ 'remove=s%',    '(deps) add the following dependency (phase=category/name=version[:release])' ],
         [ 'cpan-02packages=s', '02packages file (optional)' ],
         [ 'no-deps',      'do not add dependencies (top-level only)' ],
-        [ 'is-local',     'do not use upstream sources (i.e. CPAN)' ],
+        [ 'is-local=s@',  'do not use upstream sources (i.e. CPAN) for given packages' ],
         [ 'requires-only', 'do not set recommended/suggested dependencies' ],
         [ 'no-bootstrap',  'skip bootstrapping phase (toolchain packages)' ],
     );
@@ -72,6 +72,10 @@ sub execute {
         $self->{'cpanfile'} ? 'perl' :
         undef;
 
+    my $is_local = +{
+        map { $_ => 1, s/-/::/gr => 1 } @{ $self->{'opt'}{'is_local'} }
+    };
+
     my $manager = Pakket::Manager->new(
         config          => $self->{'config'},
         cpanfile        => $self->{'cpanfile'},
@@ -80,9 +84,9 @@ sub execute {
         package         => $self->{'spec'},
         file_02packages => $self->{'file_02packages'},
         no_deps         => $self->{'opt'}{'no_deps'},
-        is_local        => $self->{'opt'}{'is_local'},
         requires_only   => $self->{'opt'}{'requires_only'},
         no_bootstrap    => $self->{'opt'}{'no_bootstrap'},
+        is_local        => $is_local,
     );
 
     if ( $command eq 'add' ) {

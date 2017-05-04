@@ -53,8 +53,8 @@ has 'no_deps' => (
 
 has 'is_local' => (
     'is'        => 'ro',
-    'isa'       => 'Bool',
-    'default'   => 0,
+    'isa'       => 'HashRef',
+    'default'   => sub { +{} },
 );
 
 has 'requires_only' => (
@@ -206,7 +206,7 @@ sub _gen_scaffolder_perl {
     my %params = (
         'config'   => $self->config,
         'phases'   => $self->phases,
-        'no_deps'  => ( $self->is_local ? 1 : $self->no_deps ),
+        'no_deps'  => $self->no_deps,
         'is_local' => $self->is_local,
         ( 'types'  => ['requires'] )x!! $self->requires_only,
     );
@@ -215,14 +215,15 @@ sub _gen_scaffolder_perl {
         $params{'cpanfile'} = $self->cpanfile;
 
     } else {
+        my $name = $self->package->name;
         my $version = $self->package->version;
         # hack to pass exact version in prereq syntax
         defined $version
-            and !$self->is_local
+            and !$self->is_local->{ $name }
             and ref($self->package) eq 'Pakket::PackageQuery'
             and $version =~ s/^/== /;
 
-        $params{'module'}  = $self->package->name;
+        $params{'module'}  = $name;
         $params{'version'} = $version;
     }
 
