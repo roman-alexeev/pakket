@@ -281,6 +281,18 @@ $fatpacked{"Dancer2/Plugin/Pakket/ParamTypes.pm"} = '#line '.(1+__LINE__).' "'._
       );
   
       $self->register_type_action(
+          'MissingName' => sub {
+              send_error( 'Missing or incorrect Name', HTTP_USER_ERROR() );
+          },
+      );
+  
+      $self->register_type_action(
+          'MissingCategory' => sub {
+              send_error( 'Missing or incorrect Category', HTTP_USER_ERROR() );
+          },
+      );
+  
+      $self->register_type_action(
           'MissingContent' => sub {
               send_error( 'Missing or incorrect content', HTTP_USER_ERROR() );
           },
@@ -999,9 +1011,9 @@ $fatpacked{"Pakket/Builder.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
   
   use Pakket::Log qw< log_success log_fail >;
   use Pakket::Package;
+  use Pakket::PackageQuery;
   use Pakket::Bundler;
   use Pakket::Installer;
-  use Pakket::Requirement;
   use Pakket::Builder::NodeJS;
   use Pakket::Builder::Perl;
   use Pakket::Builder::Native;
@@ -1168,7 +1180,7 @@ $fatpacked{"Pakket/Builder.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
           );
           my ( $version, $release ) = @{$ver_rel};
   
-          $name => Pakket::Requirement->new(
+          $name => Pakket::PackageQuery->new(
               'name'     => $name,
               'category' => $category,
               'version'  => $version,
@@ -1296,8 +1308,7 @@ $fatpacked{"Pakket/Builder.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
           ];
       }
   
-      # TODO: indent to $level
-      $log->debugf( 'Working on %s', $prereq->full_name );
+      $log->infof( '%s Working on %s', '|...' x $level, $prereq->full_name );
   
       # Create a Package instance from the spec
       # using the information we have on it
@@ -1339,8 +1350,7 @@ $fatpacked{"Pakket/Builder.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
               # snapshot_build_dir
               $self->snapshot_build_dir( $package, $main_build_dir->absolute, 0 );
   
-              # TODO: indent to $level
-              $log->debugf( 'Installed %s', $prereq->full_name );
+              $log->infof( '%s Installed %s', '|...' x $level, $prereq->full_name );
   
               # sync build cache with our install cache
               # so we do not accidentally build things
@@ -1408,15 +1418,14 @@ $fatpacked{"Pakket/Builder.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
           $package, $main_build_dir,
       );
   
-      $log->debugf( 'Bundling %s', $package->full_name );
+      $log->infof( '%s Bundling %s', '|...' x $level, $package->full_name );
       $self->bundler->bundle(
           $main_build_dir->absolute,
           $package,
           $package_files,
       );
   
-      # TODO: indent to $level
-      $log->debugf( 'Finished on %s', $prereq->full_name );
+      $log->infof( '%s Finished on %s', '|...' x $level, $prereq->full_name );
       log_success( sprintf 'Building %s', $prereq->full_name );
   
       return;
@@ -1436,7 +1445,7 @@ $fatpacked{"Pakket/Builder.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
   
           my ( $version, $release ) = @{$ver_rel};
   
-          my $req = Pakket::Requirement->new(
+          my $req = Pakket::PackageQuery->new(
               'category' => $category,
               'name'     => $prereq_name,
               'version'  => $version,
@@ -1994,10 +2003,10 @@ $fatpacked{"Pakket/CLI/Command/build.pm"} = '#line '.(1+__LINE__).' "'.__FILE__.
   use warnings;
   
   use Pakket::CLI '-command';
-  use Pakket::Constants qw< PAKKET_PACKAGE_SPEC PAKKET_LATEST_VERSION >;
+  use Pakket::Constants qw< PAKKET_PACKAGE_SPEC >;
   use Pakket::Config;
   use Pakket::Builder;
-  use Pakket::Requirement;
+  use Pakket::PackageQuery;
   use Pakket::Log;
   use Pakket::Utils::Repository qw< gen_repo_config >;
   
@@ -2090,17 +2099,17 @@ $fatpacked{"Pakket/CLI/Command/build.pm"} = '#line '.(1+__LINE__).' "'.__FILE__.
               );
           }
   
-          my $req;
-          eval { $req = Pakket::Requirement->new_from_string($spec_str); 1; }
+          my $query;
+          eval { $query = Pakket::PackageQuery->new_from_string($spec_str); 1; }
           or do {
-              my $error = $@ || 'Zombie';
-              $log->debug("Failed to create Pakket::Requirement: $error");
+              my $error = $@ || 'Zombie error';
+              $log->debug("Failed to create PackageQuery: $error");
               $self->usage_error(
                   "We do not understand this package string: $spec_str",
               );
           };
   
-          push @{ $opt->{'prereqs'} }, $req;
+          push @{ $self->{'queries'} }, $query;
       }
   
       if ( $opt->{'build_dir'} ) {
@@ -2123,7 +2132,7 @@ $fatpacked{"Pakket/CLI/Command/build.pm"} = '#line '.(1+__LINE__).' "'.__FILE__.
           ), qw< build_dir keep_build_dir > ),
       );
   
-      $builder->build( @{ $opt->{'prereqs'} } );
+      $builder->build( @{ $self->{'queries'} } );
   }
   
   1;
@@ -2259,8 +2268,19 @@ $fatpacked{"Pakket/CLI/Command/install.pm"} = '#line '.(1+__LINE__).' "'.__FILE_
       # Double check
       if ( !$config->{'repositories'}{'parcel'} ) {
           $self->usage_error(
-              "Missing where to install\n"
+              "Missing where to install from\n"
             . '(Create a configuration or use --from)',
+          );
+      }
+  
+      if ( $opt->{'to'} ) {
+          $config->{'install_dir'} = $opt->{'to'};
+      }
+  
+      if ( !$config->{'install_dir'} ) {
+          $self->usage_error(
+              "Missing where to install\n"
+            . '(Create a configuration or use --to)',
           );
       }
   
@@ -2303,14 +2323,15 @@ $fatpacked{"Pakket/CLI/Command/install.pm"} = '#line '.(1+__LINE__).' "'.__FILE_
           [
               'to=s',
               'directory to install the package in',
-              { 'required' => 1 },
           ],
           [
               'from=s',
               'directory to install the packages from',
           ],
-          [ 'input-file=s', 'install eveything listed in this file' ],
-          [ 'config|c=s',   'configuration file' ],
+          [ 'input-file=s',   'install eveything listed in this file' ],
+          [ 'config|c=s',     'configuration file' ],
+          [ 'show-installed', 'print list of installed packages' ],
+          [ 'force|f',        'force reinstall if package exists' ],
           [
               'verbose|v+',
               'verbose output (can be provided multiple times)',
@@ -2325,7 +2346,6 @@ $fatpacked{"Pakket/CLI/Command/install.pm"} = '#line '.(1+__LINE__).' "'.__FILE_
       Log::Any::Adapter->set( 'Dispatch',
           'dispatcher' => Pakket::Log->build_logger( $opt->{'verbose'} ) );
   
-      $opt->{'pakket_dir'} = $opt->{'to'};
       $opt->{'config'}     = $self->_determine_config($opt);
       $opt->{'packages'}   = $self->_determine_packages( $opt, $args );
   
@@ -2336,9 +2356,13 @@ $fatpacked{"Pakket/CLI/Command/install.pm"} = '#line '.(1+__LINE__).' "'.__FILE_
       my ( $self, $opt ) = @_;
   
       my $installer = Pakket::Installer->new(
-          'config'     => $opt->{'config'},
-          'pakket_dir' => $opt->{'pakket_dir'},
+          'config'          => $opt->{'config'},
+          'pakket_dir'      => $opt->{'config'}{'install_dir'},
+          'force_reinstall' => $opt->{'force'},
       );
+  
+      $opt->{'show_installed'}
+          and return $installer->show_installed();
   
       return $installer->install( @{ $opt->{'packages'} } );
   }
@@ -2366,6 +2390,7 @@ $fatpacked{"Pakket/CLI/Command/manage.pm"} = '#line '.(1+__LINE__).' "'.__FILE__
   use Pakket::Manager;
   use Pakket::Constants qw< PAKKET_VALID_PHASES >;
   use Pakket::Utils::Repository qw< gen_repo_config >;
+  use Pakket::PackageQuery;
   
   sub abstract    { 'Scaffold a project' }
   sub description { 'Scaffold a project' }
@@ -2385,6 +2410,9 @@ $fatpacked{"Pakket/CLI/Command/manage.pm"} = '#line '.(1+__LINE__).' "'.__FILE__
           [ 'add=s%',       '(deps) add the following dependency (phase=category/name=version[:release])' ],
           [ 'remove=s%',    '(deps) add the following dependency (phase=category/name=version[:release])' ],
           [ 'cpan-02packages=s', '02packages file (optional)' ],
+          [ 'no-deps',      'do not add dependencies (top-level only)' ],
+          [ 'is-local',     'do not use upstream sources (i.e. CPAN)' ],
+          [ 'requires-only', 'do not set recommended/suggested dependencies' ],
       );
   }
   
@@ -2415,7 +2443,7 @@ $fatpacked{"Pakket/CLI/Command/manage.pm"} = '#line '.(1+__LINE__).' "'.__FILE__
           $self->{'cpanfile'} ? 'perl' :
           undef;
   
-      if ( $command =~ /^(?:add|remove|deps|show)$/ and !$self->{'cpanfile'} ) {
+      if ( $command =~ /^(?:add|remove|remove_parcel|deps|show)$/ and !$self->{'cpanfile'} ) {
           $package = Pakket::Package->new(
               'category' => $category,
               'name'     => $self->{'spec'}->name,
@@ -2431,6 +2459,9 @@ $fatpacked{"Pakket/CLI/Command/manage.pm"} = '#line '.(1+__LINE__).' "'.__FILE__
           phases          => $self->{'gen_phases'},
           package         => $package,
           file_02packages => $self->{'file_02packages'},
+          no_deps         => $self->{'opt'}{'no_deps'},
+          is_local        => $self->{'opt'}{'is_local'},
+          requires_only   => $self->{'opt'}{'requires_only'},
       );
   
       if ( $command eq 'add' ) {
@@ -2438,8 +2469,12 @@ $fatpacked{"Pakket/CLI/Command/manage.pm"} = '#line '.(1+__LINE__).' "'.__FILE__
   
       } elsif ( $command eq 'remove' ) {
           # TODO: check we are allowed to remove package (dependencies)
-          $manager->remove_package_spec;
-          $manager->remove_package_source;
+          $manager->remove_package('spec');
+          $manager->remove_package('source');
+  
+      } elsif ( $command eq 'remove_parcel' ) {
+          # TODO: check we are allowed to remove package (dependencies)
+          $manager->remove_package('parcel');
   
       } elsif ( $command eq 'deps' ) {
           $self->{'opt'}{'add'}    and $manager->add_dependency( $self->{'dependency'} );
@@ -2470,11 +2505,12 @@ $fatpacked{"Pakket/CLI/Command/manage.pm"} = '#line '.(1+__LINE__).' "'.__FILE__
       my $self = shift;
   
       my %cmd2repo = (
-          'add'    => [ 'spec', 'source' ],
-          'remove' => [ 'spec', 'source' ],
-          'deps'   => [ 'spec' ],
-          'show'   => [ 'spec' ],
-          'list'   => {
+          'add'           => [ 'spec', 'source' ],
+          'remove'        => [ 'spec', 'source' ],
+          'remove_parcel' => [ 'parcel' ],
+          'deps'          => [ 'spec' ],
+          'show'          => [ 'spec' ],
+          'list'          => {
               spec   => [ 'spec'   ],
               parcel => [ 'parcel' ],
               source => [ 'source' ],
@@ -2512,10 +2548,10 @@ $fatpacked{"Pakket/CLI/Command/manage.pm"} = '#line '.(1+__LINE__).' "'.__FILE__
       my $self = shift;
   
       my $command = shift @{ $self->{'args'} }
-          or $self->usage_error("Must pick action (add/remove/deps/list/show)");
+          or $self->usage_error("Must pick action (add/remove/remove_parcel/deps/list/show)");
   
-      grep { $command eq $_ } qw< add remove deps list show >
-          or $self->usage_error( "Wrong command (add/remove/deps/list/show)" );
+      grep { $command eq $_ } qw< add remove remove_parcel deps list show >
+          or $self->usage_error( "Wrong command (add/remove/remove_parcel/deps/list/show)" );
   
       $self->{'command'} = $command;
   
@@ -2524,6 +2560,7 @@ $fatpacked{"Pakket/CLI/Command/manage.pm"} = '#line '.(1+__LINE__).' "'.__FILE__
       $command eq 'deps'   and $self->_validate_args_dependency;
       $command eq 'list'   and $self->_validate_args_list;
       $command eq 'show'   and $self->_validate_args_show;
+      $command eq 'remove_parcel' and $self->_validate_args_remove_parcel;
   }
   
   sub _validate_arg_cache_dir {
@@ -2564,6 +2601,11 @@ $fatpacked{"Pakket/CLI/Command/manage.pm"} = '#line '.(1+__LINE__).' "'.__FILE__
   }
   
   sub _validate_args_remove {
+      my $self = shift;
+      $self->_read_set_spec_str;
+  }
+  
+  sub _validate_args_remove_parcel {
       my $self = shift;
       $self->_read_set_spec_str;
   }
@@ -2609,7 +2651,7 @@ $fatpacked{"Pakket/CLI/Command/manage.pm"} = '#line '.(1+__LINE__).' "'.__FILE__
   sub _read_spec_str {
       my ( $self, $spec_str ) = @_;
   
-      my $spec = Pakket::Requirement->new_from_string($spec_str);
+      my $spec = Pakket::PackageQuery->new_from_string($spec_str);
   
       # add supported categories
       if ( !( $spec->category eq 'perl' or $spec->category eq 'native' ) ) {
@@ -2700,7 +2742,7 @@ $fatpacked{"Pakket/CLI/Command/serve.pm"} = '#line '.(1+__LINE__).' "'.__FILE__.
   use Log::Any::Adapter;
   
   use Pakket::CLI '-command';
-  use Pakket::Server;
+  use Pakket::Web::Server;
   use Pakket::Log;
   
   sub abstract    { 'Serve objects' }
@@ -2722,7 +2764,7 @@ $fatpacked{"Pakket/CLI/Command/serve.pm"} = '#line '.(1+__LINE__).' "'.__FILE__.
   
   sub execute {
       my ( $self, $opt ) = @_;
-      my $server = Pakket::Server->new(
+      my $server = Pakket::Web::Server->new(
           # default main object
           map( +(
               defined $opt->{$_}
@@ -2753,6 +2795,7 @@ $fatpacked{"Pakket/CLI/Command/uninstall.pm"} = '#line '.(1+__LINE__).' "'.__FIL
   use Path::Tiny qw< path >;
   
   use Pakket::CLI '-command';
+  use Pakket::Config;
   use Pakket::Uninstaller;
   use Pakket::Log;
   use Pakket::Package;
@@ -2785,19 +2828,32 @@ $fatpacked{"Pakket/CLI/Command/uninstall.pm"} = '#line '.(1+__LINE__).' "'.__FIL
       return \@packages;
   }
   
-  sub _validate_arg_lib_dir {
+  sub _determine_config {
       my ( $self, $opt ) = @_;
   
-      my $pakket_dir = $opt->{'pakket_dir'};
+      # Read configuration
+      my $config_file   = $opt->{'config'};
+      my $config_reader = Pakket::Config->new(
+          $config_file ? ( 'files' => [$config_file] ) : (),
+      );
   
-      $pakket_dir
-          or $self->usage_error(
-          "please define the library dir --pakket-dir <path_to_library>\n");
+      my $config = $config_reader->read_config;
   
-      path($pakket_dir)->exists
-          or $self->usage_error("Library dir: $pakket_dir doesn't exist\n");
+      if ( $opt->{'pakket_dir'} ) {
+          $config->{'install_dir'} = $opt->{'pakket_dir'};
+      }
   
-      $self->{'pakket_dir'} = $pakket_dir;
+      if ( !$config->{'install_dir'} ) {
+          $self->usage_error(
+              "please define the library dir --pakket-dir <path_to_library>\n"
+          );
+      }
+  
+      path($config->{'install_dir'})->exists
+          or $self->usage_error( sprintf(
+              "Library dir: %s doesn't exist\n", $config->{'install_dir'}));
+  
+      return $config;
   }
   
   sub opt_spec {
@@ -2819,7 +2875,7 @@ $fatpacked{"Pakket/CLI/Command/uninstall.pm"} = '#line '.(1+__LINE__).' "'.__FIL
       Log::Any::Adapter->set( 'Dispatch',
           'dispatcher' => Pakket::Log->build_logger( $opt->{'verbose'} ) );
   
-      $self->_validate_arg_lib_dir($opt);
+      $opt->{'config'}   = $self->_determine_config($opt);
       $opt->{'packages'} = $self->_determine_packages( $opt, $args );
   }
   
@@ -2827,7 +2883,7 @@ $fatpacked{"Pakket/CLI/Command/uninstall.pm"} = '#line '.(1+__LINE__).' "'.__FIL
       my ( $self, $opt ) = @_;
   
       my $uninstaller = Pakket::Uninstaller->new(
-          'pakket_dir'           => $self->{'pakket_dir'},
+          'pakket_dir'           => $opt->{'config'}{'install_dir'},
           'packages'             => $opt->{'packages'},
           'without_dependencies' => $opt->{'without_dependencies'},
       );
@@ -2981,11 +3037,8 @@ $fatpacked{"Pakket/Constants.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<
           $
       }xms,
   
-      'PAKKET_LATEST_VERSION'  => 'LATEST',
       'PAKKET_DEFAULT_RELEASE' => 1,
-  
       'PAKKET_INFO_FILE'       => 'info.json',
-  
       'PAKKET_VALID_PHASES'    => {
           'configure' => 1,
           'develop'   => 1,
@@ -2999,7 +3052,6 @@ $fatpacked{"Pakket/Constants.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<
       PARCEL_FILES_DIR
       PARCEL_METADATA_FILE
       PAKKET_PACKAGE_SPEC
-      PAKKET_LATEST_VERSION
       PAKKET_DEFAULT_RELEASE
       PAKKET_INFO_FILE
       PAKKET_VALID_PHASES
@@ -3025,8 +3077,8 @@ $fatpacked{"Pakket/Installer.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<
   use English               qw< -no_match_vars >;
   
   use Pakket::Repository::Parcel;
-  use Pakket::Requirement;
   use Pakket::Package;
+  use Pakket::PackageQuery;
   use Pakket::Log       qw< log_success log_fail >;
   use Pakket::Types     qw< PakketRepositoryBackend >;
   use Pakket::Utils     qw< is_writeable >;
@@ -3043,12 +3095,23 @@ $fatpacked{"Pakket/Installer.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<
       Pakket::Role::RunCommand
   >;
   
+  has 'force_reinstall' => (
+      'is'      => 'ro',
+      'isa'     => 'Bool',
+      'default' => sub {0},
+  );
+  
   sub install {
       my ( $self, @packages ) = @_;
   
       if ( !@packages ) {
           $log->notice('Did not receive any parcels to deliver');
           return;
+      }
+  
+      if ( !$self->force_reinstall ) {
+          @packages = $self->drop_installed_packages(@packages);
+          @packages or return;
       }
   
       my $installer_cache = {};
@@ -3103,21 +3166,98 @@ $fatpacked{"Pakket/Installer.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<
       my ( $self, $package, $dir, $opts ) = @_;
       my $installer_cache = $opts->{'cache'};
   
-      # Are we in a regular (non-bootstrap) mode?
-      # Are we using a bootstrap version of a package?
-      if ( ! $opts->{'skip_prereqs'} && $package->is_bootstrap ) {
-          croak( $log->critical(
-              'You are trying to install a bootstrap version of %s.'
-            . ' Please rebuild this package from scratch.',
-              $package->full_name,
-          ) );
-      }
-  
-      # Extracted to use more easily in the install cache below
-      my $pkg_cat  = $package->category;
-      my $pkg_name = $package->name;
+      pre_install_checks($dir, $package, $opts);
   
       $log->debugf( "About to install %s (into $dir)", $package->full_name );
+  
+      is_installed($installer_cache, $package)
+          and return;
+  
+      mark_as_installed($installer_cache, $package);
+  
+      my $parcel_dir
+          = $self->parcel_repo->retrieve_package_parcel($package);
+  
+      my $full_parcel_dir = $parcel_dir->child( PARCEL_FILES_DIR() );
+  
+      # Get the spec and create a new Package object
+      # This one will have the dependencies as well
+      my $spec_file    = $full_parcel_dir->child( PARCEL_METADATA_FILE() );
+      my $spec         = decode_json $spec_file->slurp_utf8;
+      my $full_package = Pakket::Package->new_from_spec($spec);
+  
+      my $prereqs = $full_package->prereqs;
+      foreach my $prereq_category ( keys %{$prereqs} ) {
+          my $runtime_prereqs = $prereqs->{$prereq_category}{'runtime'};
+  
+          foreach my $prereq_name ( keys %{$runtime_prereqs} ) {
+              my $prereq_data = $runtime_prereqs->{$prereq_name};
+  
+              $self->install_prereq(
+                  $prereq_category,
+                  $prereq_name,
+                  $prereq_data,
+                  $dir,
+                  $opts,
+              );
+          }
+      }
+  
+      copy_package_to_install_dir($full_parcel_dir, $dir);
+  
+      $self->add_package_in_info_file( $parcel_dir, $dir, $full_package, $opts );
+  
+      log_success( sprintf 'Delivering parcel %s', $full_package->full_name );
+  
+      return;
+  }
+  
+  sub install_prereq {
+     my ($self, $category, $name, $prereq_data, $dir, $opts) = @_;
+  
+     # FIXME: This should be removed when we introduce version ranges
+     # This forces us to install the latest version we have of
+     # something, instead of finding the latest, based on the
+     # version range, which "$prereq_version" contains. -- SX
+     my $ver_rel = $self->parcel_repo->latest_version_release(
+         $category,
+         $name,
+         $prereq_data->{'version'},
+     );
+  
+     my ( $version, $release ) = @{$ver_rel};
+  
+     my $query = Pakket::PackageQuery->new(
+         'category' => $category,
+         'name'     => $name,
+         'version'  => $version,
+         'release'  => $release,
+     );
+  
+     $self->install_package(
+         $query, $dir,
+         { %{$opts}, 'as_prereq' => 1 },
+     );
+  }
+  
+  sub copy_package_to_install_dir {
+      my ($full_parcel_dir, $dir) = @_;
+      foreach my $item ( $full_parcel_dir->children ) {
+          my $basename = $item->basename;
+  
+          $basename eq PARCEL_METADATA_FILE()
+              and next;
+  
+          my $target_dir = $dir->child($basename);
+          dircopy( $item, $target_dir );
+      }
+  }
+  
+  sub is_installed {
+      my ($installer_cache, $package) = @_;
+  
+      my $pkg_cat  = $package->category;
+      my $pkg_name = $package->name;
   
       if ( defined $installer_cache->{$pkg_cat}{$pkg_name} ) {
           my $ver_rel = $installer_cache->{$pkg_cat}{$pkg_name};
@@ -3146,11 +3286,34 @@ $fatpacked{"Pakket/Installer.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<
   
           $log->debugf( '%s already installed.', $package->full_name );
   
-          return;
-      } else {
-          $installer_cache->{$pkg_cat}{$pkg_name} = [
-              $package->version, $package->release,
-          ];
+          return 1;
+      }
+  
+      return 0;
+  }
+  
+  sub mark_as_installed {
+      my ($installer_cache, $package) = @_;
+  
+      my $pkg_cat  = $package->category;
+      my $pkg_name = $package->name;
+  
+      $installer_cache->{$pkg_cat}{$pkg_name} = [
+          $package->version, $package->release,
+      ];
+  }
+  
+  sub pre_install_checks {
+      my ($dir, $package, $opts) = @_;
+  
+      # Are we in a regular (non-bootstrap) mode?
+      # Are we using a bootstrap version of a package?
+      if ( ! $opts->{'skip_prereqs'} && $package->is_bootstrap ) {
+          croak( $log->critical(
+              'You are trying to install a bootstrap version of %s.'
+            . ' Please rebuild this package from scratch.',
+              $package->full_name,
+          ) );
       }
   
       if ( !is_writeable($dir) ) {
@@ -3158,66 +3321,27 @@ $fatpacked{"Pakket/Installer.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<
               "Can't write to your installation directory ($dir)",
           ) );
       }
+  }
   
-      my $parcel_dir
-          = $self->parcel_repo->retrieve_package_parcel($package);
+  sub show_installed {
+      my $self = shift;
+      my $installed_packages = $self->load_installed_packages($self->active_dir);
+      print join("\n", sort keys %{$installed_packages} ) . "\n";
+  }
   
-      my $full_parcel_dir = $parcel_dir->child( PARCEL_FILES_DIR() );
-  
-      # Get the spec and create a new Package object
-      # This one will have the dependencies as well
-      my $spec_file    = $full_parcel_dir->child( PARCEL_METADATA_FILE() );
-      my $spec         = decode_json $spec_file->slurp_utf8;
-      my $full_package = Pakket::Package->new_from_spec($spec);
-  
-      my $prereqs = $full_package->prereqs;
-      foreach my $prereq_category ( keys %{$prereqs} ) {
-          my $runtime_prereqs = $prereqs->{$prereq_category}{'runtime'};
-  
-          foreach my $prereq_name ( keys %{$runtime_prereqs} ) {
-              my $prereq_data = $runtime_prereqs->{$prereq_name};
-  
-              # FIXME: This should be removed when we introduce version ranges
-              # This forces us to install the latest version we have of
-              # something, instead of finding the latest, based on the
-              # version range, which "$prereq_version" contains. -- SX
-              my $ver_rel = $self->parcel_repo->latest_version_release(
-                  $prereq_category,
-                  $prereq_name,
-                  $prereq_data->{'version'},
-              );
-  
-              my ( $prereq_version, $prereq_release ) = @{$ver_rel};
-  
-              my $prereq = Pakket::Requirement->new(
-                  'category' => $prereq_category,
-                  'name'     => $prereq_name,
-                  'version'  => $prereq_version,
-                  'release'  => $prereq_release,
-              );
-  
-              $self->install_package(
-                  $prereq, $dir,
-                  { %{$opts}, 'as_prereq' => 1 },
-              );
+  sub drop_installed_packages {
+      my $self = shift;
+      my @packages = @_;
+      my $installed_packages = $self->load_installed_packages($self->active_dir);
+      my @out;
+      for my $package (@packages) {
+          if ($installed_packages->{$package->full_name}) {
+              $log->infof( '%s already installed', $package->full_name );
+          } else {
+              push @out, $package;
           }
       }
-  
-      foreach my $item ( $full_parcel_dir->children ) {
-          my $basename = $item->basename;
-  
-          $basename eq PARCEL_METADATA_FILE()
-              and next;
-  
-          my $target_dir = $dir->child($basename);
-          dircopy( $item, $target_dir );
-      }
-  
-      $self->add_package_in_info_file( $parcel_dir, $dir, $full_package, $opts );
-  
-      log_success( sprintf 'Delivering parcel %s', $full_package->full_name );
-  
-      return;
+      return @out;
   }
   
   __PACKAGE__->meta->make_immutable;
@@ -3328,7 +3452,7 @@ $fatpacked{"Pakket/Log.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PAKK
   
   sub _build_logger {
       my $class = shift;
-      my $file  = shift || Path::Tiny->cwd->child('build.log')->stringify;
+      my $file  = shift || Path::Tiny::path('/tmp/build.log')->stringify;
   
       return [
           'File',
@@ -3382,42 +3506,60 @@ $fatpacked{"Pakket/Manager.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
   use Pakket::Log;
   use Pakket::Scaffolder::Perl;
   
-  has config => (
-      is        => 'ro',
-      isa       => 'HashRef',
-      default   => sub { +{} },
+  has 'config' => (
+      'is'        => 'ro',
+      'isa'       => 'HashRef',
+      'default'   => sub { +{} },
   );
   
-  has category => (
-      is        => 'ro',
-      isa       => 'Str',
-      lazy      => 1,
-      builder   => '_build_category',
+  has 'category' => (
+      'is'        => 'ro',
+      'isa'       => 'Str',
+      'lazy'      => 1,
+      'builder'   => '_build_category',
   );
   
-  has cache_dir => (
-      is        => 'ro',
-      isa       => 'Maybe[Str]',
+  has 'cache_dir' => (
+      'is'        => 'ro',
+      'isa'       => 'Maybe[Str]',
   );
   
-  has cpanfile => (
-      is        => 'ro',
-      isa       => 'Maybe[Str]',
+  has 'cpanfile' => (
+      'is'        => 'ro',
+      'isa'       => 'Maybe[Str]',
   );
   
-  has package => (
-      is        => 'ro',
-      isa       => 'Maybe[Pakket::Package]',
+  has 'package' => (
+      'is'        => 'ro',
+      'isa'       => 'Maybe[Pakket::Package]',
   );
   
-  has phases => (
-      is        => 'ro',
-      isa       => 'Maybe[ArrayRef]',
+  has 'phases' => (
+      'is'        => 'ro',
+      'isa'       => 'Maybe[ArrayRef]',
   );
   
-  has file_02packages => (
-      is        => 'ro',
-      isa       => 'Maybe[Str]',
+  has 'file_02packages' => (
+      'is'        => 'ro',
+      'isa'       => 'Maybe[Str]',
+  );
+  
+  has 'no_deps' => (
+      'is'        => 'ro',
+      'isa'       => 'Bool',
+      'default'   => 0,
+  );
+  
+  has 'is_local' => (
+      'is'        => 'ro',
+      'isa'       => 'Bool',
+      'default'   => 0,
+  );
+  
+  has 'requires_only' => (
+      'is'        => 'ro',
+      'isa'       => 'Bool',
+      'default'   => 0,
   );
   
   sub _build_category {
@@ -3472,18 +3614,11 @@ $fatpacked{"Pakket/Manager.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
       $self->_get_scaffolder->run;
   }
   
-  sub remove_package_source {
-      my $self = shift;
-      my $repo = $self->_get_repo('source');
-      $repo->remove_package_source( $self->package );
-      $log->info( sprintf("Removed %s from the source repo.", $self->package->id ) );
-  }
-  
-  sub remove_package_spec {
-      my $self = shift;
-      my $repo = $self->_get_repo('spec');
-      $repo->remove_package_spec( $self->package );
-      $log->info( sprintf("Removed %s from the spec repo.", $self->package->id ) );
+  sub remove_package {
+      my ( $self, $type ) = @_;
+      my $repo = $self->_get_repo( $type );
+      $repo->remove_package_file( $type, $self->package );
+      $log->info( sprintf("Removed %s from the %s repo.", $self->package->id, $type ) );
   }
   
   sub add_dependency {
@@ -3562,8 +3697,11 @@ $fatpacked{"Pakket/Manager.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
       my $self = shift;
   
       my %params = (
-          'config' => $self->config,
-          'phases' => $self->phases,
+          'config'   => $self->config,
+          'phases'   => $self->phases,
+          'no_deps'  => ( $self->is_local ? 1 : $self->no_deps ),
+          'is_local' => $self->is_local,
+          ( 'types'  => ['requires'] )x!! $self->requires_only,
       );
   
       if ( $self->cpanfile ) {
@@ -3573,7 +3711,7 @@ $fatpacked{"Pakket/Manager.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
           $params{'module'}  = $self->package->name;
           $params{'version'} = defined $self->package->version
               # hack to pass exact version in prereq syntax
-              ? '=='.$self->package->version
+              ? ( $self->is_local ? '' : '==' ) . $self->package->version
               : undef;
       }
   
@@ -3714,6 +3852,64 @@ $fatpacked{"Pakket/Package.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
   1;
 PAKKET_PACKAGE
 
+$fatpacked{"Pakket/PackageQuery.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PAKKET_PACKAGEQUERY';
+  package Pakket::PackageQuery;
+  # ABSTRACT: An object representing a query for a package
+  
+  use Moose;
+  use MooseX::StrictConstructor;
+  
+  use Carp              qw< croak >;
+  use Log::Any          qw< $log >;
+  use Pakket::Constants qw<
+      PAKKET_PACKAGE_SPEC
+      PAKKET_DEFAULT_RELEASE
+  >;
+  use Pakket::Types;
+  
+  with qw< Pakket::Role::BasicPackageAttrs >;
+  
+  has [qw< name category version >] => (
+      'is'       => 'ro',
+      'isa'      => 'Str',
+      'required' => 1,
+  );
+  
+  has 'release' => (
+      'is'      => 'ro',
+      'isa'     => 'PakketRelease',
+      'coerce'  => 1,
+      'default' => sub { PAKKET_DEFAULT_RELEASE() },
+  );
+  
+  has 'is_bootstrap' => (
+      'is'      => 'ro',
+      'isa'     => 'Bool',
+      'default' => sub {0},
+  );
+  
+  sub new_from_string {
+      my ( $class, $req_str ) = @_;
+  
+      if ( $req_str !~ PAKKET_PACKAGE_SPEC() ) {
+          croak( $log->critical("Cannot parse $req_str") );
+      } else {
+          # This shuts up Perl::Critic
+          return $class->new(
+              'category' => $1,
+              'name'     => $2,
+              'version'  => $3,
+              ( 'release'  => $4 )x!! $4,
+          );
+      }
+  }
+  
+  no Moose;
+  __PACKAGE__->meta->make_immutable;
+  
+  1;
+PAKKET_PACKAGEQUERY
+
 $fatpacked{"Pakket/Repository.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PAKKET_REPOSITORY';
   package Pakket::Repository;
   # ABSTRACT: Build in-memory representation of repo
@@ -3737,7 +3933,7 @@ $fatpacked{"Pakket/Repository.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".
       'lazy'    => 1,
       'builder' => '_build_backend',
       'handles' => [ qw<
-          all_object_ids has_object
+          all_object_ids all_object_ids_by_name has_object
           store_content  retrieve_content  remove_content
           store_location retrieve_location remove_location
       > ],
@@ -3818,7 +4014,7 @@ $fatpacked{"Pakket/Repository.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".
           'type' => $types{$category},
       );
   
-      my $latest_version = $versioner->latest( $req_string, @versions );
+      my $latest_version = $versioner->latest( $category, $name, $req_string, @versions );
       $latest_version
           and return [ $latest_version, 1 ];
   
@@ -4045,6 +4241,7 @@ $fatpacked{"Pakket/Repository/Backend/File.pm"} = '#line '.(1+__LINE__).' "'.__F
   use Types::Path::Tiny qw< Path AbsPath >;
   use Digest::SHA       qw< sha1_hex >;
   use Pakket::Utils     qw< encode_json_canonical encode_json_pretty >;
+  use Pakket::Constants qw< PAKKET_PACKAGE_SPEC >;
   
   with qw<
       Pakket::Role::Repository::Backend
@@ -4098,6 +4295,14 @@ $fatpacked{"Pakket/Repository/Backend/File.pm"} = '#line '.(1+__LINE__).' "'.__F
   sub all_object_ids {
       my $self           = shift;
       my @all_object_ids = keys %{ $self->repo_index };
+      return \@all_object_ids;
+  }
+  
+  sub all_object_ids_by_name {
+      my ( $self, $name, $category ) = @_;
+      my @all_object_ids =
+          grep { $_ =~ PAKKET_PACKAGE_SPEC(); $1 eq $category and $2 eq $name }
+          keys %{ $self->repo_index };
       return \@all_object_ids;
   }
   
@@ -4261,6 +4466,23 @@ $fatpacked{"Pakket/Repository/Backend/HTTP.pm"} = '#line '.(1+__LINE__).' "'.__F
       my $url      = '/all_object_ids';
       my $full_url = $self->base_url . $url;
       my $response = $self->http_client->get($full_url);
+  
+      if ( !$response->{'success'} ) {
+          croak( $log->criticalf( 'Could not get remote all_object_ids: %d -- %s',
+              $response->{'status'}, $response->{'reason'} ) );
+      }
+  
+      my $content = decode_json( $response->{'content'} );
+      return $content->{'object_ids'};
+  }
+  
+  sub all_object_ids_by_name {
+      my ( $self, $name, $category ) = @_;
+      my $response = $self->http_client->get(
+          sprintf( '%s/all_object_ids_by_name?name=%s&category=%s',
+              $self->base_url, uri_escape($name), uri_escape($category),
+          )
+      );
   
       if ( !$response->{'success'} ) {
           croak( $log->criticalf( 'Could not get remote all_object_ids: %d -- %s',
@@ -4520,57 +4742,20 @@ $fatpacked{"Pakket/Requirement.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n"
   use Moose;
   use MooseX::StrictConstructor;
   
-  use Carp              qw< croak >;
-  use Log::Any          qw< $log >;
-  use Pakket::Constants qw<
-      PAKKET_PACKAGE_SPEC
-      PAKKET_DEFAULT_RELEASE
-  >;
-  use Pakket::Types;
+  use Carp     qw< croak >;
+  use Log::Any qw< $log >;
   
-  with qw< Pakket::Role::BasicPackageAttrs >;
-  
-  has [qw< category name >] => (
+  has [ qw< category name > ] => (
       'is'       => 'ro',
       'isa'      => 'Str',
       'required' => 1,
   );
   
   has 'version' => (
-      'is'       => 'ro',
-      'isa'      => 'PakketVersion',
-      'coerce'   => 1,
-      'required' => 1,
-  );
-  
-  has 'release' => (
       'is'      => 'ro',
-      'isa'     => 'PakketRelease',
-      'coerce'  => 1,
-      'default' => sub { PAKKET_DEFAULT_RELEASE() },
+      'isa'     => 'Str',
+      'default' => sub { '>= 0' },
   );
-  
-  has 'is_bootstrap' => (
-      'is'      => 'ro',
-      'isa'     => 'Bool',
-      'default' => sub {0},
-  );
-  
-  sub new_from_string {
-      my ( $class, $req_str ) = @_;
-  
-      if ( $req_str !~ PAKKET_PACKAGE_SPEC() ) {
-          croak( $log->critical("Cannot parse $req_str") );
-      } else {
-          # This shuts up Perl::Critic
-          return $class->new(
-              'category' => $1,
-              'name'     => $2,
-              'version'  => $3,
-              ( 'release'  => $4 )x!! $4,
-          );
-      }
-  }
   
   no Moose;
   __PACKAGE__->meta->make_immutable;
@@ -4663,6 +4848,7 @@ $fatpacked{"Pakket/Role/HasInfoFile.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."
   use JSON::MaybeXS qw< decode_json >;
   use Pakket::Utils qw< encode_json_pretty >;
   use Pakket::Constants qw<PAKKET_INFO_FILE>;
+  use Pakket::Package;
   
   sub add_package_in_info_file {
       my ( $self, $parcel_dir, $dir, $package, $opts ) = @_;
@@ -4726,6 +4912,27 @@ $fatpacked{"Pakket/Role/HasInfoFile.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."
       my $info_file = $dir->child( PAKKET_INFO_FILE() );
   
       $info_file->spew_utf8( encode_json_pretty($install_data) );
+  }
+  
+  sub load_installed_packages {
+      my ($self, $dir) = @_;
+  
+      my $install_data = $self->load_info_file($dir);
+      my $packages = $install_data->{'installed_packages'};
+      my %packages = ();
+      for my $category (keys %$packages) {
+          for my $name (keys %{$packages->{$category}}) {
+              my $p = $packages->{$category}{$name};
+              my $package = Pakket::Package->new(
+                                  'category' => $category,
+                                  'name'     => $name,
+                                  'version'  => $p->{'version'},
+                                  'release'  => $p->{'release'},
+                              );
+              $packages{$package->full_name} = 1;
+          }
+      }
+      return \%packages;
   }
   
   no Moose::Role;
@@ -5030,7 +5237,7 @@ $fatpacked{"Pakket/Role/Repository/Backend.pm"} = '#line '.(1+__LINE__).' "'.__F
   # These are helper methods we want the backend to implement
   # in order for the Repository to easily use across any backend
   requires qw<
-      all_object_ids has_object
+      all_object_ids all_object_ids_by_name has_object
   
       store_content  retrieve_content  remove_content
       store_location retrieve_location remove_location
@@ -5184,8 +5391,9 @@ $fatpacked{"Pakket/Scaffolder/Perl.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\
   use version 0.77;
   use Carp ();
   use Archive::Any;
-  use CPAN::DistnameInfo;
+  use CPAN::Meta;
   use CPAN::Meta::Prereqs;
+  use Parse::CPAN::Packages::Fast;
   use JSON::MaybeXS       qw< decode_json encode_json >;
   use Ref::Util           qw< is_arrayref is_hashref >;
   use Path::Tiny          qw< path >;
@@ -5195,6 +5403,7 @@ $fatpacked{"Pakket/Scaffolder/Perl.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\
   use Pakket::Package;
   use Pakket::Types;
   use Pakket::Utils::Perl qw< should_skip_module >;
+  use Pakket::Constants   qw< PAKKET_PACKAGE_SPEC >;
   use Pakket::Scaffolder::Perl::Module;
   use Pakket::Scaffolder::Perl::CPANfile;
   
@@ -5271,9 +5480,34 @@ $fatpacked{"Pakket/Scaffolder/Perl.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\
   
   has 'cpan_02packages' => (
       'is'      => 'ro',
-      'isa'     => 'HashRef',
+      'isa'     => 'Parse::CPAN::Packages::Fast',
       'lazy'    => 1,
       'builder' => '_build_cpan_02packages',
+  );
+  
+  has 'versioner' => (
+      'is'      => 'ro',
+      'isa'     => 'Pakket::Versioning',
+      'lazy'    => 1,
+      'builder' => '_build_versioner',
+  );
+  
+  has 'no_deps' => (
+      'is'      => 'ro',
+      'isa'     => 'Bool',
+      'default' => 0,
+  );
+  
+  has 'is_local' => (
+      'is'      => 'ro',
+      'isa'     => 'Bool',
+      'default' => 0,
+  );
+  
+  has 'types' => (
+      'is'      => 'ro',
+      'isa'     => 'ArrayRef',
+      'default' => sub { [qw< requires recommends suggests >] },
   );
   
   sub _build_metacpan_api {
@@ -5306,7 +5540,6 @@ $fatpacked{"Pakket/Scaffolder/Perl.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\
   
   sub _build_cpan_02packages {
       my $self = shift;
-      my $ret  = +{};
       my ( $dir, $file );
   
       if ( $self->file_02packages ) {
@@ -5320,22 +5553,11 @@ $fatpacked{"Pakket/Scaffolder/Perl.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\
           $self->ua->mirror( 'https://cpan.metacpan.org/modules/02packages.details.txt', $file );
       }
   
-      chomp( my @content = $file->lines_utf8 );
-      shift @content for 0..8; # remove headers
+      return Parse::CPAN::Packages::Fast->new($file);
+  }
   
-      for my $c ( @content ) {
-          my ( $name, $latest, $path ) =
-              $c =~ /^([^\s]+)\s+([^\s]+)\s+([^\s]+)\s*$/;
-  
-          my $d = CPAN::DistnameInfo->new($path);
-  
-          $ret->{$name} = {
-              'distribution'   => $d->dist,
-              'latest_version' => $d->version,
-          };
-      }
-  
-      return $ret;
+  sub _build_versioner {
+      return Pakket::Versioning->new( 'type' => 'Perl' );
   }
   
   sub BUILDARGS {
@@ -5365,6 +5587,11 @@ $fatpacked{"Pakket/Scaffolder/Perl.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\
               )->prereq_specs;
       }
   
+      if ( $args{'is_local'} ) {
+          $args{'cache_dir'} or
+              die "when using a local (is-local) package - you must specify a cache-dir (for source)";
+      }
+  
       return \%args;
   }
   
@@ -5373,29 +5600,32 @@ $fatpacked{"Pakket/Scaffolder/Perl.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\
       my %failed;
   
       # Bootstrap toolchain
-      for my $dist ( @{ $self->perl_bootstrap_modules } ) {
-          # TODO: check versions
-          if ( exists $self->spec_index->{$dist} ) {
-              $log->debugf( 'Skipping %s (already have version: %s)',
-                            $dist, $self->spec_index->{$dist} );
-              next;
-          }
+      if ( ! $self->no_deps ) {
+          for my $dist ( @{ $self->perl_bootstrap_modules } ) {
+              # TODO: check versions
+              if ( exists $self->spec_index->{$dist} ) {
+                  $log->debugf( 'Skipping %s (already have version: %s)',
+                                $dist, $self->spec_index->{$dist} );
+                  next;
+              }
   
-          $log->debugf( 'Bootstrapping config: %s', $dist );
-          my $requirements = $self->prereqs->requirements_for(qw< configure requires >);
-          eval {
-              $self->create_spec_for( dist => $dist, $requirements );
-              1;
-          } or do {
-              my $err = $@ || 'zombie error';
-              Carp::croak("Cannot bootstrap toolchain distribution: $dist ($err)\n");
-          };
+              $log->debugf( 'Bootstrapping config: %s', $dist );
+              my $requirements = $self->prereqs->requirements_for(qw< configure requires >);
+  
+              eval {
+                  $self->create_spec_for( dist => $dist, $requirements );
+                  1;
+              } or do {
+                  my $err = $@ || 'zombie error';
+                  Carp::croak("Cannot bootstrap toolchain distribution: $dist ($err)\n");
+              };
+          }
       }
   
       # the rest
       for my $phase ( @{ $self->phases } ) {
           $log->debugf( 'Phase: %s', $phase );
-          for my $type ( qw< requires recommends suggests > ) {
+          for my $type ( @{ $self->types } ) {
               next unless is_hashref( $self->modules->{ $phase }{ $type } );
   
               my $requirements = $self->prereqs->requirements_for( $phase, $type );
@@ -5463,10 +5693,33 @@ $fatpacked{"Pakket/Scaffolder/Perl.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\
       return $target;
   }
   
+  sub has_satisfying {
+      my ( $self, $name, $requirements ) = @_;
+      my $req_as_hash = $requirements->as_string_hash;
+  
+      # fix requirement entries from module name to distribution
+      # so we can match to $name
+      for my $m ( keys %{ $req_as_hash } ) {
+          my $v = delete $req_as_hash->{$m};
+          next if $self->skip_name($m);
+          my $d = $self->get_dist_name($m);
+          $req_as_hash->{$d} = $v;
+      }
+      return unless exists $req_as_hash->{$name};
+  
+      my @versions = map { $_ =~ PAKKET_PACKAGE_SPEC(); $3 }
+          @{ $self->spec_repo->all_object_ids_by_name($name, 'perl') };
+      return unless @versions;
+  
+      return $self->versioner->is_satisfying($req_as_hash->{$name}, @versions);
+  }
+  
   sub create_spec_for {
       my ( $self, $type, $name, $requirements ) = @_;
+  
       return if $self->skip_name($name);
       return if $self->processed_dists->{ $name }++;
+      return if !$self->is_local and $self->has_satisfying($name, $requirements);
   
       my $release = $self->get_release_info($type, $name, $requirements);
       return if exists $release->{'skip'};
@@ -5571,7 +5824,7 @@ $fatpacked{"Pakket/Scaffolder/Perl.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\
       for my $phase ( @{ $self->phases } ) {
           my $prereq_data = $package_spec->{'Prereqs'}{'perl'}{$phase} = +{};
   
-          for my $dep_type (qw< requires recommends suggests >) {
+          for my $dep_type ( @{ $self->types } ) {
               next unless is_hashref( $dep_modules->{ $phase }{ $dep_type } );
   
               my $dep_requirements = $dep_prereqs->requirements_for( $phase, $dep_type );
@@ -5596,8 +5849,10 @@ $fatpacked{"Pakket/Scaffolder/Perl.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\
               }
   
               # recurse through those as well
-              $self->create_spec_for( 'dist' => $_, $dep_requirements )
-                  for keys %{ $package_spec->{'Prereqs'}{'perl'}{$phase} };
+              if ( ! $self->no_deps ) {
+                  $self->create_spec_for( 'dist' => $_, $dep_requirements )
+                      for keys %{ $package_spec->{'Prereqs'}{'perl'}{$phase} };
+              }
           }
       }
   
@@ -5616,9 +5871,12 @@ $fatpacked{"Pakket/Scaffolder/Perl.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\
   sub get_dist_name {
       my ( $self, $module_name ) = @_;
   
-      # fist check if we can get it from 02packages
-      exists $self->cpan_02packages->{$module_name}
-          and return $self->cpan_02packages->{$module_name}{'distribution'};
+      # if "is_local" don't use uptream sources
+      $self->is_local and return $module_name;
+  
+      # check if we can get it from 02packages
+      my $mod = $self->cpan_02packages->package($module_name);
+      $mod and return $mod->distribution->dist;
   
       # fallback to metacpan check
       $module_name = $self->known_incorrect_name_fixes->{ $module_name }
@@ -5663,8 +5921,48 @@ $fatpacked{"Pakket/Scaffolder/Perl.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\
       return $dist_name;
   }
   
+  sub get_release_info_local {
+      my ( $self, $name, $requirements ) = @_;
+  
+      my $req = $requirements->as_string_hash;
+      my $ver = $req->{$name} =~ s/^[=\ ]//r;
+      my $prereqs;
+  
+      my $from_file = path( $self->cache_dir, $name . '-' . $ver . '.tar.gz' );
+      if ( $from_file->exists ) {
+          my $target = Path::Tiny->tempdir();
+          my $dir    = $self->unpack( $target, $from_file );
+          if ( $dir->child('META.json')->is_file or $dir->child('META.yaml')->is_file ) {
+              my $file = $dir->child('META.json')->is_file
+                  ? $dir->child('META.json')
+                  : $dir->child('META.yaml');
+              my $meta = CPAN::Meta->load_file( $file );
+              $prereqs = $meta->effective_prereqs->as_string_hash;
+              # YUCK, but for now, it will do the job.
+              for my $k1 ( keys %{ $prereqs } ) {
+                  for my $k2 ( keys %{ $prereqs->{$k1} } ) {
+                      for my $k3 ( keys %{ $prereqs->{$k1}{$k2} } ) {
+                          $prereqs->{$k1}{$k2}{ $k3 =~ s{::}{-}gr } =
+                              delete $prereqs->{$k1}{$k2}{$k3};
+                      }
+                  }
+              }
+          }
+      }
+  
+      return +{
+          'distribution' => $name,
+          'version'      => $ver,
+          'prereqs'      => $prereqs,
+      };
+  }
+  
   sub get_release_info {
       my ( $self, $type, $name, $requirements ) = @_;
+  
+      # if is_local is set - generate info without upstream data
+      $self->is_local
+          and return $self->get_release_info_local( $name, $requirements );
   
       my $dist_name = $type eq 'module'
           ? $self->get_dist_name($name)
@@ -5672,7 +5970,7 @@ $fatpacked{"Pakket/Scaffolder/Perl.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\
       return +{ 'skip' => 1 } if $self->skip_name($dist_name);
   
   
-      # first try the latest
+      # try the latest
   
       my $latest = $self->get_latest_release_info( $dist_name );
       return $latest
@@ -5939,9 +6237,14 @@ $fatpacked{"Pakket/Scaffolder/Perl/Role/Borked.pm"} = '#line '.(1+__LINE__).' "'
       'isa'     => 'HashRef',
       'default' => sub {
           +{
+              'Data-Swap'         => '0.08',
+              'Encode-HanConvert' => '0.35',
               'ExtUtils-Constant' => '0.23',
+              'Frontier-RPC'      => '0.07',
               'Getopt-Long'       => '2.49',
               'IO-Capture'        => '0.05',
+              'Memoize-Memcached' => '0.04',
+              'Statistics-Regression' => '0.53',
           }
       },
   );
@@ -6038,176 +6341,6 @@ $fatpacked{"Pakket/Scaffolder/Role/Terminal.pm"} = '#line '.(1+__LINE__).' "'.__
   __END__
 PAKKET_SCAFFOLDER_ROLE_TERMINAL
 
-$fatpacked{"Pakket/Server.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PAKKET_SERVER';
-  package Pakket::Server;
-  # ABSTRACT: Start a Pakket server
-  
-  use Moose;
-  use MooseX::StrictConstructor;
-  
-  use Log::Any qw< $log >;
-  use Plack::Runner;
-  
-  use Pakket::Server::App;
-  
-  has 'port' => (
-      'is'        => 'ro',
-      'isa'       => 'Int',
-      'predicate' => 'has_port',
-  );
-  
-  sub run {
-      my $self = shift;
-  
-      Pakket::Server::App->setup();
-      my $app    = Pakket::Server::App->to_app;
-      my $runner = Plack::Runner->new();
-  
-      my @runner_opts = (
-          $self->has_port ? ( '--port', $self->port ) : (),
-      );
-  
-      $runner->parse_options(@runner_opts);
-      return $runner->run($app);
-  }
-  
-  __PACKAGE__->meta->make_immutable;
-  no Moose;
-  
-  1;
-  
-  __END__
-PAKKET_SERVER
-
-$fatpacked{"Pakket/Server/App.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PAKKET_SERVER_APP';
-  package Pakket::Server::App;
-  # ABSTRACT: Webapp endpoints to server Pakket information
-  
-  use Dancer2;
-  use Dancer2::Plugin::Pakket::ParamTypes;
-  
-  use Log::Any qw< $log >;
-  use Pakket::Config;
-  use Pakket::Repository::Spec;
-  use Pakket::Repository::Parcel;
-  use Pakket::Repository::Source;
-  
-  ## no critic qw(Modules::RequireExplicitInclusion)
-  
-  sub setup {
-      my $class = shift;
-      my $config_reader = Pakket::Config->new();
-      my %config        = (
-          %{ $config_reader->read_config },
-          %{ config() },
-      );
-  
-      my %instance_map = (
-          'spec'   => sub { return Pakket::Repository::Spec->new(@_);   },
-          'source' => sub { return Pakket::Repository::Source->new(@_); },
-          'parcel' => sub { return Pakket::Repository::Parcel->new(@_); },
-      );
-  
-      my $repositories_data = $config{'repositories'};
-      foreach my $repository_type ( keys %{$repositories_data} ) {
-          my $repo = $instance_map{$repository_type}->(
-              'backend' => $repositories_data->{$repository_type},
-          );
-  
-          prefix "/$repository_type" => sub {
-              get '/has_object' => with_types [
-                  [ 'query', 'id', 'Str', 'MissingID' ],
-              ] => sub {
-                  my $id = query_parameters->get('id');
-  
-                  return encode_json({
-                      'has_object' => $repo->has_object($id),
-                  });
-              };
-  
-              get '/all_object_ids' => sub {
-                  return encode_json({
-                      'object_ids' => $repo->all_object_ids,
-                  });
-              };
-  
-              prefix '/retrieve' => sub {
-                  get '/content' => with_types [
-                      [ 'query', 'id', 'Str', 'MissingID' ],
-                  ] => sub {
-                      my $id = query_parameters->get('id');
-  
-                      return encode_json( {
-                          'id'      => $id,
-                          'content' => $repo->retrieve_content($id),
-                      } );
-                  };
-  
-                  get '/location' => with_types [
-                      [ 'query', 'id', 'Str', 'MissingID' ],
-                  ] => sub {
-                      my $id   = query_parameters->get('id');
-                      my $file = $repo->retrieve_location($id);
-  
-                      # This is already anchored to the repo
-                      # (And no user input can change the path it will reach)
-                      send_file( $file, 'system_path' => 1 );
-                  };
-              };
-  
-              prefix '/store' => sub {
-                  # There is no body to check, because the body is JSON content
-                  # So we manually decode and check
-                  post '/content' => sub {
-                      my $data    = decode_json( request->body );
-                      my $id      = $data->{'id'};
-                      my $content = $data->{'content'};
-  
-                      defined && length
-                          or send_error( 'Bad input', 400 )
-                          for $id, $content;
-  
-                      $repo->store_content( $id, $content );
-                      return encode_json( { 'success' => 1 } );
-                  };
-  
-                  post '/location' => with_types [
-                      [ 'query', 'id', 'Str',  'MissingID' ],
-                  ] => sub {
-                      my $id   = query_parameters->get('id');
-                      my $file = Path::Tiny->tempfile;
-                      $file->spew_raw( request->body );
-                      $repo->store_location( $id, $file );
-                      return encode_json( { 'success' => 1 } );
-                  };
-              };
-  
-              prefix '/remove' => sub {
-                  get '/location' => with_types [
-                      [ 'query', 'id', 'Str',  'MissingID' ],
-                  ] => sub {
-                      my $id = query_parameters->get('id');
-                      $repo->remove_location( $id );
-                      return encode_json( { 'success' => 1 } );
-                  };
-  
-                  get '/content' => with_types [
-                      [ 'query', 'id', 'Str',  'MissingID' ],
-                  ] => sub {
-                      my $id = query_parameters->get('id');
-                      $repo->remove_content( $id );
-                      return encode_json( { 'success' => 1 } );
-                  };
-              };
-          };
-      }
-  }
-  
-  1;
-  
-  __END__
-PAKKET_SERVER_APP
-
 $fatpacked{"Pakket/Types.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PAKKET_TYPES';
   package Pakket::Types;
   # ABSTRACT: Type definitions for Pakket
@@ -6221,7 +6354,6 @@ $fatpacked{"Pakket/Types.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PA
   use Safe::Isa;
   use Module::Runtime qw< require_module >;
   use Pakket::Constants qw<
-      PAKKET_LATEST_VERSION
       PAKKET_DEFAULT_RELEASE
       PAKKET_VALID_PHASES
   >;
@@ -6248,13 +6380,6 @@ $fatpacked{"Pakket/Types.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PA
   
   coerce 'PakketRepositoryBackend', from 'ArrayRef',
       via { return _coerce_backend_from_arrayref($_); };
-  
-  # PakketVersion
-  
-  subtype 'PakketVersion', as 'Str';
-  
-  coerce 'PakketVersion', from 'Undef',
-      via { return PAKKET_LATEST_VERSION() };
   
   # PakketRelease
   
@@ -6408,8 +6533,11 @@ $fatpacked{"Pakket/Uninstaller.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n"
       if ( !$self->without_dependencies ) {
           while ( 0 + @queue ) {
               my $package  = shift @queue;
-              my $prereqs = $installed_packages->{ $package->{category} }
-                  { $package->{name} }{'prereqs'};
+              my $category = $package->{'category'};
+              my $name = $package->{'name'};
+              my $prereqs = ($installed_packages->{$category}{$name} // {})
+                                  ->{'prereqs'};
+  
               for my $category ( keys %$prereqs ) {
                   for my $type ( keys %{ $prereqs->{$category} } ) {
                       for my $name ( keys %{ $prereqs->{$category}{$type} } ) {
@@ -6480,7 +6608,7 @@ $fatpacked{"Pakket/Uninstaller.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n"
           my ( $type, $file_name ) = $file =~ /(\w+)\/(.+)/;
           my $path = $self->work_dir->child($file_name);
           $log->debugf( "Deleting file %s", $path );
-          if ( !$path->remove ) {
+          if ($path->exists and !$path->remove ) {
               $log->error("Could not remove $path: $!");
           }
   
@@ -6776,13 +6904,13 @@ $fatpacked{"Pakket/Versioning.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".
   }
   
   sub latest {
-      my ( $self, $req_string, @versions ) = @_;
+      my ( $self, $category, $name, $req_string, @versions ) = @_;
   
       # Filter all @versions based on $req_string
       $self->filter_version( $req_string, \@versions );
   
       @versions
-          or croak( $log->critical('No versions provided') );
+          or croak( $log->criticalf('No versions provided for %s/%s', $category, $name) );
   
       # latest_version
       my $latest;
@@ -6800,6 +6928,14 @@ $fatpacked{"Pakket/Versioning.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".
       return $latest;
   }
   
+  sub is_satisfying {
+      my ( $self, $req_string, @versions ) = @_;
+  
+      # Filter all @versions based on $req_string
+      $self->filter_version( $req_string, \@versions );
+  
+      return !!( @versions > 0 );
+  }
   
   no Moose;
   __PACKAGE__->meta->make_immutable;
@@ -6826,6 +6962,216 @@ $fatpacked{"Pakket/Versioning/Perl.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\
   
   1;
 PAKKET_VERSIONING_PERL
+
+$fatpacked{"Pakket/Web/App.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PAKKET_WEB_APP';
+  package Pakket::Web::App;
+  # ABSTRACT: The Pakket web application
+  
+  use Dancer2 0.204001 'appname' => 'Pakket::Web'; # decode_json
+  use Log::Any qw< $log >;
+  use List::Util qw< first >;
+  use Path::Tiny ();
+  use Pakket::Web::Repo;
+  use constant {
+      'PATHS' => [
+          $ENV{'PAKKET_WEB_CONFIG'} || (),
+          '~/.pakket-web.json',
+          '/etc/pakket-web.json',
+      ],
+  };
+  
+  sub setup {
+      my ( $class, $config_file ) = @_;
+  
+      $config_file //= first { Path::Tiny::path($_)->exists } @{ PATHS() }
+          or die $log->fatal(
+              'Please specify a config file: PAKKET_WEB_CONFIG, '
+            . '~/.pakket-web.json, or /etc/pakket-web.json.',
+          );
+  
+      my $config = decode_json( Path::Tiny::path($config_file)->slurp_utf8 );
+  
+      foreach my $repo_config ( @{ $config->{'repositories'} } ) {
+          Pakket::Web::Repo->create($repo_config);
+      }
+  }
+  
+  1;
+  
+  __END__
+PAKKET_WEB_APP
+
+$fatpacked{"Pakket/Web/Repo.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PAKKET_WEB_REPO';
+  package Pakket::Web::Repo;
+  
+  use Dancer2 'appname' => 'Pakket::Web';
+  use Dancer2::Plugin::Pakket::ParamTypes;
+  
+  use Carp qw< croak >;
+  use Log::Any qw< $log >;
+  use Pakket::Repository::Spec;
+  use Pakket::Repository::Parcel;
+  use Pakket::Repository::Source;
+  
+  ## no critic qw(Modules::RequireExplicitInclusion)
+  
+  my %repo_types = (
+      'spec'   => sub { return Pakket::Repository::Spec->new(@_);   },
+      'source' => sub { return Pakket::Repository::Source->new(@_); },
+      'parcel' => sub { return Pakket::Repository::Parcel->new(@_); },
+  );
+  
+  sub create {
+      my ( $class, $args ) = @_;
+  
+      my $repo_type    = $args->{'type'}    or croak(q{Missing 'type'});
+      my $repo_path    = $args->{'path'}    or croak(q{Missing 'path'});
+      my $repo_backend = $args->{'backend'} or croak(q{Missing 'backend'});
+  
+      my $repo = $repo_types{$repo_type}->( 'backend' => $repo_backend );
+  
+      prefix $repo_path => sub {
+          get '/has_object' => with_types [
+              [ 'query', 'id', 'Str', 'MissingID' ],
+          ] => sub {
+              my $id = query_parameters->get('id');
+  
+              return encode_json({
+                  'has_object' => $repo->has_object($id),
+              });
+          };
+  
+          get '/all_object_ids' => sub {
+              return encode_json({
+                  'object_ids' => $repo->all_object_ids,
+              });
+          };
+  
+          get '/all_object_ids_by_name' => with_types [
+              [ 'query', 'name',     'Str', 'MissingName' ],
+              [ 'query', 'category', 'Str', 'MissingCategory' ],
+          ] => sub {
+              my $name     = query_parameters->get('name');
+              my $category = query_parameters->get('category');
+              return encode_json({
+                  'object_ids' => $repo->all_object_ids_by_name($name, $category),
+              });
+          };
+  
+          prefix '/retrieve' => sub {
+              get '/content' => with_types [
+                  [ 'query', 'id', 'Str', 'MissingID' ],
+              ] => sub {
+                  my $id = query_parameters->get('id');
+  
+                  return encode_json( {
+                      'id'      => $id,
+                      'content' => $repo->retrieve_content($id),
+                  } );
+              };
+  
+              get '/location' => with_types [
+                  [ 'query', 'id', 'Str', 'MissingID' ],
+              ] => sub {
+                  my $id   = query_parameters->get('id');
+                  my $file = $repo->retrieve_location($id);
+  
+                  # This is already anchored to the repo
+                  # (And no user input can change the path it will reach)
+                  send_file( $file, 'system_path' => 1 );
+              };
+          };
+  
+          prefix '/store' => sub {
+              # There is no body to check, because the body is JSON content
+              # So we manually decode and check
+              post '/content' => sub {
+                  my $data    = decode_json( request->body );
+                  my $id      = $data->{'id'};
+                  my $content = $data->{'content'};
+  
+                  defined && length
+                      or send_error( 'Bad input', 400 )
+                      for $id, $content;
+  
+                  $repo->store_content( $id, $content );
+                  return encode_json( { 'success' => 1 } );
+              };
+  
+              post '/location' => with_types [
+                  [ 'query', 'id', 'Str',  'MissingID' ],
+              ] => sub {
+                  my $id   = query_parameters->get('id');
+                  my $file = Path::Tiny->tempfile;
+                  $file->spew_raw( request->body );
+                  $repo->store_location( $id, $file );
+                  return encode_json( { 'success' => 1 } );
+              };
+          };
+  
+          prefix '/remove' => sub {
+              get '/location' => with_types [
+                  [ 'query', 'id', 'Str',  'MissingID' ],
+              ] => sub {
+                  my $id = query_parameters->get('id');
+                  $repo->remove_location( $id );
+                  return encode_json( { 'success' => 1 } );
+              };
+  
+              get '/content' => with_types [
+                  [ 'query', 'id', 'Str',  'MissingID' ],
+              ] => sub {
+                  my $id = query_parameters->get('id');
+                  $repo->remove_content( $id );
+                  return encode_json( { 'success' => 1 } );
+              };
+          };
+      };
+  }
+  
+  1;
+PAKKET_WEB_REPO
+
+$fatpacked{"Pakket/Web/Server.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PAKKET_WEB_SERVER';
+  package Pakket::Web::Server;
+  # ABSTRACT: Start a Pakket server
+  
+  use Moose;
+  use MooseX::StrictConstructor;
+  
+  use Log::Any qw< $log >;
+  use Plack::Runner;
+  
+  use Pakket::Web::App;
+  
+  has 'port' => (
+      'is'        => 'ro',
+      'isa'       => 'Int',
+      'predicate' => 'has_port',
+  );
+  
+  sub run {
+      my $self = shift;
+  
+      Pakket::Web::App->setup();
+      my $app    = Pakket::Web::App->to_app;
+      my $runner = Plack::Runner->new();
+  
+      my @runner_opts = (
+          $self->has_port ? ( '--port', $self->port ) : (),
+      );
+  
+      $runner->parse_options(@runner_opts);
+      return $runner->run($app);
+  }
+  
+  __PACKAGE__->meta->make_immutable;
+  no Moose;
+  
+  1;
+  
+  __END__
+PAKKET_WEB_SERVER
 
 $fatpacked{"Path/Tiny.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PATH_TINY';
   use 5.008001;
