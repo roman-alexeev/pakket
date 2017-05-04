@@ -63,6 +63,12 @@ has 'requires_only' => (
     'default'   => 0,
 );
 
+has 'no_bootstrap' => (
+    'is'        => 'ro',
+    'isa'       => 'Bool',
+    'default'   => 0,
+);
+
 sub _build_category {
     my $self = shift;
     $self->{'cpanfile'} and return 'perl';
@@ -225,6 +231,9 @@ sub _gen_scaffolder_perl {
 
     $self->file_02packages
         and $params{'file_02packages'} = $self->file_02packages;
+
+    $self->no_bootstrap
+        and $params{'no_bootstrap'} = $self->no_bootstrap;
 
     return Pakket::Scaffolder::Perl->new(%params);
 }

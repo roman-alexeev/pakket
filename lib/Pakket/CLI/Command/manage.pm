@@ -42,6 +42,7 @@ sub opt_spec {
         [ 'no-deps',      'do not add dependencies (top-level only)' ],
         [ 'is-local',     'do not use upstream sources (i.e. CPAN)' ],
         [ 'requires-only', 'do not set recommended/suggested dependencies' ],
+        [ 'no-bootstrap',  'skip bootstrapping phase (toolchain packages)' ],
     );
 }
 
@@ -81,6 +82,7 @@ sub execute {
         no_deps         => $self->{'opt'}{'no_deps'},
         is_local        => $self->{'opt'}{'is_local'},
         requires_only   => $self->{'opt'}{'requires_only'},
+        no_bootstrap    => $self->{'opt'}{'no_bootstrap'},
     );
 
     if ( $command eq 'add' ) {

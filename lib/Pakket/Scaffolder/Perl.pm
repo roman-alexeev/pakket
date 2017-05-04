@@ -113,6 +113,12 @@ has 'no_deps' => (
     'default' => 0,
 );
 
+has 'no_bootstrap' => (
+    'is'      => 'ro',
+    'isa'     => 'Bool',
+    'default' => 0,
+);
+
 has 'is_local' => (
     'is'      => 'ro',
     'isa'     => 'Bool',
@@ -215,7 +221,7 @@ sub run {
     my %failed;
 
     # Bootstrap toolchain
-    if ( ! $self->no_deps ) {
+    if ( ! ( $self->no_bootstrap or $self->no_deps ) ) {
         for my $dist ( @{ $self->perl_bootstrap_modules } ) {
             # TODO: check versions
             if ( exists $self->spec_index->{$dist} ) {
