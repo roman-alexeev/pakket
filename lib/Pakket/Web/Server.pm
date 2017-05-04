@@ -1,4 +1,4 @@
-package Pakket::Server;
+package Pakket::Web::Server;
 # ABSTRACT: Start a Pakket server
 
 use Moose;
@@ -7,7 +7,7 @@ use MooseX::StrictConstructor;
 use Log::Any qw< $log >;
 use Plack::Runner;
 
-use Pakket::Server::App;
+use Pakket::Web::App;
 
 has 'port' => (
     'is'        => 'ro',
@@ -18,8 +18,8 @@ has 'port' => (
 sub run {
     my $self = shift;
 
-    Pakket::Server::App->setup();
-    my $app    = Pakket::Server::App->to_app;
+    Pakket::Web::App->setup();
+    my $app    = Pakket::Web::App->to_app;
     my $runner = Plack::Runner->new();
 
     my @runner_opts = (
