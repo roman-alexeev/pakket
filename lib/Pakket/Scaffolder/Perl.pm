@@ -6,6 +6,7 @@ use MooseX::StrictConstructor;
 use version 0.77;
 use Carp ();
 use Archive::Any;
+use CPAN::DistnameInfo;
 use CPAN::Meta;
 use CPAN::Meta::Prereqs;
 use Parse::CPAN::Packages::Fast;
@@ -413,9 +414,20 @@ sub create_spec_for {
         }
 
     } else {
-        # probably the wrong way to do this:
-        my @files = path( $self->cache_dir )->children( qr{^$name-.*\.tar.gz});
-        $self->upload_unpacked( $package, $files[-1] );
+        my %available = map {
+            my $d = CPAN::DistnameInfo->new($_);
+            $d->version => $d->pathname->canonpath
+        } path( $self->cache_dir )->children( qr{^$name-.*\.tar.gz});
+
+        my $version = $self->versioner->latest(
+            'perl', $name, $requirements->as_string_hash->{$name}, keys %available
+        );
+
+        # update version for the spec --> for updating 'package' object
+        # (both here and for the spec)
+        $package_spec->{'Package'}{'version'} = $version;
+        $package = Pakket::Package->new_from_spec($package_spec);
+        $self->upload_unpacked( $package, $available{ $version } );
     }
 
 
@@ -477,8 +489,7 @@ sub create_spec_for {
     my $filename = $self->spec_repo->store_package_spec($package);
 
     $self->set_depth( $self->depth - 1 );
-
-    $log->infof( '%sDone: %s (%s)', $self->spaces, $dist_name, $rel_version );
+    $log->infof( '%sDone: %s (%s)', $self->spaces, $dist_name, $package->version );
 }
 
 sub upload_unpacked {
