@@ -13,9 +13,13 @@ extends qw< Pakket::Repository >;
 sub retrieve_package_spec {
     my ( $self, $package ) = @_;
 
-    my $spec_str = $self->retrieve_content(
-        $package->id,
-    );
+    my $spec_str;
+    eval {
+        $spec_str = $self->retrieve_content($package->id);
+        1;
+    } or do {
+        die "Cannot fetch content for package " . $package->id . "\n";
+    };
 
     my $config;
     eval {
