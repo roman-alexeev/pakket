@@ -24,13 +24,14 @@ sub parse_req_string {
     # VER is a version string valid for the version module
     # Whitespace is ignored
     my @conditions = split /,/xms, $req_string;
+    my $cond_regex = qr/^ \s* (>=|<=|==|!=|>|<) \s* (\S*) \s* $/xms;
     my @filters;
     foreach my $condition (@conditions) {
-        if ( $condition !~ /^\s*(>=|<=|==|!=|>|<)\s*(\S*)\s*$/xms ) {
+        if ( $condition !~ $cond_regex ) {
             $condition = ">= $condition";
         }
 
-        my @filter = $condition =~ /^\s*(>=|<=|==|!=|>|<)\s*(\S*)\s*$/xms;
+        my @filter = $condition =~ $cond_regex;
         push @filters, \@filter;
     }
 
