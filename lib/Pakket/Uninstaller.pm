@@ -110,8 +110,11 @@ sub get_packages_available_for_uninstall {
             my $package  = shift @queue;
             my $category = $package->{'category'};
             my $name = $package->{'name'};
-            my $prereqs = ($installed_packages->{$category}{$name} // {})
-                                ->{'prereqs'};
+            exists $installed_packages->{$category}
+                and exists $installed_packages->{$category}{$name}
+                    or next;
+
+            my $prereqs = $installed_packages->{$category}{$name}{'prereqs'};
 
             for my $category ( keys %$prereqs ) {
                 for my $type ( keys %{ $prereqs->{$category} } ) {
@@ -136,8 +139,16 @@ sub get_packages_available_for_uninstall {
             @queue = ( { category => $category, name => $name } );
             while ( 0 + @queue ) {
                 my $package  = shift @queue;
-                my $prereqs = $installed_packages->{ $package->{category} }
-                    { $package->{name} }{'prereqs'};
+                my $pr_category = $package->{'category'};
+                my $pr_name = $package->{'name'};
+
+                exists $installed_packages->{$pr_category}
+                    and exists $installed_packages->{$pr_category}{$pr_name}
+                        or next;
+
+                my $prereqs = $installed_packages->{$pr_category}
+                                                    ->{$pr_name}{'prereqs'};
+
                 for my $category ( keys %$prereqs ) {
                     for my $type ( keys %{ $prereqs->{$category} } ) {
                         for my $name (
@@ -145,12 +156,10 @@ sub get_packages_available_for_uninstall {
                         {
                             $keep_it{$category}{$name}++ and next;
                             $to_delete_by_requirements{$category}{$name}
-                                and croak(
-                                $log->critical(
+                                and croak( $log->critical(
                                     "Can't uninstall package $category/$name, "
-                                   . "it's required by $package->{category}/$package->{name}"
-                                )
-                                );
+                                   . "it's required by $pr_category/$pr_name"
+                                ));
                             push @queue,
                                 { 'category' => $category, 'name' => $name };
                             delete $to_delete{$category}{$name};
