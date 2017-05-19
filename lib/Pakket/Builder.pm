@@ -168,7 +168,7 @@ sub bootstrap_build {
     my ( $self, $category ) = @_;
 
     my @dists =
-        $category eq 'perl' ? @{ $self->perl_bootstrap_modules } :
+        $category eq 'perl' ? map { $_->[1] } @{ $self->perl_bootstrap_modules } :
         # add more categories here
         ();
 
