@@ -29,43 +29,59 @@ sub build_package {
     my %should_use_mm = map +( "perl/$_" => 1 ),
         qw( version ExtUtils-ParseXS ExtUtils-Install ExtUtils-Manifest );
 
+    # If you have a Build.PL file but we can't load Module::Build,
+    # it means you didn't declare it as a dependency
+    # If you have a Makefile.PL, we can at least use that,
+    # otherwise, we'll croak
+    my $has_build_pl    = $build_dir->child('Build.PL')->exists;
+    my $has_makefile_pl = $build_dir->child('Makefile.PL')->exists;
+
+    $has_build_pl || $has_makefile_pl
+        or Carp::croak('Could not find an installer (Makefile.PL/Build.PL)');
+
     my @seq;
-    if ( $build_dir->child('Build.PL')->exists
-        && !exists $should_use_mm{$package} )
-    {
-        @seq = (
-
-            # configure
-            [
-                $build_dir,
-                [ 'perl', '-f', 'Build.PL', '--install_base', $install_base, @{$flags} ],
-                $opts,
-            ],
-
-            # build
-            [ $build_dir, ['perl', '-f', './Build'], $opts ],
-
-            # install
-            [ $build_dir, [ 'perl', '-f', './Build', 'install' ], $opts ],
+    if ( $has_build_pl && !exists $should_use_mm{$package} ) {
+        # Do we have Module::Build?
+        my $has_module_build = $self->run_command(
+            $build_dir,
+            [ 'perl', '-MModule::Build', '-e1' ],
         );
-    } elsif ( $build_dir->child('Makefile.PL')->exists ) {
-        @seq = (
 
-            # configure
-            [
-                $build_dir,
-                [ 'perl', '-f', 'Makefile.PL', "INSTALL_BASE=$install_base", @{$flags} ],
-                $opts,
-            ],
+        # If you have Module::Build, we can use it!
+        if ($has_module_build) {
+            @seq = (
 
-            # build
-            [ $build_dir, ['make'], $opts ],
+                # configure
+                [
+                    $build_dir,
+                    [
+                        'perl',        '-f',
+                        'Build.PL',    '--install_base',
+                        $install_base, @{$flags},
+                    ],
+                    $opts,
+                ],
 
-            # install
-            [ $build_dir, [ 'make', 'install' ], $opts ],
-        );
+                # build
+                [ $build_dir, [ 'perl', '-f', './Build' ], $opts ],
+
+                # install
+                [ $build_dir, [ 'perl', '-f', './Build', 'install' ], $opts ],
+            );
+        } else {
+            # Fallback to EU::MM because you have Makefile.PL
+            # or croak completely because you only have Build.PL
+            # but no Module::Build
+            $has_makefile_pl
+                ? @seq = $self->_makefile_pl_cmds(
+                    $build_dir, $install_base, $flags, $opts,
+                  )
+                : Carp::croak(
+                    'Could not find Makefile.PL and no Module::Build defined',
+                  );
+        }
     } else {
-        Carp::croak('Could not find an installer (Makefile.PL/Build.PL)');
+        @seq = $self->_makefile_pl_cmds( $build_dir, $install_base, $flags, $opts );
     }
 
     my $success = $self->run_command_sequence(@seq);
@@ -77,6 +93,25 @@ sub build_package {
     $log->info("Done preparing $package");
 
     return;
+}
+
+sub _makefile_pl_cmds {
+    my ( $self, $build_dir, $install_base, $flags, $opts ) = @_;
+    return (
+
+        # configure
+        [
+            $build_dir,
+            [ 'perl', '-f', 'Makefile.PL', "INSTALL_BASE=$install_base", @{$flags} ],
+            $opts,
+        ],
+
+        # build
+        [ $build_dir, ['make'], $opts ],
+
+        # install
+        [ $build_dir, [ 'make', 'install' ], $opts ],
+    );
 }
 
 no Moose;
