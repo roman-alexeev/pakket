@@ -32,7 +32,7 @@ with qw<
     Pakket::Role::RunCommand
 >;
 
-has 'force_reinstall' => (
+has 'force' => (
     'is'      => 'ro',
     'isa'     => 'Bool',
     'default' => sub {0},
@@ -46,7 +46,7 @@ sub install {
         return;
     }
 
-    if ( !$self->force_reinstall ) {
+    if ( !$self->force ) {
         @packages = $self->drop_installed_packages(@packages);
         @packages or return;
     }
