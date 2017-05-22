@@ -482,6 +482,18 @@ sub create_spec_for {
         }
     }
 
+    # convert module requirements to distribution names
+    # this is done as the next Pakket action (build) will
+    # accept requirements as Pakket package id and not
+    # Perl module name.
+    for my $phase ( keys %{ $package_spec->{'Prereqs'}{'perl'} } ) {
+        for my $key ( keys %{ $package_spec->{'Prereqs'}{'perl'}{$phase} } ) {
+            my $new_key = $self->get_dist_name($key);
+            $package_spec->{'Prereqs'}{'perl'}{$phase}{$new_key} =
+                delete $package_spec->{'Prereqs'}{'perl'}{$phase}{$key};
+        }
+    }
+
     # We had a partial Package object
     # So now we have to recreate that package object
     # based on the full specs (including prereqs)
