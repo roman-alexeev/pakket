@@ -486,7 +486,17 @@ sub snapshot_build_dir {
     @{ $self->build_files_manifest }{ keys( %{$package_files} ) }
         = values %{$package_files};
 
-    return $package_files;
+    return $self->normalize_paths($package_files);
+}
+
+sub normalize_paths {
+    my ( $self, $package_files ) = @_;
+    my $paths;
+    for my $path_and_timestamp (keys %$package_files) {
+        my ($path,$timespamp) = $path_and_timestamp =~ /^(.+)_(\d+?)$/;
+        $paths->{$path} = $package_files->{$path_and_timestamp};
+    }
+    return $paths;
 }
 
 sub retrieve_new_files {
@@ -507,14 +517,16 @@ sub _scan_directory {
 
         return if $node->is_dir;
 
+        my $path_and_timestamp = sprintf("%s_%s",$node->absolute, $node->stat->ctime);
+
         # save the symlink path in order to symlink them
         if ( -l $node ) {
-            path( $state->{ $node->absolute } = readlink $node )->is_absolute
+            path( $state->{ $path_and_timestamp } = readlink $node )->is_absolute
                 and croak( $log->critical(
                     "Error. Absolute path symlinks aren't supported.",
                 ) );
         } else {
-            $state->{ $node->absolute } = '';
+            $state->{ $path_and_timestamp } = '';
         }
     };
 
@@ -535,10 +547,6 @@ sub _diff_nodes_list {
         $old_nodes,
         $new_nodes,
         'added'   => sub { $nodes_diff{ $_[0] } = $_[1] },
-        'deleted' => sub {
-            croak( $log->critical(
-                "Last build deleted previously existing file: $_[0]") );
-        },
     );
 
     return \%nodes_diff;
