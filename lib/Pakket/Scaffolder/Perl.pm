@@ -132,6 +132,12 @@ has 'types' => (
     'default' => sub { [qw< requires recommends suggests >] },
 );
 
+has 'dist_name' => (
+    'is'      => 'ro',
+    'isa'     => 'HashRef',
+    'default' => sub { +{} },
+);
+
 sub _build_metacpan_api {
     my $self = shift;
     return $ENV{'PAKKET_METACPAN_API'}
@@ -519,6 +525,10 @@ sub upload_unpacked {
 sub get_dist_name {
     my ( $self, $module_name ) = @_;
 
+    # check if we've already seen it
+    exists $self->dist_name->{$module_name}
+        and return $self->dist_name->{$module_name};
+
     # if "is_local" don't use uptream sources
     exists $self->is_local->{$module_name}
         and return ( $module_name =~ s{::}{-}gr );
@@ -540,50 +550,57 @@ sub get_dist_name {
         my $error = $@ || 'Zombie error';
         $log->debug($error);
     };
-    $dist_name and return $dist_name;
 
     # fallback 1:  local copy of 02packages.details
-    my $mod = $self->cpan_02packages->package($module_name);
-    $mod and return $mod->distribution->dist;
+    if ( ! $dist_name ) {
+        my $mod = $self->cpan_02packages->package($module_name);
+        $mod and $dist_name = $mod->distribution->dist;
+    }
 
     # fallback 2: metacpan check
-    $module_name = $self->known_incorrect_name_fixes->{ $module_name }
-        if exists $self->known_incorrect_name_fixes->{ $module_name };
+    if ( ! $dist_name ) {
+        $module_name = $self->known_incorrect_name_fixes->{ $module_name }
+            if exists $self->known_incorrect_name_fixes->{ $module_name };
 
-    eval {
-        my $mod_url  = $self->metacpan_api . "/module/$module_name";
-        my $response = $self->ua->get($mod_url);
+        eval {
+            my $mod_url  = $self->metacpan_api . "/module/$module_name";
+            my $response = $self->ua->get($mod_url);
 
-        $response->{'status'} == 200
-            or Carp::croak("Cannot fetch $mod_url");
+            $response->{'status'} == 200
+                or Carp::croak("Cannot fetch $mod_url");
 
-        my $content = decode_json $response->{'content'};
-        $dist_name  = $content->{'distribution'};
-        1;
-    } or do {
-        my $error = $@ || 'Zombie error';
-        $log->debug($error);
-    };
-    $dist_name and return $dist_name;
+            my $content = decode_json $response->{'content'};
+            $dist_name  = $content->{'distribution'};
+            1;
+        } or do {
+            my $error = $@ || 'Zombie error';
+            $log->debug($error);
+        };
+    }
 
     # fallback 3: check if name matches a distribution name
-    eval {
-        my $name = $module_name =~ s/::/-/rgsmx;
-        my $url = $self->metacpan_api . '/release';
-        my $res = $self->ua->post( $url,
-            +{ 'content' => $self->get_is_dist_name_query($name) }
-        );
-        $res->{'status'} == 200 or Carp::croak();
+    if ( ! $dist_name ) {
+        eval {
+            my $name = $module_name =~ s/::/-/rgsmx;
+            my $url = $self->metacpan_api . '/release';
+            my $res = $self->ua->post( $url,
+                                       +{ 'content' => $self->get_is_dist_name_query($name) }
+                                   );
+            $res->{'status'} == 200 or Carp::croak();
 
-        my $res_body = decode_json $res->{'content'};
-        $res_body->{'hits'}{'total'} > 0 or Carp::croak();
+            my $res_body = decode_json $res->{'content'};
+            $res_body->{'hits'}{'total'} > 0 or Carp::croak();
 
-        $dist_name = $name;
-        1;
-    } or do {
-        my $error = $@ || 'Zombie error';
-        Carp::croak("Cannot find module by name: '$module_name'");
-    };
+            $dist_name = $name;
+            1;
+        } or do {
+            my $error = $@ || 'Zombie error';
+            Carp::croak("Cannot find module by name: '$module_name'");
+        };
+    }
+
+    $dist_name and
+        $self->dist_name->{$module_name} = $dist_name;
 
     return $dist_name;
 }
