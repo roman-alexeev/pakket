@@ -39,19 +39,13 @@ has 'index_file' => (
     },
 );
 
-has 'repo_index' => (
-    'is'      => 'ro',
-    'isa'     => 'HashRef',
-    'builder' => '_build_repo_index',
-);
-
 has 'pretty_json' => (
     'is'      => 'ro',
     'isa'     => 'Bool',
     'default' => sub {1},
 );
 
-sub _build_repo_index {
+sub repo_index {
     my $self = shift;
     my $file = $self->index_file;
 
@@ -88,20 +82,21 @@ sub _store_in_index {
     my $filename = sha1_hex($id) . '.' . $self->file_extension;
 
     # Store in the index
-    $self->repo_index->{$id} = $filename;
+    my $repo_index = $self->repo_index;
+    $repo_index->{$id} = $filename;
 
-    $self->_save_index();
+    $self->_save_index($repo_index);
 
     return $filename;
 }
 
 sub _save_index {
-    my $self = shift;
+    my ( $self, $repo_index ) = @_;
 
     my $content
         = $self->pretty_json
-        ? encode_json_pretty( $self->repo_index )
-        : encode_json_canonical( $self->repo_index );
+        ? encode_json_pretty($repo_index)
+        : encode_json_canonical($repo_index);
 
     $self->index_file->spew_utf8($content);
 }
@@ -113,8 +108,9 @@ sub _retrieve_from_index {
 
 sub _remove_from_index {
     my ( $self, $id ) = @_;
-    delete $self->repo_index->{$id};
-    $self->_save_index();
+    my $repo_index = $self->repo_index;
+    delete $repo_index->{$id};
+    $self->_save_index($repo_index);
 }
 
 sub store_location {
