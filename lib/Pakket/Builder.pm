@@ -111,6 +111,12 @@ has 'bootstrapping' => (
     'default' => 1,
 );
 
+has 'requirements' => (
+    'is'      => 'ro',
+    'isa'     => 'HashRef',
+    'default' => sub { +{} },
+);
+
 sub _build_bundler {
     my $self = shift;
 
@@ -347,6 +353,19 @@ sub run_build {
                                         'release'  => $rel,
                                     );
                     $self->is_built->{ $pkg->full_name } = 1;
+
+                    # save requirements of dependencies
+                    my $spec = $self->spec_repo->retrieve_package_spec($pkg);
+
+                    for my $dep_category ( keys %{$spec->{'Prereqs'}} ) {
+                        my $runtime_deps =
+                                $spec->{'Prereqs'}{$dep_category}{'runtime'};
+
+                        for my $dep_name (keys %$runtime_deps) {
+                            $self->requirements->{$dep_name}{$pkg->short_name} =
+                                        $runtime_deps->{$dep_name}{'version'};
+                        }
+                    }
                 }
             }
 
@@ -422,8 +441,11 @@ sub _recursive_build_phase {
     my @prereqs = keys %{ $package->prereqs->{$category}{$phase} };
 
     foreach my $prereq_name (@prereqs) {
-        my $prereq_ver_req =
+        $self->requirements->{$prereq_name}{$package->short_name} =
             $package->prereqs->{$category}{$phase}{$prereq_name}{'version'};
+
+        my $prereq_ver_req = join(",",
+                                values %{$self->requirements->{$prereq_name}});
 
         my $ver_rel = $self->spec_repo->latest_version_release(
             $category, $prereq_name, $prereq_ver_req,
