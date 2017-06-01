@@ -241,7 +241,7 @@ sub run {
                 1;
             } or do {
                 my $err = $@ || 'zombie error';
-                Carp::croak("Cannot bootstrap toolchain moduleribution: $module ($err)\n");
+                Carp::croak("Cannot bootstrap toolchain module: $module ($err)\n");
             };
         }
     }
