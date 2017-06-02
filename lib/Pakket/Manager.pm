@@ -116,6 +116,60 @@ SHOW
     # TODO: reverse dependencies (requires map)
 }
 
+sub show_package_deps {
+    my $self = shift;
+
+    my $SPACES = "  ";
+    my @queue = ({package => $self->package, level => 0});
+    my $repo = $self->_get_repo('spec');
+    my %seen;
+    while (0+@queue) {
+        my $entry = pop @queue;
+        my $spaces = $SPACES x $entry->{'level'};
+
+        # text entry: configure or runtime
+        if ( my $type = $entry->{'type'} ) {
+            print $spaces ."$type:\n";
+            next;
+        }
+
+        my $package = $entry->{'package'};
+        my $exists = $seen{$package->short_name} ? " (exists)" : "" ;
+        print $spaces . $package->id . "$exists\n";
+
+        $exists and next;
+
+        $seen{$package->short_name}=1;
+        my @deps;
+        my $level = $entry->{'level'} + 1;
+        my $spec = $repo->retrieve_package_spec( $package );
+        my $prereq = $spec->{'Prereqs'};
+        for my $category (sort keys %$prereq) {
+            for my $type (sort keys %{$prereq->{$category}}) {
+                unshift @deps, {'level'=> $level,'type'=>$type};
+                for my $name (sort keys %{$prereq->{$category}{$type}}) {
+                    my $req_ver = $prereq->{$category}{$type}{$name}{'version'};
+
+                    my $ver_rel = $repo->latest_version_release(
+                                            $category, $name, $req_ver);
+
+                    my ( $version, $release ) = @{$ver_rel};
+
+                    my $req = Pakket::PackageQuery->new(
+                                    'category' => $category,
+                                    'name'     => $name,
+                                    'version'  => $version,
+                                    'release'  => $release,
+                                );
+                    unshift @deps, {'level'=> $level+1, 'package'=>$req};
+                }
+            }
+        }
+
+        foreach (@deps) { push @queue, $_ };
+    }
+}
+
 sub add_package {
     my $self = shift;
     $self->_get_scaffolder->run;

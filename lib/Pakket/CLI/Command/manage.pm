@@ -110,6 +110,9 @@ sub execute {
 
     } elsif ( $command eq 'show' ) {
         $manager->show_package_config;
+
+    } elsif ( $command eq 'show_deps' ) {
+        $manager->show_package_deps;
     }
 }
 
@@ -135,6 +138,7 @@ sub _validate_repos {
         'remove_parcel' => [ 'parcel' ],
         'deps'          => [ 'spec' ],
         'show'          => [ 'spec' ],
+        'show_deps'     => [ 'spec' ],
         'list'          => {
             spec   => [ 'spec'   ],
             parcel => [ 'parcel' ],
@@ -173,10 +177,10 @@ sub _validate_arg_command {
     my $self = shift;
 
     my $command = shift @{ $self->{'args'} }
-        or $self->usage_error("Must pick action (add/remove/remove_parcel/deps/list/show)");
+        or $self->usage_error("Must pick action (add/remove/remove_parcel/deps/list/show/show_deps)");
 
-    grep { $command eq $_ } qw< add remove remove_parcel deps list show >
-        or $self->usage_error( "Wrong command (add/remove/remove_parcel/deps/list/show)" );
+    grep { $command eq $_ } qw< add remove remove_parcel deps list show show_deps >
+        or $self->usage_error( "Wrong command (add/remove/remove_parcel/deps/list/show/show_deps)" );
 
     $self->{'command'} = $command;
 
@@ -185,6 +189,7 @@ sub _validate_arg_command {
     $command eq 'deps'   and $self->_validate_args_dependency;
     $command eq 'list'   and $self->_validate_args_list;
     $command eq 'show'   and $self->_validate_args_show;
+    $command eq 'show_deps'     and $self->_validate_args_show_deps;
     $command eq 'remove_parcel' and $self->_validate_args_remove_parcel;
 }
 
@@ -269,6 +274,11 @@ sub _validate_args_list {
 }
 
 sub _validate_args_show {
+    my $self = shift;
+    $self->_read_set_spec_str;
+}
+
+sub _validate_args_show_deps {
     my $self = shift;
     $self->_read_set_spec_str;
 }
