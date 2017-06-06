@@ -341,8 +341,8 @@ sub has_satisfying {
 sub create_spec_for {
     my ( $self, $name, $requirements ) = @_;
 
-    return if $self->skip_name($name);
     return if $self->processed_dists->{ $name }++;
+    return if $self->skip_name($name);
     return if $self->has_satisfying($name, $requirements);
 
     my $release = $self->get_release_info( $name, $requirements );
