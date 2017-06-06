@@ -418,7 +418,7 @@ sub create_spec_for {
         my %available = map {
             my $d = CPAN::DistnameInfo->new($_);
             $d->version => $d->pathname->canonpath
-        } path( $self->cache_dir )->children( qr{^$name-.*\.tar.gz});
+        } path( $self->cache_dir )->children( qr{^$dist_name-.*\.tar.gz});
 
         my $version = $self->versioner->latest(
             'perl', $name, $requirements->as_string_hash->{$name}, keys %available
@@ -605,8 +605,9 @@ sub get_release_info_local {
     my $req = $requirements->as_string_hash;
     my $ver = $req->{$name} =~ s/^[=\ ]//r;
     my $prereqs;
+    my $dist_name = $self->get_dist_name($name);
 
-    my $from_file = path( $self->cache_dir, $name . '-' . $ver . '.tar.gz' );
+    my $from_file = path( $self->cache_dir, $dist_name . '-' . $ver . '.tar.gz' );
     if ( $from_file->exists ) {
         my $target = Path::Tiny->tempdir();
         my $dir    = $self->unpack( $target, $from_file );
@@ -629,7 +630,7 @@ sub get_release_info_local {
     }
 
     return +{
-        'distribution' => $name,
+        'distribution' => $dist_name,
         'version'      => $ver,
         'prereqs'      => $prereqs,
     };
