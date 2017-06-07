@@ -16,14 +16,18 @@ sub build_package {
 
     $log->info("Building Perl module: $package");
 
-    my %env  = generate_env_vars( $build_dir, $prefix );
+    my $inc = $self->run_command( $build_dir,
+        [ 'perl', q{-e'print(join(":"),@INC)'} ],
+    );
+
+    my %env = generate_env_vars( $build_dir, $prefix, { 'inc' => $inc } );
 
     # By default ExtUtils::Install checks if a file wasn't changed then skip it
     # which breaks Builder::snapshot_build_dir().
     # To change that behaviour and force installer to copy all files,
     # ExtUtils::Install uses a parameter 'always_copy'
     # or environment variable EU_INSTALL_ALWAYS_COPY.
-    $env{ 'EU_INSTALL_ALWAYS_COPY' } = 1;
+    $env{'EU_INSTALL_ALWAYS_COPY'} = 1;
 
     my $opts = { 'env' => \%env };
 
