@@ -16,9 +16,13 @@ sub build_package {
 
     $log->info("Building Perl module: $package");
 
-    my $inc = $self->run_command( $build_dir,
-        [ 'perl', q{-e'print(join(":"),@INC)'} ],
-    );
+
+    # FIXME: run_command will not return output, so we do this for now
+    my $inc;
+    {
+        local $ENV{'PERL5LIB'}; # don't let us affect the exec'ed process
+        chomp( $inc = `perl -e'print join ":",\@INC'` );
+    }
 
     my %env = generate_env_vars( $build_dir, $prefix, { 'inc' => $inc } );
 

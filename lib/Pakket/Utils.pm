@@ -36,8 +36,9 @@ sub generate_env_vars {
     my $inc = $opts->{'inc'} || '';
 
     my @perl5lib = (
+        $prefix->child(qw<lib perl5>)->absolute->stringify,
+        $inc,
         $build_dir,
-        $prefix->child( qw<lib perl5> )->absolute->stringify,
     );
 
     my %perl_opts = (
