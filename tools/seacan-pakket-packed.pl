@@ -1109,6 +1109,12 @@ $fatpacked{"Pakket/Builder.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
       'default' => 1,
   );
   
+  has 'requirements' => (
+      'is'      => 'ro',
+      'isa'     => 'HashRef',
+      'default' => sub { +{} },
+  );
+  
   sub _build_bundler {
       my $self = shift;
   
@@ -1166,7 +1172,7 @@ $fatpacked{"Pakket/Builder.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
       my ( $self, $category ) = @_;
   
       my @dists =
-          $category eq 'perl' ? @{ $self->perl_bootstrap_modules } :
+          $category eq 'perl' ? map { $_->[1] } @{ $self->perl_bootstrap_modules } :
           # add more categories here
           ();
   
@@ -1267,7 +1273,7 @@ $fatpacked{"Pakket/Builder.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
       my $level             = $params->{'level'}                        || 0;
       my $skip_prereqs      = $params->{'bootstrapping_1_skip_prereqs'} || 0;
       my $bootstrap_prereqs = $params->{'bootstrapping_2_deps_only'}    || 0;
-      my $short_name        = $prereq->short_name;
+      my $full_name         = $prereq->full_name;
   
       # FIXME: GH #29
       if ( $prereq->category eq 'perl' ) {
@@ -1276,37 +1282,15 @@ $fatpacked{"Pakket/Builder.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
           $prereq->name eq 'perl'     and return;
       }
   
-      if ( ! $bootstrap_prereqs and defined $self->is_built->{$short_name} ) {
-          my $ver_rel = $self->is_built->{$short_name};
-          my ( $built_version, $built_release ) = @{$ver_rel};
-  
-          # Check the versions mismatch
-          if ( $built_version ne $prereq->version ) {
-              croak( $log->criticalf(
-                  'Asked to build %s when %s=%s already built',
-                  $prereq->full_name, $short_name, $built_version,
-              ) );
-          }
-  
-          # Check the releases mismatch
-          if ( $built_release ne $prereq->release ) {
-              croak( $log->criticalf(
-                  'Asked to build %s when %s=%s:%s already built',
-                  $prereq->full_name, $short_name, $built_version, $built_release,
-              ) );
-          }
-  
+      if ( ! $bootstrap_prereqs and defined $self->is_built->{$full_name} ) {
           $log->debug(
-              "We already built or building $short_name, skipping...",
+              "We already built or building $full_name, skipping...",
           );
   
           return;
-      } else {
-          $self->is_built->{$short_name} = [
-              $prereq->version,
-              $prereq->release,
-          ];
       }
+  
+      $self->is_built->{$full_name} = 1;
   
       $log->infof( '%s Working on %s', '|...' x $level, $prereq->full_name );
   
@@ -1359,8 +1343,27 @@ $fatpacked{"Pakket/Builder.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
                   foreach my $package_name (
                       keys %{ $installer_cache->{$category} } )
                   {
-                      $self->is_built->{"$category/$package_name"}
-                          = $installer_cache->{$category}{$package_name};
+                      my ($ver,$rel) = @{$installer_cache->{$category}{$package_name}};
+                      my $pkg = Pakket::PackageQuery->new(
+                                          'category' => $category,
+                                          'name'     => $package_name,
+                                          'version'  => $ver,
+                                          'release'  => $rel,
+                                      );
+                      $self->is_built->{ $pkg->full_name } = 1;
+  
+                      # save requirements of dependencies
+                      my $spec = $self->spec_repo->retrieve_package_spec($pkg);
+  
+                      for my $dep_category ( keys %{$spec->{'Prereqs'}} ) {
+                          my $runtime_deps =
+                                  $spec->{'Prereqs'}{$dep_category}{'runtime'};
+  
+                          for my $dep_name (keys %$runtime_deps) {
+                              $self->requirements->{$dep_name}{$pkg->short_name} =
+                                          $runtime_deps->{$dep_name}{'version'};
+                          }
+                      }
                   }
               }
   
@@ -1436,8 +1439,11 @@ $fatpacked{"Pakket/Builder.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
       my @prereqs = keys %{ $package->prereqs->{$category}{$phase} };
   
       foreach my $prereq_name (@prereqs) {
-          my $prereq_ver_req =
+          $self->requirements->{$prereq_name}{$package->short_name} =
               $package->prereqs->{$category}{$phase}{$prereq_name}{'version'};
+  
+          my $prereq_ver_req = join(",",
+                                  values %{$self->requirements->{$prereq_name}});
   
           my $ver_rel = $self->spec_repo->latest_version_release(
               $category, $prereq_name, $prereq_ver_req,
@@ -1484,7 +1490,17 @@ $fatpacked{"Pakket/Builder.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
       @{ $self->build_files_manifest }{ keys( %{$package_files} ) }
           = values %{$package_files};
   
-      return $package_files;
+      return $self->normalize_paths($package_files);
+  }
+  
+  sub normalize_paths {
+      my ( $self, $package_files ) = @_;
+      my $paths;
+      for my $path_and_timestamp (keys %$package_files) {
+          my ($path,$timespamp) = $path_and_timestamp =~ /^(.+)_(\d+?)$/;
+          $paths->{$path} = $package_files->{$path_and_timestamp};
+      }
+      return $paths;
   }
   
   sub retrieve_new_files {
@@ -1505,14 +1521,16 @@ $fatpacked{"Pakket/Builder.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
   
           return if $node->is_dir;
   
+          my $path_and_timestamp = sprintf("%s_%s",$node->absolute, $node->stat->ctime);
+  
           # save the symlink path in order to symlink them
           if ( -l $node ) {
-              path( $state->{ $node->absolute } = readlink $node )->is_absolute
+              path( $state->{ $path_and_timestamp } = readlink $node )->is_absolute
                   and croak( $log->critical(
                       "Error. Absolute path symlinks aren't supported.",
                   ) );
           } else {
-              $state->{ $node->absolute } = '';
+              $state->{ $path_and_timestamp } = '';
           }
       };
   
@@ -1533,10 +1551,6 @@ $fatpacked{"Pakket/Builder.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
           $old_nodes,
           $new_nodes,
           'added'   => sub { $nodes_diff{ $_[0] } = $_[1] },
-          'deleted' => sub {
-              croak( $log->critical(
-                  "Last build deleted previously existing file: $_[0]") );
-          },
       );
   
       return \%nodes_diff;
@@ -1784,44 +1798,35 @@ $fatpacked{"Pakket/Builder/Perl.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n
       my %should_use_mm = map +( "perl/$_" => 1 ),
           qw( version ExtUtils-ParseXS ExtUtils-Install ExtUtils-Manifest );
   
+      # If you have a Build.PL file but we can't load Module::Build,
+      # it means you didn't declare it as a dependency
+      # If you have a Makefile.PL, we can at least use that,
+      # otherwise, we'll croak
+      my $has_build_pl    = $build_dir->child('Build.PL')->exists;
+      my $has_makefile_pl = $build_dir->child('Makefile.PL')->exists;
+  
       my @seq;
-      if ( $build_dir->child('Build.PL')->exists
-          && !exists $should_use_mm{$package} )
-      {
-          @seq = (
+      if ( $has_build_pl && !exists $should_use_mm{$package} ) {
+          # Do we have Module::Build?
+          my $has_module_build =
+              $self->run_command($build_dir, ['perl','-MModule::Build','-e1'], $opts)
+              || $self->run_command($build_dir,[ 'perl','-MModule::Build::Tiny','-e1'], $opts);
   
-              # configure
-              [
-                  $build_dir,
-                  [ 'perl', '-f', 'Build.PL', '--install_base', $install_base, @{$flags} ],
-                  $opts,
-              ],
-  
-              # build
-              [ $build_dir, ['perl', '-f', './Build'], $opts ],
-  
-              # install
-              [ $build_dir, [ 'perl', '-f', './Build', 'install' ], $opts ],
-          );
-      } elsif ( $build_dir->child('Makefile.PL')->exists ) {
-          @seq = (
-  
-              # configure
-              [
-                  $build_dir,
-                  [ 'perl', '-f', 'Makefile.PL', "INSTALL_BASE=$install_base", @{$flags} ],
-                  $opts,
-              ],
-  
-              # build
-              [ $build_dir, ['make'], $opts ],
-  
-              # install
-              [ $build_dir, [ 'make', 'install' ], $opts ],
-          );
-      } else {
-          Carp::croak('Could not find an installer (Makefile.PL/Build.PL)');
+          # If you have Module::Build, we can use it!
+          if ($has_module_build) {
+              @seq = $self->_build_pl_cmds( $build_dir, $install_base, $flags, $opts );
+          } else {
+              $log->warn(
+                  'Defined Build.PL but can\'t load Module::Build. Will try Makefile.PL',
+              );
+          }
       }
+  
+      if ($has_makefile_pl && !@seq) {
+          @seq = $self->_makefile_pl_cmds( $build_dir, $install_base, $flags, $opts );
+      }
+  
+      @seq or Carp::croak('Could not find an installer (Makefile.PL/Build.PL)');
   
       my $success = $self->run_command_sequence(@seq);
   
@@ -1832,6 +1837,44 @@ $fatpacked{"Pakket/Builder/Perl.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n
       $log->info("Done preparing $package");
   
       return;
+  }
+  
+  sub _build_pl_cmds {
+      my ( $self, $build_dir, $install_base, $flags, $opts ) = @_;
+      return (
+  
+          # configure
+          [
+              $build_dir,
+              [ 'perl', '-f', 'Build.PL', '--install_base', $install_base, @{$flags} ],
+              $opts,
+          ],
+  
+          # build
+          [ $build_dir, [ 'perl', '-f', './Build' ], $opts ],
+  
+          # install
+          [ $build_dir, [ 'perl', '-f', './Build', 'install' ], $opts ],
+      );
+  }
+  
+  sub _makefile_pl_cmds {
+      my ( $self, $build_dir, $install_base, $flags, $opts ) = @_;
+      return (
+  
+          # configure
+          [
+              $build_dir,
+              [ 'perl', '-f', 'Makefile.PL', "INSTALL_BASE=$install_base", @{$flags} ],
+              $opts,
+          ],
+  
+          # build
+          [ $build_dir, ['make'], $opts ],
+  
+          # install
+          [ $build_dir, [ 'make', 'install' ], $opts ],
+      );
   }
   
   no Moose;
@@ -2358,7 +2401,7 @@ $fatpacked{"Pakket/CLI/Command/install.pm"} = '#line '.(1+__LINE__).' "'.__FILE_
       my $installer = Pakket::Installer->new(
           'config'          => $opt->{'config'},
           'pakket_dir'      => $opt->{'config'}{'install_dir'},
-          'force_reinstall' => $opt->{'force'},
+          'force' => $opt->{'force'},
       );
   
       $opt->{'show_installed'}
@@ -2388,9 +2431,13 @@ $fatpacked{"Pakket/CLI/Command/manage.pm"} = '#line '.(1+__LINE__).' "'.__FILE__
   use Pakket::Log;
   use Pakket::Config;
   use Pakket::Manager;
-  use Pakket::Constants qw< PAKKET_VALID_PHASES >;
-  use Pakket::Utils::Repository qw< gen_repo_config >;
   use Pakket::PackageQuery;
+  use Pakket::Requirement;
+  use Pakket::Utils::Repository qw< gen_repo_config >;
+  use Pakket::Constants qw<
+      PAKKET_PACKAGE_SPEC
+      PAKKET_VALID_PHASES
+  >;
   
   sub abstract    { 'Scaffold a project' }
   sub description { 'Scaffold a project' }
@@ -2411,8 +2458,9 @@ $fatpacked{"Pakket/CLI/Command/manage.pm"} = '#line '.(1+__LINE__).' "'.__FILE__
           [ 'remove=s%',    '(deps) add the following dependency (phase=category/name=version[:release])' ],
           [ 'cpan-02packages=s', '02packages file (optional)' ],
           [ 'no-deps',      'do not add dependencies (top-level only)' ],
-          [ 'is-local',     'do not use upstream sources (i.e. CPAN)' ],
+          [ 'is-local=s@',  'do not use upstream sources (i.e. CPAN) for given packages' ],
           [ 'requires-only', 'do not set recommended/suggested dependencies' ],
+          [ 'no-bootstrap',  'skip bootstrapping phase (toolchain packages)' ],
       );
   }
   
@@ -2434,7 +2482,6 @@ $fatpacked{"Pakket/CLI/Command/manage.pm"} = '#line '.(1+__LINE__).' "'.__FILE__
   
   sub execute {
       my $self = shift;
-      my $package;
   
       my $command = $self->{'command'};
   
@@ -2443,25 +2490,21 @@ $fatpacked{"Pakket/CLI/Command/manage.pm"} = '#line '.(1+__LINE__).' "'.__FILE__
           $self->{'cpanfile'} ? 'perl' :
           undef;
   
-      if ( $command =~ /^(?:add|remove|remove_parcel|deps|show)$/ and !$self->{'cpanfile'} ) {
-          $package = Pakket::Package->new(
-              'category' => $category,
-              'name'     => $self->{'spec'}->name,
-              'version'  => $self->{'spec'}->version,
-              'release'  => $self->{'spec'}->release,
-          );
-      }
+      my $is_local = +{
+          map { $_ => 1, s/-/::/gr => 1 } @{ $self->{'opt'}{'is_local'} }
+      };
   
       my $manager = Pakket::Manager->new(
           config          => $self->{'config'},
           cpanfile        => $self->{'cpanfile'},
           cache_dir       => $self->{'cache_dir'},
           phases          => $self->{'gen_phases'},
-          package         => $package,
+          package         => $self->{'spec'},
           file_02packages => $self->{'file_02packages'},
           no_deps         => $self->{'opt'}{'no_deps'},
-          is_local        => $self->{'opt'}{'is_local'},
           requires_only   => $self->{'opt'}{'requires_only'},
+          no_bootstrap    => $self->{'opt'}{'no_bootstrap'},
+          is_local        => $is_local,
       );
   
       if ( $command eq 'add' ) {
@@ -2485,6 +2528,9 @@ $fatpacked{"Pakket/CLI/Command/manage.pm"} = '#line '.(1+__LINE__).' "'.__FILE__
   
       } elsif ( $command eq 'show' ) {
           $manager->show_package_config;
+  
+      } elsif ( $command eq 'show_deps' ) {
+          $manager->show_package_deps;
       }
   }
   
@@ -2510,6 +2556,7 @@ $fatpacked{"Pakket/CLI/Command/manage.pm"} = '#line '.(1+__LINE__).' "'.__FILE__
           'remove_parcel' => [ 'parcel' ],
           'deps'          => [ 'spec' ],
           'show'          => [ 'spec' ],
+          'show_deps'     => [ 'spec' ],
           'list'          => {
               spec   => [ 'spec'   ],
               parcel => [ 'parcel' ],
@@ -2548,10 +2595,10 @@ $fatpacked{"Pakket/CLI/Command/manage.pm"} = '#line '.(1+__LINE__).' "'.__FILE__
       my $self = shift;
   
       my $command = shift @{ $self->{'args'} }
-          or $self->usage_error("Must pick action (add/remove/remove_parcel/deps/list/show)");
+          or $self->usage_error("Must pick action (add/remove/remove_parcel/deps/list/show/show_deps)");
   
-      grep { $command eq $_ } qw< add remove remove_parcel deps list show >
-          or $self->usage_error( "Wrong command (add/remove/remove_parcel/deps/list/show)" );
+      grep { $command eq $_ } qw< add remove remove_parcel deps list show show_deps >
+          or $self->usage_error( "Wrong command (add/remove/remove_parcel/deps/list/show/show_deps)" );
   
       $self->{'command'} = $command;
   
@@ -2560,6 +2607,7 @@ $fatpacked{"Pakket/CLI/Command/manage.pm"} = '#line '.(1+__LINE__).' "'.__FILE__
       $command eq 'deps'   and $self->_validate_args_dependency;
       $command eq 'list'   and $self->_validate_args_list;
       $command eq 'show'   and $self->_validate_args_show;
+      $command eq 'show_deps'     and $self->_validate_args_show_deps;
       $command eq 'remove_parcel' and $self->_validate_args_remove_parcel;
   }
   
@@ -2648,10 +2696,21 @@ $fatpacked{"Pakket/CLI/Command/manage.pm"} = '#line '.(1+__LINE__).' "'.__FILE__
       $self->_read_set_spec_str;
   }
   
+  sub _validate_args_show_deps {
+      my $self = shift;
+      $self->_read_set_spec_str;
+  }
+  
   sub _read_spec_str {
       my ( $self, $spec_str ) = @_;
   
-      my $spec = Pakket::PackageQuery->new_from_string($spec_str);
+      my $spec;
+      if ( $self->{'command'} eq 'add' ) {
+          my ( $c, $n, $v, $r ) = $spec_str =~ PAKKET_PACKAGE_SPEC();
+          !defined $v and $spec = Pakket::Requirement->new( category => $c, name => $n );
+      }
+  
+      $spec //= Pakket::PackageQuery->new_from_string($spec_str);
   
       # add supported categories
       if ( !( $spec->category eq 'perl' or $spec->category eq 'native' ) ) {
@@ -3095,7 +3154,7 @@ $fatpacked{"Pakket/Installer.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<
       Pakket::Role::RunCommand
   >;
   
-  has 'force_reinstall' => (
+  has 'force' => (
       'is'      => 'ro',
       'isa'     => 'Bool',
       'default' => sub {0},
@@ -3109,7 +3168,7 @@ $fatpacked{"Pakket/Installer.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<
           return;
       }
   
-      if ( !$self->force_reinstall ) {
+      if ( !$self->force ) {
           @packages = $self->drop_installed_packages(@packages);
           @packages or return;
       }
@@ -3531,7 +3590,6 @@ $fatpacked{"Pakket/Manager.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
   
   has 'package' => (
       'is'        => 'ro',
-      'isa'       => 'Maybe[Pakket::Package]',
   );
   
   has 'phases' => (
@@ -3552,11 +3610,17 @@ $fatpacked{"Pakket/Manager.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
   
   has 'is_local' => (
       'is'        => 'ro',
+      'isa'       => 'HashRef',
+      'default'   => sub { +{} },
+  );
+  
+  has 'requires_only' => (
+      'is'        => 'ro',
       'isa'       => 'Bool',
       'default'   => 0,
   );
   
-  has 'requires_only' => (
+  has 'no_bootstrap' => (
       'is'        => 'ro',
       'isa'       => 'Bool',
       'default'   => 0,
@@ -3607,6 +3671,60 @@ $fatpacked{"Pakket/Manager.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
       }
   
       # TODO: reverse dependencies (requires map)
+  }
+  
+  sub show_package_deps {
+      my $self = shift;
+  
+      my $SPACES = "  ";
+      my @queue = ({package => $self->package, level => 0});
+      my $repo = $self->_get_repo('spec');
+      my %seen;
+      while (0+@queue) {
+          my $entry = pop @queue;
+          my $spaces = $SPACES x $entry->{'level'};
+  
+          # text entry: configure or runtime
+          if ( my $type = $entry->{'type'} ) {
+              print $spaces ."$type:\n";
+              next;
+          }
+  
+          my $package = $entry->{'package'};
+          my $exists = $seen{$package->short_name} ? " (exists)" : "" ;
+          print $spaces . $package->id . "$exists\n";
+  
+          $exists and next;
+  
+          $seen{$package->short_name}=1;
+          my @deps;
+          my $level = $entry->{'level'} + 1;
+          my $spec = $repo->retrieve_package_spec( $package );
+          my $prereq = $spec->{'Prereqs'};
+          for my $category (sort keys %$prereq) {
+              for my $type (sort keys %{$prereq->{$category}}) {
+                  unshift @deps, {'level'=> $level,'type'=>$type};
+                  for my $name (sort keys %{$prereq->{$category}{$type}}) {
+                      my $req_ver = $prereq->{$category}{$type}{$name}{'version'};
+  
+                      my $ver_rel = $repo->latest_version_release(
+                                              $category, $name, $req_ver);
+  
+                      my ( $version, $release ) = @{$ver_rel};
+  
+                      my $req = Pakket::PackageQuery->new(
+                                      'category' => $category,
+                                      'name'     => $name,
+                                      'version'  => $version,
+                                      'release'  => $release,
+                                  );
+                      unshift @deps, {'level'=> $level+1, 'package'=>$req};
+                  }
+              }
+          }
+  
+          foreach (@deps) { push @queue, $_ };
+      }
   }
   
   sub add_package {
@@ -3699,7 +3817,7 @@ $fatpacked{"Pakket/Manager.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
       my %params = (
           'config'   => $self->config,
           'phases'   => $self->phases,
-          'no_deps'  => ( $self->is_local ? 1 : $self->no_deps ),
+          'no_deps'  => $self->no_deps,
           'is_local' => $self->is_local,
           ( 'types'  => ['requires'] )x!! $self->requires_only,
       );
@@ -3708,11 +3826,16 @@ $fatpacked{"Pakket/Manager.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
           $params{'cpanfile'} = $self->cpanfile;
   
       } else {
-          $params{'module'}  = $self->package->name;
-          $params{'version'} = defined $self->package->version
-              # hack to pass exact version in prereq syntax
-              ? ( $self->is_local ? '' : '==' ) . $self->package->version
-              : undef;
+          my $name = $self->package->name;
+          my $version = $self->package->version;
+          # hack to pass exact version in prereq syntax
+          defined $version
+              and !$self->is_local->{ $name }
+              and ref($self->package) eq 'Pakket::PackageQuery'
+              and $version =~ s/^/== /;
+  
+          $params{'module'}  = $name;
+          $params{'version'} = $version;
       }
   
       $self->cache_dir
@@ -3720,6 +3843,9 @@ $fatpacked{"Pakket/Manager.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'
   
       $self->file_02packages
           and $params{'file_02packages'} = $self->file_02packages;
+  
+      $self->no_bootstrap
+          and $params{'no_bootstrap'} = $self->no_bootstrap;
   
       return Pakket::Scaffolder::Perl->new(%params);
   }
@@ -3995,6 +4121,7 @@ $fatpacked{"Pakket/Repository.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".
       # Category -> Versioning type class
       my %types = (
           'perl' => 'Perl',
+          'native' => 'Perl',
       );
   
       my @versions;
@@ -4270,19 +4397,13 @@ $fatpacked{"Pakket/Repository/Backend/File.pm"} = '#line '.(1+__LINE__).' "'.__F
       },
   );
   
-  has 'repo_index' => (
-      'is'      => 'ro',
-      'isa'     => 'HashRef',
-      'builder' => '_build_repo_index',
-  );
-  
   has 'pretty_json' => (
       'is'      => 'ro',
       'isa'     => 'Bool',
       'default' => sub {1},
   );
   
-  sub _build_repo_index {
+  sub repo_index {
       my $self = shift;
       my $file = $self->index_file;
   
@@ -4319,20 +4440,21 @@ $fatpacked{"Pakket/Repository/Backend/File.pm"} = '#line '.(1+__LINE__).' "'.__F
       my $filename = sha1_hex($id) . '.' . $self->file_extension;
   
       # Store in the index
-      $self->repo_index->{$id} = $filename;
+      my $repo_index = $self->repo_index;
+      $repo_index->{$id} = $filename;
   
-      $self->_save_index();
+      $self->_save_index($repo_index);
   
       return $filename;
   }
   
   sub _save_index {
-      my $self = shift;
+      my ( $self, $repo_index ) = @_;
   
       my $content
           = $self->pretty_json
-          ? encode_json_pretty( $self->repo_index )
-          : encode_json_canonical( $self->repo_index );
+          ? encode_json_pretty($repo_index)
+          : encode_json_canonical($repo_index);
   
       $self->index_file->spew_utf8($content);
   }
@@ -4344,8 +4466,9 @@ $fatpacked{"Pakket/Repository/Backend/File.pm"} = '#line '.(1+__LINE__).' "'.__F
   
   sub _remove_from_index {
       my ( $self, $id ) = @_;
-      delete $self->repo_index->{$id};
-      $self->_save_index();
+      my $repo_index = $self->repo_index;
+      delete $repo_index->{$id};
+      $self->_save_index($repo_index);
   }
   
   sub store_location {
@@ -4696,9 +4819,13 @@ $fatpacked{"Pakket/Repository/Spec.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\
   sub retrieve_package_spec {
       my ( $self, $package ) = @_;
   
-      my $spec_str = $self->retrieve_content(
-          $package->id,
-      );
+      my $spec_str;
+      eval {
+          $spec_str = $self->retrieve_content($package->id);
+          1;
+      } or do {
+          die "Cannot fetch content for package " . $package->id . "\n";
+      };
   
       my $config;
       eval {
@@ -5211,15 +5338,17 @@ $fatpacked{"Pakket/Role/Perl/BootstrapModules.pm"} = '#line '.(1+__LINE__).' "'.
   # hardcoded list of packages we have to build first
   # using core modules to break cyclic dependencies.
   # we have to maintain the order in order for packages to build
+  # this list is an arrayref to maintain order, the elements
+  # of the list are arrayref tuples of [ module_name, distribution_name ]
   has 'perl_bootstrap_modules' => (
       'is'      => 'ro',
       'isa'     => 'ArrayRef',
       'default' => sub {
-          [qw<
-              ExtUtils-MakeMaker
-              Module-Build
-              Module-Build-WithXSpp
-          >]
+          [
+              [ 'ExtUtils::MakeMaker'     => 'ExtUtils-MakeMaker' ],
+              [ 'Module::Build'           => 'Module-Build' ],
+              [ 'Module::Build::WithXSpp' => 'Module-Build-WithXSpp' ],
+          ]
       },
   );
   
@@ -5391,6 +5520,7 @@ $fatpacked{"Pakket/Scaffolder/Perl.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\
   use version 0.77;
   use Carp ();
   use Archive::Any;
+  use CPAN::DistnameInfo;
   use CPAN::Meta;
   use CPAN::Meta::Prereqs;
   use Parse::CPAN::Packages::Fast;
@@ -5498,16 +5628,28 @@ $fatpacked{"Pakket/Scaffolder/Perl.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\
       'default' => 0,
   );
   
-  has 'is_local' => (
+  has 'no_bootstrap' => (
       'is'      => 'ro',
       'isa'     => 'Bool',
       'default' => 0,
+  );
+  
+  has 'is_local' => (
+      'is'      => 'ro',
+      'isa'     => 'HashRef',
+      'default' => sub { +{} },
   );
   
   has 'types' => (
       'is'      => 'ro',
       'isa'     => 'ArrayRef',
       'default' => sub { [qw< requires recommends suggests >] },
+  );
+  
+  has 'dist_name' => (
+      'is'      => 'ro',
+      'isa'     => 'HashRef',
+      'default' => sub { +{} },
   );
   
   sub _build_metacpan_api {
@@ -5571,6 +5713,7 @@ $fatpacked{"Pakket/Scaffolder/Perl.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\
           unless $module xor $cpanfile;
   
       if ( $module ) {
+          $module =~ s/-/::/g; # TODO: find a more accurate way
           my ( $version, $phase, $type ) = delete @args{qw< version phase type >};
           $args{'modules'} =
               Pakket::Scaffolder::Perl::Module->new(
@@ -5587,11 +5730,6 @@ $fatpacked{"Pakket/Scaffolder/Perl.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\
               )->prereq_specs;
       }
   
-      if ( $args{'is_local'} ) {
-          $args{'cache_dir'} or
-              die "when using a local (is-local) package - you must specify a cache-dir (for source)";
-      }
-  
       return \%args;
   }
   
@@ -5600,24 +5738,24 @@ $fatpacked{"Pakket/Scaffolder/Perl.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\
       my %failed;
   
       # Bootstrap toolchain
-      if ( ! $self->no_deps ) {
-          for my $dist ( @{ $self->perl_bootstrap_modules } ) {
+      if ( !( $self->no_bootstrap or $self->no_deps ) ) {
+          for my $module ( map { $_->[0] } @{ $self->perl_bootstrap_modules } ) {
               # TODO: check versions
-              if ( exists $self->spec_index->{$dist} ) {
+              if ( exists $self->spec_index->{$module} ) {
                   $log->debugf( 'Skipping %s (already have version: %s)',
-                                $dist, $self->spec_index->{$dist} );
+                                $module, $self->spec_index->{$module} );
                   next;
               }
   
-              $log->debugf( 'Bootstrapping config: %s', $dist );
+              $log->debugf( 'Bootstrapping config: %s', $module );
               my $requirements = $self->prereqs->requirements_for(qw< configure requires >);
   
               eval {
-                  $self->create_spec_for( dist => $dist, $requirements );
+                  $self->create_spec_for( $module, $requirements );
                   1;
               } or do {
                   my $err = $@ || 'zombie error';
-                  Carp::croak("Cannot bootstrap toolchain distribution: $dist ($err)\n");
+                  Carp::croak("Cannot bootstrap toolchain module: $module ($err)\n");
               };
           }
       }
@@ -5632,7 +5770,7 @@ $fatpacked{"Pakket/Scaffolder/Perl.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\
   
               for my $module ( sort keys %{ $self->modules->{ $phase }{ $type } } ) {
                   eval {
-                      $self->create_spec_for( module => $module, $requirements );
+                      $self->create_spec_for( $module, $requirements );
                       1;
                   } or do {
                       my $err = $@ || 'zombie error';
@@ -5694,34 +5832,28 @@ $fatpacked{"Pakket/Scaffolder/Perl.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\
   }
   
   sub has_satisfying {
-      my ( $self, $name, $requirements ) = @_;
+      my ( $self, $module_name, $requirements ) = @_;
       my $req_as_hash = $requirements->as_string_hash;
   
-      # fix requirement entries from module name to distribution
-      # so we can match to $name
-      for my $m ( keys %{ $req_as_hash } ) {
-          my $v = delete $req_as_hash->{$m};
-          next if $self->skip_name($m);
-          my $d = $self->get_dist_name($m);
-          $req_as_hash->{$d} = $v;
-      }
-      return unless exists $req_as_hash->{$name};
+      return unless exists $req_as_hash->{$module_name};
+  
+      my $dist_name = $self->get_dist_name($module_name);
   
       my @versions = map { $_ =~ PAKKET_PACKAGE_SPEC(); $3 }
-          @{ $self->spec_repo->all_object_ids_by_name($name, 'perl') };
+          @{ $self->spec_repo->all_object_ids_by_name($dist_name, 'perl') };
       return unless @versions;
   
-      return $self->versioner->is_satisfying($req_as_hash->{$name}, @versions);
+      return $self->versioner->is_satisfying($req_as_hash->{$module_name}, @versions);
   }
   
   sub create_spec_for {
-      my ( $self, $type, $name, $requirements ) = @_;
+      my ( $self, $name, $requirements ) = @_;
   
-      return if $self->skip_name($name);
       return if $self->processed_dists->{ $name }++;
-      return if !$self->is_local and $self->has_satisfying($name, $requirements);
+      return if $self->skip_name($name);
+      return if $self->has_satisfying($name, $requirements);
   
-      my $release = $self->get_release_info($type, $name, $requirements);
+      my $release = $self->get_release_info( $name, $requirements );
       return if exists $release->{'skip'};
   
       my $dist_name    = $release->{'distribution'};
@@ -5753,7 +5885,7 @@ $fatpacked{"Pakket/Scaffolder/Perl.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\
               $full_name
           );
   
-      } else {
+      } elsif ( ! $self->is_local->{ $dist_name } ) {
           # Download if source doesn't exist in cache
           my $download     = 1;
           my $download_url = $self->rewrite_download_url( $release->{'download_url'} );
@@ -5788,21 +5920,29 @@ $fatpacked{"Pakket/Scaffolder/Perl.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\
                       $self->download_dir,
                       ( $download_url =~ s{^.+/}{}r )
                   );
-  
                   $self->ua->mirror( $download_url, $source_file );
-  
-                  my $target = Path::Tiny->tempdir();
-                  my $dir    = $self->unpack( $target, $source_file );
-  
-                  $self->source_repo->store_package_source(
-                      $package, $dir,
-                  );
-  
+                  $self->upload_unpacked( $package, $source_file );
               }
               else {
                   $log->errorf( "--- can't find download_url for %s-%s", $dist_name, $rel_version );
               }
           }
+  
+      } else {
+          my %available = map {
+              my $d = CPAN::DistnameInfo->new($_);
+              $d->version => $d->pathname->canonpath
+          } path( $self->cache_dir )->children( qr{^$dist_name-.*\.tar.gz});
+  
+          my $version = $self->versioner->latest(
+              'perl', $name, $requirements->as_string_hash->{$name}, keys %available
+          );
+  
+          # update version for the spec --> for updating 'package' object
+          # (both here and for the spec)
+          $package_spec->{'Package'}{'version'} = $version;
+          $package = Pakket::Package->new_from_spec($package_spec);
+          $self->upload_unpacked( $package, $available{ $version } );
       }
   
   
@@ -5832,7 +5972,7 @@ $fatpacked{"Pakket/Scaffolder/Perl.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\
               for my $module ( keys %{ $dep_modules->{ $phase }{ $dep_type } } ) {
                   next if $self->skip_name($module);
   
-                  my $rel = $self->get_release_info( module => $module, $dep_requirements );
+                  my $rel = $self->get_release_info( $module, $dep_requirements );
                   next if exists $rel->{'skip'};
   
                   my $dist = $rel->{'distribution'};
@@ -5843,16 +5983,28 @@ $fatpacked{"Pakket/Scaffolder/Perl.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\
                       next;
                   }
   
-                  $prereq_data->{ $dist } = +{
+                  $prereq_data->{ $module } = +{
                       'version' => ( $dep_requirements->requirements_for_module( $module ) || 0 ),
                   };
               }
   
               # recurse through those as well
               if ( ! $self->no_deps ) {
-                  $self->create_spec_for( 'dist' => $_, $dep_requirements )
+                  $self->create_spec_for( $_, $dep_requirements )
                       for keys %{ $package_spec->{'Prereqs'}{'perl'}{$phase} };
               }
+          }
+      }
+  
+      # convert module requirements to distribution names
+      # this is done as the next Pakket action (build) will
+      # accept requirements as Pakket package id and not
+      # Perl module name.
+      for my $phase ( keys %{ $package_spec->{'Prereqs'}{'perl'} } ) {
+          for my $key ( keys %{ $package_spec->{'Prereqs'}{'perl'}{$phase} } ) {
+              my $new_key = $self->get_dist_name($key);
+              $package_spec->{'Prereqs'}{'perl'}{$phase}{$new_key} =
+                  delete $package_spec->{'Prereqs'}{'perl'}{$phase}{$key};
           }
       }
   
@@ -5864,52 +6016,89 @@ $fatpacked{"Pakket/Scaffolder/Perl.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\
       my $filename = $self->spec_repo->store_package_spec($package);
   
       $self->set_depth( $self->depth - 1 );
+      $log->infof( '%sDone: %s (%s)', $self->spaces, $dist_name, $package->version );
+  }
   
-      $log->infof( '%sDone: %s (%s)', $self->spaces, $dist_name, $rel_version );
+  sub upload_unpacked {
+      my ( $self, $package, $file ) = @_;
+  
+      my $target = Path::Tiny->tempdir();
+      my $dir    = $self->unpack( $target, $file );
+  
+      $self->source_repo->store_package_source(
+          $package, $dir,
+      );
   }
   
   sub get_dist_name {
       my ( $self, $module_name ) = @_;
   
+      # check if we've already seen it
+      exists $self->dist_name->{$module_name}
+          and return $self->dist_name->{$module_name};
+  
       # if "is_local" don't use uptream sources
-      $self->is_local and return $module_name;
-  
-      # check if we can get it from 02packages
-      my $mod = $self->cpan_02packages->package($module_name);
-      $mod and return $mod->distribution->dist;
-  
-      # fallback to metacpan check
-      $module_name = $self->known_incorrect_name_fixes->{ $module_name }
-          if exists $self->known_incorrect_name_fixes->{ $module_name };
+      exists $self->is_local->{$module_name}
+          and return ( $module_name =~ s{::}{-}gr );
   
       my $dist_name;
   
+      # check if we can get it from 02packages
       eval {
-          my $mod_url  = $self->metacpan_api . "/module/$module_name";
-          my $response = $self->ua->get($mod_url);
+          my $url = $self->metacpan_api . "/package/$module_name";
+          my $res = $self->ua->get($url);
   
-          $response->{'status'} == 200
-              and Carp::croak("Cannot fetch $mod_url");
+          $res->{'status'} == 200
+              or Carp::croak("Cannot fetch $url");
   
-          my $content = decode_json $response->{'content'};
-          $dist_name  = $content->{'distribution'};
-  
+          my $content = decode_json $res->{'content'};
+          $dist_name = $content->{'distribution'};
           1;
       } or do {
           my $error = $@ || 'Zombie error';
           $log->debug($error);
       };
   
-      # another check (if not found yet): check if name matches a distribution name
-      if ( !$dist_name ) {
+      # fallback 1:  local copy of 02packages.details
+      if ( ! $dist_name ) {
+          my $mod = $self->cpan_02packages->package($module_name);
+          $mod and $dist_name = $mod->distribution->dist;
+      }
+  
+      # fallback 2: metacpan check
+      if ( ! $dist_name ) {
+          $module_name = $self->known_incorrect_name_fixes->{ $module_name }
+              if exists $self->known_incorrect_name_fixes->{ $module_name };
+  
+          eval {
+              my $mod_url  = $self->metacpan_api . "/module/$module_name";
+              my $response = $self->ua->get($mod_url);
+  
+              $response->{'status'} == 200
+                  or Carp::croak("Cannot fetch $mod_url");
+  
+              my $content = decode_json $response->{'content'};
+              $dist_name  = $content->{'distribution'};
+              1;
+          } or do {
+              my $error = $@ || 'Zombie error';
+              $log->debug($error);
+          };
+      }
+  
+      # fallback 3: check if name matches a distribution name
+      if ( ! $dist_name ) {
           eval {
               my $name = $module_name =~ s/::/-/rgsmx;
-              my $res = $self->ua->post( $self->metacpan_api . '/release',
-                  +{ 'content' => $self->get_is_dist_name_query($name) } );
-  
+              my $url = $self->metacpan_api . '/release';
+              my $res = $self->ua->post( $url,
+                                         +{ 'content' => $self->get_is_dist_name_query($name) }
+                                     );
               $res->{'status'} == 200 or Carp::croak();
+  
               my $res_body = decode_json $res->{'content'};
               $res_body->{'hits'}{'total'} > 0 or Carp::croak();
+  
               $dist_name = $name;
               1;
           } or do {
@@ -5917,6 +6106,9 @@ $fatpacked{"Pakket/Scaffolder/Perl.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\
               Carp::croak("Cannot find module by name: '$module_name'");
           };
       }
+  
+      $dist_name and
+          $self->dist_name->{$module_name} = $dist_name;
   
       return $dist_name;
   }
@@ -5927,22 +6119,23 @@ $fatpacked{"Pakket/Scaffolder/Perl.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\
       my $req = $requirements->as_string_hash;
       my $ver = $req->{$name} =~ s/^[=\ ]//r;
       my $prereqs;
+      my $dist_name = $self->get_dist_name($name);
   
-      my $from_file = path( $self->cache_dir, $name . '-' . $ver . '.tar.gz' );
+      my $from_file = path( $self->cache_dir, $dist_name . '-' . $ver . '.tar.gz' );
       if ( $from_file->exists ) {
           my $target = Path::Tiny->tempdir();
           my $dir    = $self->unpack( $target, $from_file );
-          if ( $dir->child('META.json')->is_file or $dir->child('META.yaml')->is_file ) {
+          if ( $dir->child('META.json')->is_file or $dir->child('META.yml')->is_file ) {
               my $file = $dir->child('META.json')->is_file
                   ? $dir->child('META.json')
-                  : $dir->child('META.yaml');
+                  : $dir->child('META.yml');
               my $meta = CPAN::Meta->load_file( $file );
               $prereqs = $meta->effective_prereqs->as_string_hash;
               # YUCK, but for now, it will do the job.
               for my $k1 ( keys %{ $prereqs } ) {
                   for my $k2 ( keys %{ $prereqs->{$k1} } ) {
                       for my $k3 ( keys %{ $prereqs->{$k1}{$k2} } ) {
-                          $prereqs->{$k1}{$k2}{ $k3 =~ s{::}{-}gr } =
+                          $prereqs->{$k1}{$k2}{ $self->get_dist_name($k3) } =
                               delete $prereqs->{$k1}{$k2}{$k3};
                       }
                   }
@@ -5951,32 +6144,29 @@ $fatpacked{"Pakket/Scaffolder/Perl.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\
       }
   
       return +{
-          'distribution' => $name,
+          'distribution' => $dist_name,
           'version'      => $ver,
           'prereqs'      => $prereqs,
       };
   }
   
   sub get_release_info {
-      my ( $self, $type, $name, $requirements ) = @_;
+      my ( $self, $name, $requirements ) = @_;
   
       # if is_local is set - generate info without upstream data
-      $self->is_local
+      exists $self->is_local->{$name}
           and return $self->get_release_info_local( $name, $requirements );
   
-      my $dist_name = $type eq 'module'
-          ? $self->get_dist_name($name)
-          : $name;
+      my $dist_name = $self->get_dist_name($name);
       return +{ 'skip' => 1 } if $self->skip_name($dist_name);
   
   
       # try the latest
-  
       my $latest = $self->get_latest_release_info( $dist_name );
       return $latest
           if defined $latest->{'version'}
-             and defined $latest->{'download_url'}
-             and $requirements->accepts_module( $name => $latest->{'version'} );
+          and defined $latest->{'download_url'}
+          and $requirements->accepts_module( $name => $latest->{'version'} );
   
   
       # else: fetch all release versions for this distribution
@@ -6535,8 +6725,11 @@ $fatpacked{"Pakket/Uninstaller.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n"
               my $package  = shift @queue;
               my $category = $package->{'category'};
               my $name = $package->{'name'};
-              my $prereqs = ($installed_packages->{$category}{$name} // {})
-                                  ->{'prereqs'};
+              exists $installed_packages->{$category}
+                  and exists $installed_packages->{$category}{$name}
+                      or next;
+  
+              my $prereqs = $installed_packages->{$category}{$name}{'prereqs'};
   
               for my $category ( keys %$prereqs ) {
                   for my $type ( keys %{ $prereqs->{$category} } ) {
@@ -6561,8 +6754,16 @@ $fatpacked{"Pakket/Uninstaller.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n"
               @queue = ( { category => $category, name => $name } );
               while ( 0 + @queue ) {
                   my $package  = shift @queue;
-                  my $prereqs = $installed_packages->{ $package->{category} }
-                      { $package->{name} }{'prereqs'};
+                  my $pr_category = $package->{'category'};
+                  my $pr_name = $package->{'name'};
+  
+                  exists $installed_packages->{$pr_category}
+                      and exists $installed_packages->{$pr_category}{$pr_name}
+                          or next;
+  
+                  my $prereqs = $installed_packages->{$pr_category}
+                                                      ->{$pr_name}{'prereqs'};
+  
                   for my $category ( keys %$prereqs ) {
                       for my $type ( keys %{ $prereqs->{$category} } ) {
                           for my $name (
@@ -6570,12 +6771,10 @@ $fatpacked{"Pakket/Uninstaller.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n"
                           {
                               $keep_it{$category}{$name}++ and next;
                               $to_delete_by_requirements{$category}{$name}
-                                  and croak(
-                                  $log->critical(
+                                  and croak( $log->critical(
                                       "Can't uninstall package $category/$name, "
-                                     . "it's required by $package->{category}/$package->{name}"
-                                  )
-                                  );
+                                     . "it's required by $pr_category/$pr_name"
+                                  ));
                               push @queue,
                                   { 'category' => $category, 'name' => $name };
                               delete $to_delete{$category}{$name};
@@ -6867,13 +7066,14 @@ $fatpacked{"Pakket/Versioning.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".
       # VER is a version string valid for the version module
       # Whitespace is ignored
       my @conditions = split /,/xms, $req_string;
+      my $cond_regex = qr/^ \s* (>=|<=|==|!=|>|<) \s* (\S*) \s* $/xms;
       my @filters;
       foreach my $condition (@conditions) {
-          if ( $condition !~ /^\s*(>=|<=|==|!=|>|<)\s*(\S*)\s*$/xms ) {
+          if ( $condition !~ $cond_regex ) {
               $condition = ">= $condition";
           }
   
-          my @filter = $condition =~ /^\s*(>=|<=|==|!=|>|<)\s*(\S*)\s*$/xms;
+          my @filter = $condition =~ $cond_regex;
           push @filters, \@filter;
       }
   
@@ -7181,7 +7381,7 @@ $fatpacked{"Path/Tiny.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PATH_
   package Path::Tiny;
   # ABSTRACT: File path utility
   
-  our $VERSION = '0.098';
+  our $VERSION = '0.104';
   
   # Dependencies
   use Config;
@@ -7532,6 +7732,10 @@ $fatpacked{"Path/Tiny.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PATH_
   #pod
   #pod     my $lost = tempdir()->child("foo"); # tempdir cleaned up right away
   #pod
+  #pod B<Note 4>: The cached object may be accessed with the L</cached_temp> method.
+  #pod Keeping a reference to, or modifying the cached object may break the
+  #pod behavior documented above and is not supported.  Use at your own risk.
+  #pod
   #pod Current API available since 0.097.
   #pod
   #pod =cut
@@ -7622,9 +7826,9 @@ $fatpacked{"Path/Tiny.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PATH_
   #pod     $abs = path("foo/bar")->absolute("/tmp");
   #pod
   #pod Returns a new C<Path::Tiny> object with an absolute path (or itself if already
-  #pod absolute).  Unless an argument is given, the current directory is used as the
-  #pod absolute base path.  The argument must be absolute or you won't get an absolute
-  #pod result.
+  #pod absolute).  If no argument is given, the current directory is used as the
+  #pod absolute base path.  If an argument is given, it will be converted to an
+  #pod absolute path (if it is not already) and used as the absolute base path.
   #pod
   #pod This will not resolve upward directories ("foo/../bar") unless C<canonpath>
   #pod in L<File::Spec> would normally do so on your platform.  If you need them
@@ -7633,7 +7837,7 @@ $fatpacked{"Path/Tiny.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PATH_
   #pod On Windows, an absolute path without a volume component will have it added
   #pod based on the current drive.
   #pod
-  #pod Current API available since 0.001.
+  #pod Current API available since 0.101.
   #pod
   #pod =cut
   
@@ -7656,9 +7860,15 @@ $fatpacked{"Path/Tiny.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PATH_
           return $self if $self->is_absolute;
       }
   
-      # relative path on any OS
+      # no base means use current directory as base
       require Cwd;
-      return path( ( defined($base) ? $base : Cwd::getcwd() ), $_[0]->[PATH] );
+      return path( Cwd::getcwd(), $_[0]->[PATH] ) unless defined $base;
+  
+      # relative base should be made absolute; we check is_absolute rather
+      # than unconditionally make base absolute so that "/foo" doesn't become
+      # "C:/foo" on Windows.
+      $base = path($base);
+      return path( ( $base->is_absolute ? $base : $base->absolute ), $_[0]->[PATH] );
   }
   
   #pod =method append, append_raw, append_utf8
@@ -7800,6 +8010,27 @@ $fatpacked{"Path/Tiny.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PATH_
   #pod =cut
   
   sub canonpath { $_[0]->[CANON] }
+  
+  #pod =method cached_temp
+  #pod
+  #pod Returns the cached C<File::Temp> or C<File::Temp::Dir> object if the
+  #pod C<Path::Tiny> object was created with C</tempfile> or C</tempdir>.
+  #pod If there is no such object, this method throws.
+  #pod
+  #pod B<WARNING>: Keeping a reference to, or modifying the cached object may
+  #pod break the behavior documented for temporary files and directories created
+  #pod with C<Path::Tiny> and is not supported.  Use at your own risk.
+  #pod
+  #pod Current API available since 0.101.
+  #pod
+  #pod =cut
+  
+  sub cached_temp {
+      my $self = shift;
+      $self->_throw( "cached_temp", $self, "has no cached File::Temp object" )
+        unless defined $self->[TEMP];
+      return $self->[TEMP];
+  }
   
   #pod =method child
   #pod
@@ -8125,7 +8356,7 @@ $fatpacked{"Path/Tiny.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PATH_
   #pod     $fh = path("/tmp/foo.txt")->filehandle({ exclusive => 1  }, $mode, $binmode);
   #pod
   #pod Returns an open file handle.  The C<$mode> argument must be a Perl-style
-  #pod read/write mode string ("<" ,">", "<<", etc.).  If a C<$binmode>
+  #pod read/write mode string ("<" ,">", ">>", etc.).  If a C<$binmode>
   #pod is given, it is set during the C<open> call.
   #pod
   #pod An optional hash reference may be used to pass options.
@@ -8689,7 +8920,7 @@ $fatpacked{"Path/Tiny.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PATH_
   #pod   consist of updirs (C<"..">) to reach the common prefix, followed by the
   #pod   original path less the common prefix.
   #pod
-  #pod Unlike C<File::Spec::rel2abs>, in the last case above, the calculation based
+  #pod Unlike C<File::Spec::abs2rel>, in the last case above, the calculation based
   #pod on a common prefix takes into account symlinks that could affect the updir
   #pod process.  Given an original path "/A/B" and a new base "/A/C",
   #pod (where "A", "B" and "C" could each have multiple path components):
@@ -9283,7 +9514,7 @@ $fatpacked{"Path/Tiny.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PATH_
   
   =head1 VERSION
   
-  version 0.098
+  version 0.104
   
   =head1 SYNOPSIS
   
@@ -9481,6 +9712,10 @@ $fatpacked{"Path/Tiny.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PATH_
   
       my $lost = tempdir()->child("foo"); # tempdir cleaned up right away
   
+  B<Note 4>: The cached object may be accessed with the L</cached_temp> method.
+  Keeping a reference to, or modifying the cached object may break the
+  behavior documented above and is not supported.  Use at your own risk.
+  
   Current API available since 0.097.
   
   =head1 METHODS
@@ -9491,9 +9726,9 @@ $fatpacked{"Path/Tiny.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PATH_
       $abs = path("foo/bar")->absolute("/tmp");
   
   Returns a new C<Path::Tiny> object with an absolute path (or itself if already
-  absolute).  Unless an argument is given, the current directory is used as the
-  absolute base path.  The argument must be absolute or you won't get an absolute
-  result.
+  absolute).  If no argument is given, the current directory is used as the
+  absolute base path.  If an argument is given, it will be converted to an
+  absolute path (if it is not already) and used as the absolute base path.
   
   This will not resolve upward directories ("foo/../bar") unless C<canonpath>
   in L<File::Spec> would normally do so on your platform.  If you need them
@@ -9502,7 +9737,7 @@ $fatpacked{"Path/Tiny.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PATH_
   On Windows, an absolute path without a volume component will have it added
   based on the current drive.
   
-  Current API available since 0.001.
+  Current API available since 0.101.
   
   =head2 append, append_raw, append_utf8
   
@@ -9578,6 +9813,18 @@ $fatpacked{"Path/Tiny.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PATH_
   will be C<\> on Windows.
   
   Current API available since 0.001.
+  
+  =head2 cached_temp
+  
+  Returns the cached C<File::Temp> or C<File::Temp::Dir> object if the
+  C<Path::Tiny> object was created with C</tempfile> or C</tempdir>.
+  If there is no such object, this method throws.
+  
+  B<WARNING>: Keeping a reference to, or modifying the cached object may
+  break the behavior documented for temporary files and directories created
+  with C<Path::Tiny> and is not supported.  Use at your own risk.
+  
+  Current API available since 0.101.
   
   =head2 child
   
@@ -9733,7 +9980,7 @@ $fatpacked{"Path/Tiny.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PATH_
       $fh = path("/tmp/foo.txt")->filehandle({ exclusive => 1  }, $mode, $binmode);
   
   Returns an open file handle.  The C<$mode> argument must be a Perl-style
-  read/write mode string ("<" ,">", "<<", etc.).  If a C<$binmode>
+  read/write mode string ("<" ,">", ">>", etc.).  If a C<$binmode>
   is given, it is set during the C<open> call.
   
   An optional hash reference may be used to pass options.
@@ -9979,7 +10226,7 @@ $fatpacked{"Path/Tiny.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PATH_
   
   =back
   
-  Unlike C<File::Spec::rel2abs>, in the last case above, the calculation based
+  Unlike C<File::Spec::abs2rel>, in the last case above, the calculation based
   on a common prefix takes into account symlinks that could affect the updir
   process.  Given an original path "/A/B" and a new base "/A/C",
   (where "A", "B" and "C" could each have multiple path components):
@@ -10263,7 +10510,7 @@ $fatpacked{"Path/Tiny.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PATH_
   =head2 Subclassing not supported
   
   For speed, this class is implemented as an array based object and uses many
-  direction function calls internally.  You must not subclass it and expect
+  direct function calls internally.  You must not subclass it and expect
   things to work properly.
   
   =head2 File locking
@@ -10398,7 +10645,7 @@ $fatpacked{"Path/Tiny.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PATH_
   
   =head1 CONTRIBUTORS
   
-  =for stopwords Alex Efros Chris Williams David Steinbrunner Doug Bell Gabor Szabo Gabriel Andrade George Hartzell Geraud Continsouzas Goro Fuji Graham Knop Ollis James Hunt John Karr Karen Etheridge Mark Ellis Martin Kjeldsen Michael G. Schwern Nigel Gregoire Philippe Bruhat (BooK) Regina Verbae Roy Ivy III Shlomi Fish Smylers Tatsuhiko Miyagawa Toby Inkster Yanick Champoux 김도형 - Keedi Kim
+  =for stopwords Alex Efros Chris Williams Dave Rolsky David Steinbrunner Doug Bell Gabor Szabo Gabriel Andrade George Hartzell Geraud Continsouzas Goro Fuji Graham Knop Ollis James Hunt John Karr Karen Etheridge Mark Ellis Martin Kjeldsen Michael G. Schwern Nigel Gregoire Philippe Bruhat (BooK) Regina Verbae Roy Ivy III Shlomi Fish Smylers Tatsuhiko Miyagawa Toby Inkster Yanick Champoux 김도형 - Keedi Kim
   
   =over 4
   
@@ -10409,6 +10656,10 @@ $fatpacked{"Path/Tiny.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'PATH_
   =item *
   
   Chris Williams <bingos@cpan.org>
+  
+  =item *
+  
+  Dave Rolsky <autarch@urth.org>
   
   =item *
   
