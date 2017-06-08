@@ -42,7 +42,7 @@ sub generate_env_vars {
     );
 
     my %perl_opts = (
-        'PERL5LIB'                  => join( ':', $inc, @perl5lib ),
+        'PERL5LIB'                  => join( ':', @perl5lib ),
         'PERL_LOCAL_LIB_ROOT'       => '',
         'PERL5_CPAN_IS_RUNNING'     => 1,
         'PERL5_CPANM_IS_RUNNING'    => 1,
