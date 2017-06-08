@@ -28,18 +28,21 @@ sub is_writeable {
 }
 
 sub generate_env_vars {
-    my ( $build_dir, $prefix ) = @_;
+    my ( $build_dir, $prefix, $opts ) = @_;
     my $lib_path       = generate_lib_path($prefix);
     my $bin_path       = generate_bin_path($prefix);
     my $pkgconfig_path = generate_pkgconfig_path($prefix);
 
+    my $inc = $opts->{'inc'} || '';
+
     my @perl5lib = (
+        $prefix->child(qw<lib perl5>)->absolute->stringify,
+        $inc,
         $build_dir,
-        $prefix->child( qw<lib perl5> )->absolute->stringify,
     );
 
     my %perl_opts = (
-        'PERL5LIB'                  => join( ':', @perl5lib ),
+        'PERL5LIB'                  => join( ':', $inc, @perl5lib ),
         'PERL_LOCAL_LIB_ROOT'       => '',
         'PERL5_CPAN_IS_RUNNING'     => 1,
         'PERL5_CPANM_IS_RUNNING'    => 1,
