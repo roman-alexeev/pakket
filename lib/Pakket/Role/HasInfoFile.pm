@@ -12,7 +12,6 @@ use Pakket::Package;
 sub add_package_in_info_file {
     my ( $self, $parcel_dir, $dir, $package, $opts ) = @_;
 
-    my $prereqs      = $package->prereqs;
     my $install_data = $self->load_info_file($dir);
 
     my %files;
@@ -21,9 +20,7 @@ sub add_package_in_info_file {
     $parcel_dir->visit(
         sub {
             my ( $path, $state ) = @_;
-
-            $path->is_file
-                or return;
+            $path->is_file or return;
 
             my $filename = $path->relative($parcel_dir);
             $files{$filename} = {

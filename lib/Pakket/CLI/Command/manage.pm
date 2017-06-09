@@ -67,11 +67,6 @@ sub execute {
 
     my $command = $self->{'command'};
 
-    my $category =
-        $self->{'spec'}     ? $self->{'spec'}->category :
-        $self->{'cpanfile'} ? 'perl' :
-        undef;
-
     my $is_local = +{
         map { $_ => 1, s/-/::/gr => 1 } @{ $self->{'opt'}{'is_local'} }
     };
@@ -288,7 +283,7 @@ sub _read_spec_str {
 
     my $spec;
     if ( $self->{'command'} eq 'add' ) {
-        my ( $c, $n, $v, $r ) = $spec_str =~ PAKKET_PACKAGE_SPEC();
+        my ( $c, $n, $v ) = $spec_str =~ PAKKET_PACKAGE_SPEC();
         !defined $v and $spec = Pakket::Requirement->new( category => $c, name => $n );
     }
 

@@ -189,12 +189,11 @@ sub delete_package {
 
     for my $file ( @{ $info->{files} } ) {
         delete $info_file->{installed_files}{$file};
-        my ( $type, $file_name ) = $file =~ /(\w+)\/(.+)/;
+        my ($file_name) = $file =~ /\w+\/(.+)/;
         my $path = $self->work_dir->child($file_name);
         $log->debugf( "Deleting file %s", $path );
-        if ($path->exists and !$path->remove ) {
-            $log->error("Could not remove $path: $!");
-        }
+        $path->exists and !$path->remove
+            and $log->error("Could not remove $path: $!");
 
         # remove parent dirs while there are no children
         my $parent = $path->parent;

@@ -87,7 +87,7 @@ sub latest_version_release {
 
     my @versions;
     foreach my $object_id ( @{ $self->all_object_ids } ) {
-        my ( $my_category, $my_name, $my_version, $my_release ) =
+        my ( $my_category, $my_name, $my_version ) =
             $object_id =~ PAKKET_PACKAGE_SPEC();
 
         # Ignore what is not ours
@@ -126,10 +126,8 @@ sub freeze_location {
 
         $orig_path->visit(
             sub {
-                my ( $path, $stash ) = @_;
-
-                $path->is_file
-                    or return;
+                my $path = shift;
+                $path->is_file or return;
 
                 $arch->add( $path->relative($orig_path)->stringify,
                     $path->stringify, );
