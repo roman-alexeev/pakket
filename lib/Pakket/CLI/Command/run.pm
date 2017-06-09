@@ -23,7 +23,7 @@ sub opt_spec {
 }
 
 sub validate_args {
-    my ( $self, $opt, $args ) = @_;
+    my ( $self, $opt ) = @_;
 
     Log::Any::Adapter->set( 'Dispatch',
         'dispatcher' => Pakket::Log->build_logger( $opt->{'verbose'} ) );

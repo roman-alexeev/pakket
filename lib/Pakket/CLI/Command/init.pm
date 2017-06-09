@@ -26,7 +26,7 @@ sub opt_spec {
 }
 
 sub validate_args {
-    my ( $self, $opt, $args ) = @_;
+    my ( $self, $opt ) = @_;
 
     my $logger = Pakket::Log->cli_logger(2); # verbosity
     Log::Any::Adapter->set( 'Dispatch', dispatcher => $logger );

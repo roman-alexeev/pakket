@@ -23,9 +23,6 @@ sub build_package {
         },
     };
 
-    my $original_dir = Path::Tiny->cwd;
-    my $install_base = $prefix->absolute;
-
     my $source = $build_dir;
 
     if ( $ENV{'NODE_NPM_REGISTRY'} ) {

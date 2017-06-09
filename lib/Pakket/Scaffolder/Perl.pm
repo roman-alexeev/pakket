@@ -499,7 +499,7 @@ sub create_spec_for {
     # based on the full specs (including prereqs)
     $package = Pakket::Package->new_from_spec($package_spec);
 
-    my $filename = $self->spec_repo->store_package_spec($package);
+    $self->spec_repo->store_package_spec($package);
 
     $self->set_depth( $self->depth - 1 );
     $log->infof( '%sDone: %s (%s)', $self->spaces, $dist_name, $package->version );
@@ -589,7 +589,7 @@ sub get_dist_name {
             1;
         } or do {
             my $error = $@ || 'Zombie error';
-            Carp::croak("Cannot find module by name: '$module_name'");
+            Carp::croak("Cannot find module by name: '$module_name' ($error)");
         };
     }
 

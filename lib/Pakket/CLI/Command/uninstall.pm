@@ -30,8 +30,7 @@ sub _determine_packages {
 
     my @packages;
     foreach my $package_str (@package_strs) {
-        my ( $pkg_cat, $pkg_name, $pkg_version, $pkg_release )
-            = $package_str =~ PAKKET_PACKAGE_SPEC();
+        my ( $pkg_cat, $pkg_name ) = $package_str =~ PAKKET_PACKAGE_SPEC();
 
         if ( !$pkg_cat || !$pkg_name ) {
             die $log->critical(

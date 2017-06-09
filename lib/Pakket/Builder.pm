@@ -499,7 +499,7 @@ sub normalize_paths {
     my ( $self, $package_files ) = @_;
     my $paths;
     for my $path_and_timestamp (keys %$package_files) {
-        my ($path,$timespamp) = $path_and_timestamp =~ /^(.+)_(\d+?)$/;
+        my ($path) = $path_and_timestamp =~ /^(.+)_\d+?$/;
         $paths->{$path} = $package_files->{$path_and_timestamp};
     }
     return $paths;
