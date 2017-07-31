@@ -531,7 +531,7 @@ sub get_dist_name {
 
     # check if we can get it from 02packages
     eval {
-        my $url = $self->metacpan_api . "/package/$module_name";
+        my $url = $self->metacpan_api . "/package" . $module_name =~ s{-}{::}gr;
         my $res = $self->ua->get($url);
 
         $res->{'status'} == 200
