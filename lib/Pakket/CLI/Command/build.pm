@@ -1,5 +1,5 @@
 package Pakket::CLI::Command::build;
-# ABSTRACT: Build a Pakket package
+# ABSTRACT: Build a Pakket parcel
 
 use strict;
 use warnings;
@@ -140,3 +140,44 @@ sub execute {
 1;
 
 __END__
+
+=pod
+
+=head1 NAME
+
+C<build> - Build a Pakket parcel
+
+=head1 SYNOPSIS
+
+    $ pakket build perl/Dancer2
+
+    $ pakket build native/tidyp=1.04
+
+    $ pakket build --help
+
+        --input-file STR     build stuff from this file
+        --build-dir STR      use an existing build directory
+        --keep-build-dir     do not delete the build directory
+        --spec-dir STR       directory holding the specs
+        --source-dir STR     directory holding the sources
+        --output-dir STR     output directory (default: .)
+        -c STR --config STR  configuration file
+        -v --verbose         verbose output (can be provided multiple times)
+        --log-file STR       Log file (default: build.log)
+
+=head1 DESCRIPTION
+
+Once you have your configurations (spec) and the sources for your
+packages, you can issue a build of them using this command. It will
+generate parcels, which are the build artifacts.
+
+(The parcels are equivalent of C<.rpm> or C<.deb> files.)
+
+    # Build latest version of package "Dancer2" of category "perl"
+    $ pakket build perl/Dancer2
+
+    # Build specific version
+    $ pakket build perl/Dancer2=0.205000
+
+Depending on the configuration you have for Pakket, the result will
+either be saved in a file or in a database or sent to a remote server.

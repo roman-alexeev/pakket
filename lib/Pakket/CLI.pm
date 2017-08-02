@@ -6,3 +6,5 @@ use warnings;
 use App::Cmd::Setup '-app';
 
 1;
+
+__END__
