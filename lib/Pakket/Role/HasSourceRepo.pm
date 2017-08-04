@@ -48,3 +48,11 @@ C<source_repo_backend>.
 =head2 source_repo_backend
 
 A hashref of backend information populated from the config file.
+
+=head1 SEE ALSO
+
+=over 4
+
+=item * L<Pakket::Repository::Source>
+
+=back
