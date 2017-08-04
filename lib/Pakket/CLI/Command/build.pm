@@ -143,10 +143,6 @@ __END__
 
 =pod
 
-=head1 NAME
-
-C<build> - Build a Pakket parcel
-
 =head1 SYNOPSIS
 
     $ pakket build perl/Dancer2

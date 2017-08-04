@@ -141,10 +141,6 @@ __END__
 
 =pod
 
-=head1 NAME
-
-C<install> - Install a Pakket parcel
-
 =head1 SYNOPSIS
 
     # Install the first release of a particular version
