@@ -620,11 +620,60 @@ configuration.
 
 =head1 ATTRIBUTES
 
+=head2 bootstrapping
+
+A boolean indiciating if we want to bootstrap.
+
+Default: B<1>.
+
+=head2 build_dir
+
+The directory in which we build the packages.
+
+Default: A temporary build directory in your temp dir.
+
+=head2 build_files_manifest
+
+After building, the list of built files are stored in this hashref.
+
+=head2 builders
+
+A hashref of available builder classes.
+
+Currently, L<Pakket::Builder::Native>, L<Pakket::Builder::Perl>, and
+L<Pakket::Builder::NodeJS>.
+
+=head2 bundler
+
+The L<Pakket::Bundler> object used for creating the parcel from the
+built files.
+
 =head2 config
 
 A configuration hashref populated by L<Pakket::Config> from the config file.
 
 Read more at L<Pakket::Role::HasConfig>.
+
+=head2 installer
+
+The L<Pakket::Installer> object used for installing any pre-built
+parcels during the build phase.
+
+=head2 installer_cache
+
+A cache for the installer to prevent installation loops.
+
+=head2 is_built
+
+A cache for the built packages for the builder to prevent a loop
+during the build phase.
+
+=head2 keep_build_dir
+
+A boolean that controls whether the build dir will be deleted or
+not. This is useful for debugging.
+
+Default: B<0>.
 
 =head2 perl_bootstrap_modules
 
@@ -654,61 +703,12 @@ See L<Pakket::Role::HasSpecRole>.
 
 See L<Pakket::Role::HasSpecRole>.
 
-=head1 METHODS
-
-=head2 bootstrapping
-
-A boolean indiciating if we want to bootstrap.
-
-Default: B<1>.
-
-=head2 build_dir
-
-The directory in which we build the packages.
-
-Default: A temporary build directory in your temp dir.
-
-=head2 build_files_manifest
-
-After building, the list of built files are stored in this hashref.
-
-=head2 builders
-
-A hashref of available builder classes.
-
-Currently, L<Pakket::Builder::Native>, L<Pakket::Builder::Perl>, and
-L<Pakket::Builder::NodeJS>.
-
-=head2 bundler
-
-The L<Pakket::Bundler> object used for creating the parcel from the
-built files.
-
-=head2 installer
-
-The L<Pakket::Installer> object used for installing any pre-built
-parcels during the build phase.
-
-=head2 installer_cache
-
-A cache for the installer to prevent installation loops.
-
-=head2 is_built
-
-A cache for the built packages for the builder to prevent a loop
-during the build phase.
-
-=head2 keep_build_dir
-
-A boolean that controls whether the build dir will be deleted or
-not. This is useful for debugging.
-
-Default: B<0>.
-
 =head2 requirements
 
 A hashref in which we store the requirements for further building
 during the build phase.
+
+=head1 METHODS
 
 =head2 run_command
 
@@ -717,8 +717,6 @@ See L<Pakket::Role::RunCommand>.
 =head2 run_command_sequence
 
 See L<Pakket::Role::RunCommand>.
-
-=head1 METHODS
 
 =head2 bootstrap_build($category)
 
@@ -766,7 +764,7 @@ C<run_build>.
 
 See L<Pakket::PackageQuery> on defining a query for a package.
 
-=head2 get_configure_flags
+=head2 get_configure_flags(\%configure_flags, \%env)
 
 This method generates the configure flags for a given package from its
 configuration.
@@ -776,7 +774,7 @@ configuration.
 Given a set of paths and timestamps, returns a new hashref with
 normalized paths.
 
-=head2 retrieve_new_files
+=head2 retrieve_new_files($build_dir)
 
 Once a build has finished, we attempt to install the directory to a
 controlled environment. This method scans that directory to find any
