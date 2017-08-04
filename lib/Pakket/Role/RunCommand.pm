@@ -69,3 +69,45 @@ no Moose::Role;
 1;
 
 __END__
+
+=pod
+
+=head1 DESCRIPTION
+
+Methods that help run commands in a standardized way.
+
+=head1 METHODS
+
+=head2 run_command
+
+Run a command picking the directory it will run from and additional
+options (such as environment or debugging). This uses
+L<System::Command>.
+
+    $self->run_command( $dir, $commands, $extra_opts );
+
+    $self->run_command(
+        '/tmp/mydir',
+        [ 'echo', 'hello', 'world' ],
+
+        # System::Command options
+        { 'env' => { 'SHELL' => '/bin/bash' } },
+    );
+
+=head2 run_command_sequence
+
+This method is useful when you want to run a sequence of commands in
+which each commands depends on the previous one succeeding.
+
+    $self->run_command_sequence(
+        [ $dir, $commands, $extra_opts ],
+        [ $dir, $commands, $extra_opts ],
+    );
+
+=head1 SEE ALSO
+
+=over 4
+
+=item * L<System::Command>
+
+=back

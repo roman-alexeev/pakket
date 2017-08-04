@@ -590,3 +590,241 @@ no Moose;
 1;
 
 __END__
+
+=pod
+
+=head1 SYNOPSIS
+
+    use Pakket::Builder;
+    my $builder = Pakket::Builder->new();
+    $builder->build('perl/Dancer2=0.205000');
+
+=head1 DESCRIPTION
+
+The L<Pakket::Builder> is in charge of building a Pakket package. It is
+normally accessed with the C<pakket install> command. Please see
+L<pakket> for the command line interface. Specifically
+L<Pakket::CLI::Command::install> for the C<install> command
+documentation.
+
+The building includes bootstrapping any toolchain systems (currently
+only applicable to Perl) and then building all packages specifically.
+
+The installer (L<Pakket::Installer>) can be used to install pre-built
+packages.
+
+Once the building is done, the files and their manifest is sent to the
+bundler (L<Pakket::Bundler>) in order to create the final parcel. The
+parcel will be stored in the appropriate storage, based on your
+configuration.
+
+=head1 ATTRIBUTES
+
+=head2 config
+
+A configuration hashref populated by L<Pakket::Config> from the config file.
+
+Read more at L<Pakket::Role::HasConfig>.
+
+=head2 perl_bootstrap_modules
+
+See L<Pakket::Role::Perl::BootstrapModules>.
+
+=head2 parcel_repo
+
+See L<Pakket::Role::HasParcelRole>.
+
+=head2 parcel_repo_backend
+
+See L<Pakket::Role::HasParcelRole>.
+
+=head2 source_repo
+
+See L<Pakket::Role::HasSourceRole>.
+
+=head2 source_repo_backend
+
+See L<Pakket::Role::HasSourceRole>.
+
+=head2 spec_repo
+
+See L<Pakket::Role::HasSpecRole>.
+
+=head2 spec_repo_backend
+
+See L<Pakket::Role::HasSpecRole>.
+
+=head1 METHODS
+
+=head2 bootstrapping
+
+A boolean indiciating if we want to bootstrap.
+
+Default: B<1>.
+
+=head2 build_dir
+
+The directory in which we build the packages.
+
+Default: A temporary build directory in your temp dir.
+
+=head2 build_files_manifest
+
+After building, the list of built files are stored in this hashref.
+
+=head2 builders
+
+A hashref of available builder classes.
+
+Currently, L<Pakket::Builder::Native>, L<Pakket::Builder::Perl>, and
+L<Pakket::Builder::NodeJS>.
+
+=head2 bundler
+
+The L<Pakket::Bundler> object used for creating the parcel from the
+built files.
+
+=head2 installer
+
+The L<Pakket::Installer> object used for installing any pre-built
+parcels during the build phase.
+
+=head2 installer_cache
+
+A cache for the installer to prevent installation loops.
+
+=head2 is_built
+
+A cache for the built packages for the builder to prevent a loop
+during the build phase.
+
+=head2 keep_build_dir
+
+A boolean that controls whether the build dir will be deleted or
+not. This is useful for debugging.
+
+Default: B<0>.
+
+=head2 requirements
+
+A hashref in which we store the requirements for further building
+during the build phase.
+
+=head2 run_command
+
+See L<Pakket::Role::RunCommand>.
+
+=head2 run_command_sequence
+
+See L<Pakket::Role::RunCommand>.
+
+=head1 METHODS
+
+=head2 bootstrap_build($category)
+
+Build all the packages to bootstrap a build environment. This would
+include any toolchain packages necessary.
+
+    $builder->bootstrap_build('perl');
+
+This procedure requires three steps:
+
+=over 4
+
+=item 1.
+
+First, we build the bootstrapping packages within the context of the
+builder. However, they will depend on any libraries or applications
+already available in the current environment. For example, in a Perl
+environment, it will use core modules available with the existing
+interpreter.
+
+They will need to be built without any dependencies. Since they assume
+on the available dependencies in the system, they will build
+succesfully.
+
+=item 2.
+
+Secondly, we build their dependencies only. This will allow us to then
+build on top of them the original bootstrapping modules, thus
+separating them from the system entirely.
+
+=item 3.
+
+Lastly, we repeat the first step, except with dependencies, and
+explicitly preferring the dependencies we built at step 2.
+
+=back
+
+=head2 build(@pkg_queries)
+
+The main method of the class. Sets up the bootstrapping and calls
+C<run_build>.
+
+    my $pkg_query = Pakket::PackageQuery->new(...);
+    $builder->build($pkg_query);
+
+See L<Pakket::PackageQuery> on defining a query for a package.
+
+=head2 get_configure_flags
+
+This method generates the configure flags for a given package from its
+configuration.
+
+=head2 normalize_paths(\%package_files);
+
+Given a set of paths and timestamps, returns a new hashref with
+normalized paths.
+
+=head2 retrieve_new_files
+
+Once a build has finished, we attempt to install the directory to a
+controlled environment. This method scans that directory to find any
+new files generated. This is determined to get packaged in the parcel.
+
+=head2 run_build($pkg_query, \%params)
+
+You should not be calling this function directly.
+
+The guts of the class. Builds an available package and all of its
+dependencies recursively.
+
+    my $pkg_query = Pakket::PackageQuery->new(...);
+
+    $builder->run_build(
+        $pkg_query,
+        {%parameters},
+    );
+
+See L<Pakket::PackageQuery> on defining a query for a package.
+
+The method receives a single package query object and a hashref of
+parameters.
+
+=over 4
+
+=item * level
+
+This helps with debugging.
+
+=item * bootstrapping_1_skip_prereqs
+
+An indicator of phase 1 of boostrapping.
+
+=item * boostrapping_2_deps_only
+
+An indicator of phase 2 of boostrapping.
+
+=back
+
+=head2 snapshot_build_dir( $package, $build_dir, $error_out )
+
+This method generates the manifest list for the parcel from the scanned
+files.
+
+=head2 DEMOLISH
+
+Clean up phase, provided by L<Moose>, used to remove the build
+directory if C<keep_build_dir> is false.
+
+Do not call directly.
