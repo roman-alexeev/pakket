@@ -165,4 +165,4 @@ including their category, their name, their version, and their release.
 If you do not provide a version or release, it will simply take the
 last one available.
 
-You can also show which packages are currently installted.
+You can also show which packages are currently installed.
