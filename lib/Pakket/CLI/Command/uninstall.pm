@@ -122,3 +122,13 @@ sub execute {
 1;
 
 __END__
+
+=pod
+
+=head1 SYNOPSIS
+
+    $ pakket uninstall perl/Dancer2
+
+=head1 DESCRIPTION
+
+Uninstall a given package.
