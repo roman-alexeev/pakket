@@ -52,3 +52,19 @@ sub execute {
 1;
 
 __END__
+
+=pod
+
+=head1 SYNOPSIS
+
+    # Generate environment variables
+    $ pakket run --from=/opt/pakket/
+
+    # Run application directly
+    $ pakekt run --from=/opt/pakket myscript.pl
+
+=head1 DESCRIPTION
+
+The runner allows you to either run your application in Pakket or set
+up environment variables so you could run your application later, not
+requiring the runner again.
