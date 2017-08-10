@@ -1,5 +1,5 @@
 package Pakket::CLI::Command::install;
-# ABSTRACT: The pakket install command
+# ABSTRACT: Install a Pakket parcel
 
 use strict;
 use warnings;
@@ -138,3 +138,31 @@ sub execute {
 1;
 
 __END__
+
+=pod
+
+=head1 SYNOPSIS
+
+    # Install the first release of a particular version
+    # of the package "Dancer2" of the category "perl"
+    $ pakket install perl/Dancer2=0.205000:1
+
+    $ pakket install --help
+
+        --to STR             directory to install the package in
+        --from STR           directory to install the packages from
+        --input-file STR     install eveything listed in this file
+        -c STR --config STR  configuration file
+        --show-installed     print list of installed packages
+        -f --force           force reinstall if package exists
+        -v --verbose         verbose output (can be provided multiple times)
+
+
+=head1 DESCRIPTION
+
+Installing Pakket packages requires knowing the package names,
+including their category, their name, their version, and their release.
+If you do not provide a version or release, it will simply take the
+last one available.
+
+You can also show which packages are currently installed.

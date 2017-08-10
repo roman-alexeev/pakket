@@ -45,3 +45,56 @@ sub execute {
 1;
 
 __END__
+
+=pod
+
+=head1 SYNOPSIS
+
+    $ pakket serve
+    $ pakket serve --port 3000
+
+=head1 DESCRIPTION
+
+The C<serve> command allows you to start a web server for Pakket. It is
+highly configurable and can serve any amount of repositories of all
+kinds.
+
+It will load one of following files in the following order:
+
+=over 4
+
+=item * C<PAKKET_WEB_CONFIG> environment variable (to a filename)
+
+=item * C<~/.pakket-web.json>
+
+=item * C</etc/pakket-web.json>
+
+=back
+
+=head2 Configuration example
+
+    $ cat ~/.pakket-web.json
+
+    {
+        "repositories" : [
+            {
+                "type" : "Spec",
+                "path" : "/pakket/spec"
+                "backend" : [
+                    "HTTP",
+                    "host", "pakket.mydomain.com",
+                    "port", 80
+                ]
+            },
+            {
+                "type" : "Source",
+                "path" : "/pakket/source",
+                "backend" : [
+                    "File",
+                    "directory", "/mnt/pakket-sources"
+                ],
+            },
+
+            ...
+        ]
+    }

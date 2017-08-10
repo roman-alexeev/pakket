@@ -307,4 +307,54 @@ sub _read_set_spec_str {
 }
 
 1;
+
 __END__
+
+=pod
+
+=head1 SYNOPSIS
+
+    $ pakket manage add perl/Dancer2=0.205000:1
+    $ pakket manage remove perl/Dancer2=0.205000:1
+    $ pakket manage remove_parcel perl/Dancer2=0.205000:1
+    $ pakket manage deps 
+    $ pakket manage show
+    $ pakket manage list specs
+    $ pakket manage list sources
+    $ pakket manage list parcels
+    $ pakket manage show_deps perl/Dancer2=0.205000:1
+
+    $ pakket manage [-cv] [long options...]
+
+    Scaffold a project
+            --cpanfile STR             cpanfile to configure from
+            --spec-dir STR             directory to write the spec to (JSON files)
+            --source-dir STR           directory to write the sources to
+                                       (downloads if provided)
+            --parcel-dir STR           directory where build output (parcels) are
+            --cache-dir STR            directory to get sources from (optional)
+            --additional-phase STR...  additional phases to use ('develop' =
+                                       author_requires, 'test' = test_requires).
+                                       configure & runtime are done by default.
+            -c STR --config STR        configuration file
+            -v --verbose               verbose output (can be provided multiple
+                                       times)
+            --add KEY=STR...           (deps) add the following dependency
+                                       (phase=category/name=version[:release])
+            --remove KEY=STR...        (deps) add the following dependency
+                                       (phase=category/name=version[:release])
+            --cpan-02packages STR      02packages file (optional)
+            --no-deps                  do not add dependencies (top-level only)
+            --is-local STR...          do not use upstream sources (i.e. CPAN)
+                                       for given packages
+            --requires-only            do not set recommended/suggested
+                                       dependencies
+            --no-bootstrap             skip bootstrapping phase (toolchain
+                                       packages)
+
+=head1 DESCRIPTION
+
+The C<manage> command does all management with the repositories. This
+includes listing, adding, and removing packages. It includes listing
+all information across repositories (specs, sources, parlces), as well
+as dependencies for any package.

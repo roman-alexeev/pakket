@@ -29,5 +29,30 @@ has 'parcel_repo_backend' => (
 );
 
 no Moose::Role;
+
 1;
+
 __END__
+
+=pod
+
+=head1 DESCRIPTION
+
+=head1 ATTRIBUTES
+
+=head2 parcel_repo
+
+Stores the parcel repository, built with the backend using
+C<parcel_repo_backend>.
+
+=head2 parcel_repo_backend
+
+A hashref of backend information populated from the config file.
+
+=head1 SEE ALSO
+
+=over 4
+
+=item * L<Pakket::Repository::Parcel>
+
+=back

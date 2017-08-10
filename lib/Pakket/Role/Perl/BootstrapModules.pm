@@ -21,5 +21,21 @@ has 'perl_bootstrap_modules' => (
 );
 
 no Moose::Role;
+
 1;
+
 __END__
+
+=pod
+
+=head1 DESCRIPTION
+
+=head1 ATTRIBUTES
+
+=head2 perl_bootstrap_modules
+
+An arrayref of arrayrefs, containing a module name and distribution
+name.
+
+It is used as a list of Perl modules to bootstrap. They are mapped from
+module to distribution for look up.

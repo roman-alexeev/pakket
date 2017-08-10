@@ -29,5 +29,30 @@ has 'source_repo_backend' => (
 );
 
 no Moose::Role;
+
 1;
+
 __END__
+
+=pod
+
+=head1 DESCRIPTION
+
+=head1 ATTRIBUTES
+
+=head2 source_repo
+
+Stores the source repository, built with the backend using
+C<source_repo_backend>.
+
+=head2 source_repo_backend
+
+A hashref of backend information populated from the config file.
+
+=head1 SEE ALSO
+
+=over 4
+
+=item * L<Pakket::Repository::Source>
+
+=back

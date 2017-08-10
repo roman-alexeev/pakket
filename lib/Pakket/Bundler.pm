@@ -135,3 +135,38 @@ no Moose;
 1;
 
 __END__
+
+=pod
+
+=head1 SYNOPSIS
+
+=head1 DESCRIPTION
+
+=head1 ATTRIBUTES
+
+=head2 config
+
+See L<Pakket::Role::HasConfig>.
+
+=head2 parcel_repo
+
+See L<Pakket::Role::HasParcelRepo>.
+
+=head2 parcel_repo_backend
+
+See L<Pakket::Role::HasParcelRepo>.
+
+=head1 METHODS
+
+=head2 BUILD
+
+Build phase, provided by L<Moose>, used to set up the parcel repo
+before we begin bundling.
+
+Do not call directly.
+
+=head2 bundle($build_dir, $package, \%files)
+
+This will bundle the list of files for a given package in a given
+directory. It will create a parcel file which will include the files,
+including metadata on the package it includes.

@@ -17,21 +17,37 @@ dependencies. It works by trying to avoid work.
 
 =head2 What can you do with Pakket?
 
+The main purpose of Pakket is simple: Package applications and
+libraries. That is all.
+
+Pakket provides a lot of flexibility in how this is done. Here is a list
+of specific things you can do with Pakket.
+
 =over 4
+
+=item * You can generate spec files automatically
+
+Given an existing API for a language (Perl, Ruby, Python, Rust), Pakket
+can generate the entire tree of configurations and all the dependencies
+for a given language.
+
+If you are looking to convert all your Perl modules, Pakket will simply
+generate the appropriate specs and requirements.
 
 =item * You can represent packages closer to their true nature
 
-Unlike most packaging systems, Pakket works to I<avoid> reducing the
-complexity of packages. Instead of trying to take away what makes each
-package unique, Pakket tries to make it possible for packages to retain
-the information relevant to them.
+Arbitrary packaging systems (e.g., RPM, Deb, etc.) attempt to produce
+the same packages as other more language-specific packaging systems
+(Perl's CPAN, Ruby's Gem, Python's Pypi) by reducing the level of
+detail each package provides.
 
-One example of this is that different systems use different versioning
-schemes, which can confuse packaging systems, not knowing which version
-is older and which is newer.
+Pakket doesn't do that. Pakket attempts to maintain as much information
+from the source as it can in order to handle more complicated corner
+cases.
 
-Packages in Pakket can keep their version number, the way they see it.
-That's just one example, though.
+An example of this is the way different systems compare versions. CPAN
+and Gem and Pypi handle versions differently, but they are all reduces
+for the general purpose that RPM or Deb provide.
 
 =item * You can connect different packages
 
@@ -47,29 +63,31 @@ If you have a Perl binding to a C++ library, you can represent that
 relationship in Pakket. Pakket will then know how to build the C++
 library and build your Perl module binding to that C++ library.
 
-=item * You can build packages for delivery
+=item * You can build packages for deployment
 
 Pakket builds simple package files that can then be delivered to a
-different machine and used there. While you I<should> use the Pakket
-installer to deal with these packages, you can also open them up
-yourself; no magic here.
+different machine and used there.
+
+I mean, why else would we do this?
 
 =item * You can install packages
 
 The Pakket installer allows installing a package and its dependencies
 recursively, from disk or mirrors, and to manage your installation tree.
 
-=item * Atomic installations, oh yeah
+Again, this is pretty mandatory.
+
+=item * Atomic installations
 
 Did we mention all installations in Pakket are atomic? This means that
 if you're installing 20 or 20,000 packages and it fails, everything
 still works. Pakket only activates the new installation once it finished
-everything.
+everything successfully.
 
-=item * Reverts are also atomic, baby!
+=item * Reverts are also atomic
 
 The Pakket installer allows, by default, to retain multiple
-installation directories. This means any revert is simply a single
+installation directories. This means any revert can be simply a single
 atomic operation of pointing to an older installation.
 
 =item * Multiple instances
@@ -122,7 +140,7 @@ can have a range of allowed versions for a package, for example.
 =head3 Spec files
 
 Similar to RPM spec files, Pakket has spec files. You can create them
-yourself or you can use the L<generate|Pakket::CLI::Command::generate>
+yourself or you can use the L<generate|Pakket::CLI::Command::manage>
 command to create them for you.
 
 The basic spec file in Pakket contain a package's C<category>,
@@ -131,9 +149,7 @@ keyed by the B<category> and the B<phase>. The phases can be
 B<configure> (for build-time), B<test> (for when testing the build),
 and B<runtime> (for using it).
 
-At the moment Pakket keeps its specs in JSON files.
-
-An example of a spec in Pakket:
+An example of a spec in Pakket in JSON:
 
     {
        "Package" : {
@@ -168,20 +184,17 @@ The package details are in the C<Package> section. The prereqs are
 in the C<Prereqs> section, under the C<native> or C<perl> categories,
 under the C<configure> or C<runtime> phase.
 
-=head3 Index
-
-The B<index> is where Pakket maintains all known versions of every
-package and their locations.
-
-One of the abilities Pakket gives you is maintaining multiple "trees"
-of systems, each needing different versions of each package.
+Pakket I<might> store these configurations in JSON, but it could also
+store it in other ways if desired.
 
 =head3 Parcels
 
 Parcels are the result of building packages. Parcels are what gets
-finally installed.
+finally installed. You may also call them the "build artifacts" if you
+wish.
 
 While other packaging systems usually have I<development packages> (or
 I<devel> or I<dev>), Pakket doesn't differentiate between those.
-Instead, a Pakket package contains everything created at build time,
-including the headers and the compiled results.
+Instead, a Pakket package contains everything created at install time
+for a built package, including the headers, if such would have been
+installed.

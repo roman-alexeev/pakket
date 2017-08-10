@@ -304,3 +304,130 @@ no Moose;
 1;
 
 __END__
+
+=pod
+
+=head1 SYNOPSIS
+
+=head1 DESCRIPTION
+
+=head1 ATTRIBUTES
+
+=head2 config
+
+See L<Pakket::Role::HasConfig>.
+
+=head2 parcel_repo
+
+See L<Pakket::Role::HasParcelRepo>.
+
+=head2 parcel_repo_backend
+
+See L<Pakket::Role::HasParcelRepo>.
+
+=head2 requirements
+
+List in hashref built during install of additional requirements.
+
+=head2 force
+
+A boolean to install packages even if they are already installed.
+
+=head2 pakket_dir
+
+See L<Pakket::Role::HasLibDir>.
+
+=head2 libraries_dir
+
+See L<Pakket::Role::HasLibDir>.
+
+=head2 active_dir
+
+See L<Pakket::Role::HasLibDir>.
+
+=head2 work_dir
+
+See L<Pakket::Role::HasLibDir>.
+
+=head1 METHODS
+
+=head2 activate_work_dir
+
+See L<Pakket::Role::HasLibDir>.
+
+=head2 remove_old_libraries
+
+See L<Pakket::Role::HasLibDir>.
+
+=head2 add_package_in_info_file
+
+See L<Pakket::Role::HasInfoFile>.
+
+=head2 load_info_file
+
+See L<Pakket::Role::HasInfoFile>.
+
+=head2 save_info_file
+
+See L<Pakket::Role::HasInfoFile>.
+
+=head2 load_installed_packages
+
+See L<Pakket::Role::HasInfoFile>.
+
+=head2 install(@packages)
+
+The main method used to install packages.
+
+Installs all packages and then turns on the active directory link.
+
+=head2 try_to_install_package($package, $dir, \%opts)
+
+Attempts to install a package while reporting failure. This is useful
+when it is possible to install but might not work. It is used by the
+L<Pakket::Builder> to install all possible available pre-built
+packages.
+
+=head2 install_package($package, $dir, \%opts)
+
+The guts of installing a package. This is used by C<install> and
+C<try_to_install_package>.
+
+=head2 install_prereq($category, $name, \%prereq_data, $dir, \%opts)
+
+Takes a prereq from a package, finds the matching package and installs
+it.
+
+=head2 copy_package_to_install_dir($source_dir, $target_dir)
+
+Recursively copy all the package directories and files to the install
+directory.
+
+=head2 is_installed(\%installer_cache, $package)
+
+Check whether the package is already installed or not using our
+installer cache.
+
+=head2 mark_as_installed(\%installer_cache, $package)
+
+Add to cache as installed.
+
+=head2 pre_install_checks($dir, $package, \%opts)
+
+Perform all the checks for the installation phase.
+
+=head2 show_installed()
+
+Display all the installed packages. This is helpful for debugging.
+
+=head2 drop_installed_packages(@packages)
+
+Removes installed packages from a list of given packages.
+
+=head2 run_command
+
+See L<Pakket::Role::RunCommad>.
+
+=head2 run_command_sequence
+
+See L<Pakket::Role::RunCommad>.

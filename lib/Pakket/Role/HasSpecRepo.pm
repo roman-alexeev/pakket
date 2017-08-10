@@ -29,5 +29,30 @@ has 'spec_repo_backend' => (
 );
 
 no Moose::Role;
+
 1;
+
 __END__
+
+=pod
+
+=head1 DESCRIPTION
+
+=head1 ATTRIBUTES
+
+=head2 spec_repo
+
+Stores the spec repository, built with the backend using
+C<spec_repo_backend>.
+
+=head2 spec_repo_backend
+
+A hashref of backend information populated from the config file.
+
+=head1 SEE ALSO
+
+=over 4
+
+=item * L<Pakket::Repository::Spec>
+
+=back
