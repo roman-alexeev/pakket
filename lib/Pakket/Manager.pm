@@ -252,7 +252,7 @@ sub _get_scaffolder {
     $self->category eq 'perl'
         and return $self->_gen_scaffolder_perl;
 
-    croak("failed to create a scaffolder\n");
+    croak("Scaffolder for category " . $self->category . " doesn't exist");
 }
 
 sub _gen_scaffolder_perl {
