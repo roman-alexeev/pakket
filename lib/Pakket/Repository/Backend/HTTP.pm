@@ -121,7 +121,9 @@ sub store_location {
     );
 
     if ( !$response->{'success'} ) {
-        croak( $log->criticalf( 'Could not store location for id %s', $id ) );
+        croak( $log->criticalf(
+            'Could not store location for id %s, URL: %s, Status: %s, Reason: %s',
+            $id, $response->{'url'}, $response->{'status'}, $response->{'reason'}));
     }
 }
 
