@@ -406,6 +406,11 @@ sub run_build {
 
         dircopy( $package_src_dir, $package_dst_dir );
 
+        # during coping, dircopy() resets mtime to current time,
+        # which breaks 'make' for some native libraries
+        # we have to keep original mtime for files from tar archive
+        fix_timestamps($package_src_dir, $package_dst_dir);
+
         $builder->build_package(
             $package->name,
             $package_dst_dir,
@@ -434,6 +439,18 @@ sub run_build {
     log_success( sprintf 'Building %s', $prereq->full_name );
 
     return;
+}
+
+sub fix_timestamps {
+    my ($src_dir, $dst_dir) = @_;
+    $src_dir->visit(
+        sub {
+            my $src = shift;
+            my $dst = path($dst_dir, $src->relative($src_dir));
+            $dst->touch( $src->stat->mtime );
+        },
+        { recurse => 1 }
+    );
 }
 
 sub _recursive_build_phase {
