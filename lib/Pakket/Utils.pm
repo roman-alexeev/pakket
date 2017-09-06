@@ -53,13 +53,27 @@ sub generate_env_vars {
     );
 
     return (
-        'CPATH'           => $prefix->child('include')->stringify,
+        'CPATH'           => generate_cpath($prefix),
         'PKG_CONFIG_PATH' => $pkgconfig_path,
         'LD_LIBRARY_PATH' => $lib_path,
         'LIBRARY_PATH'    => $lib_path,
         'PATH'            => $bin_path,
         %perl_opts,
     );
+}
+
+sub generate_cpath {
+    my $prefix = shift;
+    my $cpath = '';
+
+    my $include_dir = $prefix->child('include');
+    if ( $include_dir->exists ) {
+        my @paths = ( $include_dir->stringify );
+        push @paths,  map { $_->stringify } grep { $_->is_dir } $include_dir->children();
+        $cpath = join(":", @paths);
+    }
+
+    return $cpath;
 }
 
 sub generate_lib_path {
