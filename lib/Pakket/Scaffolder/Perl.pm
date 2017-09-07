@@ -630,7 +630,11 @@ sub get_release_info_local {
                     }
                 }
             }
+        } else {
+            $log->warn("Can't find META.json or META.yml in $from_file");
         }
+    } else {
+        $log->warn("Can't find file $from_file to extract META");
     }
 
     return +{
