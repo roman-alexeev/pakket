@@ -615,7 +615,9 @@ sub get_release_info_local {
     if ( $from_file->exists ) {
         my $target = Path::Tiny->tempdir();
         my $dir    = $self->unpack( $target, $from_file );
-        if ( $dir->child('META.json')->is_file or $dir->child('META.yml')->is_file ) {
+        if ( !$self->no_deps and
+             ( $dir->child('META.json')->is_file or $dir->child('META.yml')->is_file )
+        ) {
             my $file = $dir->child('META.json')->is_file
                 ? $dir->child('META.json')
                 : $dir->child('META.yml');
