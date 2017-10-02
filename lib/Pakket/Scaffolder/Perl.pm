@@ -225,7 +225,7 @@ sub run {
 
     # Bootstrap toolchain
     if ( !( $self->no_bootstrap or $self->no_deps ) ) {
-        for my $module ( map { $_->[0] } @{ $self->perl_bootstrap_modules } ) {
+        for my $module ( @{ $self->perl_bootstrap_modules } ) {
             # TODO: check versions
             if ( exists $self->spec_index->{$module} ) {
                 $log->debugf( 'Skipping %s (already have version: %s)',
