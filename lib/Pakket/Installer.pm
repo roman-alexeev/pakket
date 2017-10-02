@@ -72,8 +72,8 @@ sub install {
     $self->activate_work_dir;
 
     $log->infof(
-        "Finished installing %d packages into $self->pakket_dir",
-        scalar keys %{$installer_cache},
+        "Finished installing %d packages into '%s'",
+        scalar keys %{$installer_cache}, $self->pakket_dir,
     );
 
     log_success( 'Finished installing: ' . join ', ',
