@@ -64,7 +64,7 @@ sub _build_work_dir {
     my $self = shift;
 
     my $template = sprintf("%s/work_%s_%s_XXXXX", $self->libraries_dir, $PID, time());
-    my $work_dir = Path::Tiny->tempdir($template, CLEANUP => 1);
+    my $work_dir = Path::Tiny->tempdir($template, TMPDIR => 0, CLEANUP => 1);
 
     $work_dir->exists
         or croak( $log->critical(
