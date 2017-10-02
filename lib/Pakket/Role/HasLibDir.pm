@@ -67,8 +67,8 @@ sub _build_work_dir {
     my $work_dir = Path::Tiny->tempdir($template, CLEANUP => 1);
 
     $work_dir->exists
-        and croak( $log->critical(
-            "Internal installation directory exists ($work_dir), exiting",
+        or croak( $log->critical(
+            "Could not create installation directory ($work_dir), exiting",
         ) );
 
     # we copy any previous installation
