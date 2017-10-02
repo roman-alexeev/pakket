@@ -61,13 +61,6 @@ has 'modules' => (
     'isa' => 'HashRef',
 );
 
-has 'spec_index' => (
-    'is'      => 'ro',
-    'isa'     => 'HashRef',
-    'lazy'    => 1,
-    'builder' => '_build_spec_index',
-);
-
 has 'prereqs' => (
     'is'      => 'ro',
     'isa'     => 'CPAN::Meta::Prereqs',
@@ -155,17 +148,6 @@ sub _build_download_dir {
     return Path::Tiny->tempdir( 'CLEANUP' => 1 );
 }
 
-sub _build_spec_index {
-    my $self = shift;
-    my $spec_index = $self->spec_repo->all_object_ids;
-    my %spec_index;
-    for ( @{ $spec_index } ) {
-        m{^.*?/(.*)=(.*?)$};
-        $spec_index{$1}{$2} = 1;
-    }
-    return \%spec_index;
-}
-
 sub _build_cpan_02packages {
     my $self = shift;
     my ( $dir, $file );
@@ -226,12 +208,6 @@ sub run {
     # Bootstrap toolchain
     if ( !( $self->no_bootstrap or $self->no_deps ) ) {
         for my $module ( @{ $self->perl_bootstrap_modules } ) {
-            # TODO: check versions
-            if ( exists $self->spec_index->{$module} ) {
-                $log->debugf( 'Skipping %s (already have version: %s)',
-                              $module, $self->spec_index->{$module} );
-                next;
-            }
 
             $log->debugf( 'Bootstrapping config: %s', $module );
             my $requirements = $self->prereqs->requirements_for(qw< configure requires >);
