@@ -18,7 +18,7 @@ use Log::Any            qw< $log >;
 
 use Pakket::Package;
 use Pakket::Types;
-use Pakket::Utils::Perl qw< should_skip_module >;
+use Pakket::Utils::Perl qw< should_skip_core_module >;
 use Pakket::Constants   qw< PAKKET_PACKAGE_SPEC >;
 use Pakket::Scaffolder::Perl::Module;
 use Pakket::Scaffolder::Perl::CPANfile;
@@ -280,7 +280,7 @@ sub run {
 sub skip_name {
     my ( $self, $name ) = @_;
 
-    if ( should_skip_module($name) ) {
+    if ( should_skip_core_module($name) ) {
         $log->debugf( "%sSkipping %s (core module, not dual-life)", $self->spaces, $name );
         return 1;
     }
