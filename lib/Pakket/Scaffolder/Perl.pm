@@ -285,7 +285,7 @@ sub skip_name {
         return 1;
     }
 
-    if ( exists $self->known_names_to_skip->{ $name } ) {
+    if ( exists $self->known_modules_to_skip->{ $name } ) {
         $log->debugf( "%sSkipping %s (known 'bad' name for configuration)", $self->spaces, $name );
         return 1;
     }
