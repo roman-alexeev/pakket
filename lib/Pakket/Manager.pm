@@ -4,6 +4,7 @@ package Pakket::Manager;
 use Moose;
 use Log::Any qw< $log >;
 use Carp     qw< croak >;
+use Safe::Isa;
 
 use Pakket::Log;
 use Pakket::Scaffolder::Perl;
@@ -272,11 +273,11 @@ sub _gen_scaffolder_perl {
     } else {
         my $name = $self->package->name;
         my $version = $self->package->version;
-        # hack to pass exact version in prereq syntax
-        defined $version
-            and !$self->is_local->{ $name }
-            and ref($self->package) eq 'Pakket::PackageQuery'
-            and $version =~ s/^/== /;
+        if (defined $version && $self->package->$_isa('Pakket::PackageQuery')) {
+            # hack to pass exact version in prereq syntax
+            # add '==' before number of version
+            $version =~ s/^/== /;
+        }
 
         $params{'module'}  = $name;
         $params{'version'} = $version;
