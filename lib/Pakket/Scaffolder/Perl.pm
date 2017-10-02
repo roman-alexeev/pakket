@@ -50,7 +50,7 @@ has 'phases' => (
     'required' => 1,
 );
 
-has 'processed_dists' => (
+has 'processed_packages' => (
     'is'      => 'ro',
     'isa'     => 'HashRef',
     'default' => sub { return +{} },
@@ -339,7 +339,7 @@ sub has_satisfying {
 sub create_spec_for {
     my ( $self, $name, $requirements ) = @_;
 
-    return if $self->processed_dists->{ $name }++;
+    return if $self->processed_packages->{ $name }++;
     return if $self->skip_name($name);
     return if $self->has_satisfying($name, $requirements);
 
