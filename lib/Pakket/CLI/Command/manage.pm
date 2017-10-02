@@ -68,7 +68,7 @@ sub execute {
     my $command = $self->{'command'};
 
     my $is_local = +{
-        map { $_ => 1, s/-/::/gr => 1 } @{ $self->{'opt'}{'is_local'} }
+        map { $_ => 1 } @{ $self->{'opt'}{'is_local'} }
     };
 
     my $manager = Pakket::Manager->new(
