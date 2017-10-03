@@ -96,7 +96,7 @@ sub opt_spec {
             'from=s',
             'directory to install the packages from',
         ],
-        [ 'input-file=s',   'install eveything listed in this file' ],
+        [ 'input-file=s',   'install everything listed in this file' ],
         [ 'config|c=s',     'configuration file' ],
         [ 'show-installed', 'print list of installed packages' ],
         [ 'force|f',        'force reinstall if package exists' ],
@@ -151,7 +151,7 @@ __END__
 
         --to STR             directory to install the package in
         --from STR           directory to install the packages from
-        --input-file STR     install eveything listed in this file
+        --input-file STR     install everything listed in this file
         -c STR --config STR  configuration file
         --show-installed     print list of installed packages
         -f --force           force reinstall if package exists

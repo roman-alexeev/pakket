@@ -74,7 +74,7 @@ sub _determine_config {
 sub opt_spec {
     return (
         [ 'pakket-dir=s',         'path where installed pakket' ],
-        [ 'input-file=s',         'uninstall eveything listed in this file' ],
+        [ 'input-file=s',         'uninstall everything listed in this file' ],
         [ 'without-dependencies', 'don\'t remove dependencies' ],
         [
             'verbose|v+',
