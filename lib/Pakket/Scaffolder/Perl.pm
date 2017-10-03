@@ -570,6 +570,7 @@ sub get_release_info_local {
     if ( $from_file->exists ) {
         my $target = Path::Tiny->tempdir();
         my $dir    = $self->unpack( $target, $from_file );
+        $self->load_pakket_json($dir);
         if ( !$self->no_deps and
              ( $dir->child('META.json')->is_file or $dir->child('META.yml')->is_file )
         ) {
@@ -755,6 +756,26 @@ sub get_release_query {
             'size'    => 999,
         }
     );
+}
+
+# parsing Pakket.json
+# Packet.json should be in root directory of package, near META.json
+# We want to put there some pakket settings for packages.
+# Currently it keeps map 'module_to_distribution' for local non-CPAN dependencies.
+sub load_pakket_json {
+    my ($self, $dir) = @_;
+    my $pakket_json = $dir->child('Pakket.json');
+
+    $pakket_json->exists or return;
+
+    my $data = decode_json($pakket_json->slurp_utf8);
+
+    # Section 'module_to_distribution'
+    # Using to map module->distribution for local not-CPAN modules
+    for my $module_name ( keys %{$data->{'module_to_distribution'}}  ) {
+        my $dist_name = $data->{'module_to_distribution'}{$module_name};
+        $self->dist_name->{$module_name} = $dist_name;
+    }
 }
 
 __PACKAGE__->meta->make_immutable;
