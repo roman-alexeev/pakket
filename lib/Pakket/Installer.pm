@@ -32,12 +32,6 @@ with qw<
     Pakket::Role::RunCommand
 >;
 
-has 'dirty' => (
-    'is'      => 'rw',
-    'isa'     => 'Bool',
-    'default' => sub {0},
-);
-
 has 'force' => (
     'is'      => 'ro',
     'isa'     => 'Bool',
@@ -49,15 +43,6 @@ has 'requirements' => (
     'isa'     => 'HashRef',
     'default' => sub { +{} },
 );
-
-sub DEMOLISH {
-    my ( $self, $is_global ) = @_;
-
-    return unless $self->dirty;
-
-    $self->work_dir->remove_tree( { 'safe' => 0 } );
-    $self->dirty(0);
-}
 
 sub install {
     my ( $self, @packages ) = @_;
@@ -76,7 +61,6 @@ sub install {
 
     my $installer_cache = {};
 
-    $self->dirty(1);
     foreach my $package (@packages) {
         $self->install_package(
             $package,
@@ -86,11 +70,10 @@ sub install {
     }
 
     $self->activate_work_dir;
-    $self->dirty(0);
 
     $log->infof(
-        "Finished installing %d packages into $self->pakket_dir",
-        scalar keys %{$installer_cache},
+        "Finished installing %d packages into '%s'",
+        scalar keys %{$installer_cache}, $self->pakket_dir,
     );
 
     log_success( 'Finished installing: ' . join ', ',
