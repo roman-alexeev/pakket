@@ -535,22 +535,20 @@ sub get_dist_name {
     # fallback 3: check if name matches a distribution name
     if ( ! $dist_name ) {
         eval {
-            my $name = $module_name =~ s/::/-/rgsmx;
+            $dist_name = $module_name =~ s/::/-/rgsmx;
             my $url = $self->metacpan_api . '/release';
-            $log->debug("Requesting information about distribution $name ($url)");
+            $log->debug("Requesting information about distribution $dist_name ($url)");
             my $res = $self->ua->post( $url,
-                                       +{ 'content' => $self->get_is_dist_name_query($name) }
+                                       +{ 'content' => $self->get_is_dist_name_query($dist_name) }
                                    );
             $res->{'status'} == 200 or Carp::croak();
 
             my $res_body = decode_json $res->{'content'};
             $res_body->{'hits'}{'total'} > 0 or Carp::croak();
 
-            $dist_name = $name;
             1;
         } or do {
-            my $error = $@ || 'Zombie error';
-            Carp::croak("Cannot find module by name: '$module_name' ($error)");
+            $log->warn("Cannot find distribution for module $module_name. Trying to use $dist_name as fallback");
         };
     }
 
