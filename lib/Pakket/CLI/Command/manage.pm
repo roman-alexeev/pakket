@@ -37,7 +37,7 @@ sub opt_spec {
         [ 'config|c=s',   'configuration file' ],
         [ 'verbose|v+',   'verbose output (can be provided multiple times)' ],
         [ 'add=s%',       '(deps) add the following dependency (phase=category/name=version[:release])' ],
-        [ 'remove=s%',    '(deps) add the following dependency (phase=category/name=version[:release])' ],
+        [ 'remove=s%',    '(deps) remove the following dependency (phase=category/name=version[:release])' ],
         [ 'cpan-02packages=s', '02packages file (optional)' ],
         [ 'no-deps',      'do not add dependencies (top-level only)' ],
         [ 'is-local=s@',  'do not use upstream sources (i.e. CPAN) for given packages' ],
@@ -317,7 +317,7 @@ __END__
     $ pakket manage add perl/Dancer2=0.205000:1
     $ pakket manage remove perl/Dancer2=0.205000:1
     $ pakket manage remove_parcel perl/Dancer2=0.205000:1
-    $ pakket manage deps 
+    $ pakket manage deps
     $ pakket manage show
     $ pakket manage list specs
     $ pakket manage list sources
@@ -341,7 +341,7 @@ __END__
                                        times)
             --add KEY=STR...           (deps) add the following dependency
                                        (phase=category/name=version[:release])
-            --remove KEY=STR...        (deps) add the following dependency
+            --remove KEY=STR...        (deps) remove the following dependency
                                        (phase=category/name=version[:release])
             --cpan-02packages STR      02packages file (optional)
             --no-deps                  do not add dependencies (top-level only)
