@@ -63,13 +63,14 @@ sub _build_active_dir {
 sub _build_work_dir {
     my $self = shift;
 
-    my $template = sprintf("%s/work_%s_%s_XXXXX", $self->libraries_dir, $PID, time());
-    my $work_dir = Path::Tiny->tempdir($template, TMPDIR => 0, CLEANUP => 1);
+    my $work_dir = $self->libraries_dir->child( time() );
 
     $work_dir->exists
-        or croak( $log->critical(
-            "Could not create installation directory ($work_dir), exiting",
+        and croak( $log->critical(
+            "Internal installation directory exists ($work_dir), exiting",
         ) );
+
+    $work_dir->mkpath();
 
     # we copy any previous installation
     if ( $self->active_dir->exists ) {
@@ -104,32 +105,24 @@ sub activate_work_dir {
         );
 
     if ( $active_temp->exists ) {
+
         # Huh? why does this temporary pathname exist? Try to delete it...
         $log->debug('Deleting existing temporary active object');
+
         $active_temp->remove
             or croak( $log->error(
                 'Could not activate new installation (temporary symlink remove failed)'
             ) );
     }
 
-    my $work_final = $self->libraries_dir->child( time() );
-    $log->debugf( 'Moving work directory %s to its final place %s', $work_dir, $work_final );
-    $work_dir->move($work_final)
-        or croak( $log->error(
-            'Could not move work_dir to its final place'
-        ) );
-
-    # Unfortunately, if we die in the next call the work_dir will not be
-    # removed, because we already changed its name so no cleanup will happen.
-
     $log->debugf( 'Setting temporary active symlink to new work directory %s',
-        $work_final );
-    symlink( $work_final, $active_temp )
+        $work_dir );
+
+    symlink( $work_dir->basename, $active_temp )
         or croak( $log->error(
             'Could not activate new installation (temporary symlink create failed)'
         ) );
 
-    $log->debugf( 'Moving symlink %s to its final place %s', $active_temp, $self->active_dir );
     $active_temp->move($self->active_dir)
         or croak( $log->error(
             'Could not atomically activate new installation (symlink rename failed)'
