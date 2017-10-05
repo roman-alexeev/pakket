@@ -80,9 +80,12 @@ sub latest_version_release {
     $req_string ||= '>= 0';
 
     # Category -> Versioning type class
+    # TODO: not sure why we use Perl for native
+    # TODO: what should we use for bag? For now, Perl.
     my %types = (
-        'perl' => 'Perl',
+        'perl'   => 'Perl',
         'native' => 'Perl',
+        'bag'    => 'Perl',
     );
 
     my @versions;

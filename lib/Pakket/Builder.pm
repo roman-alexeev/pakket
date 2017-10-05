@@ -19,6 +19,7 @@ use Pakket::Installer;
 use Pakket::Builder::NodeJS;
 use Pakket::Builder::Perl;
 use Pakket::Builder::Native;
+use Pakket::Builder::Bag;
 
 use Pakket::Utils qw< generate_env_vars >;
 
@@ -74,6 +75,7 @@ has 'builders' => (
             'nodejs' => Pakket::Builder::NodeJS->new(),
             'perl'   => Pakket::Builder::Perl->new(),
             'native' => Pakket::Builder::Native->new(),
+            'bag'    => Pakket::Builder::Bag->new(),
         };
     },
 );
@@ -657,8 +659,8 @@ After building, the list of built files are stored in this hashref.
 
 A hashref of available builder classes.
 
-Currently, L<Pakket::Builder::Native>, L<Pakket::Builder::Perl>, and
-L<Pakket::Builder::NodeJS>.
+Currently, L<Pakket::Builder::Native>, L<Pakket::Builder::Perl>,
+L<Pakket::Builder::NodeJS>, L<Pakket::Builder::Bag>.
 
 =head2 bundler
 
