@@ -127,7 +127,7 @@ sub activate_work_dir {
 
     $log->debugf( 'Setting temporary active symlink to new work directory %s',
         $work_final );
-    symlink( $work_final, $active_temp )
+    symlink( $work_final->basename, $active_temp )
         or croak( $log->error(
             'Could not activate new installation (temporary symlink create failed)'
         ) );
