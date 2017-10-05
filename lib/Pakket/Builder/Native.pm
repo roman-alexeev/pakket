@@ -14,13 +14,14 @@ sub build_package {
     my ( $self, $package, $build_dir, $prefix, $flags ) = @_;
 
     if (   $build_dir->child('configure')->exists
-        || $build_dir->child('config')->exists )
+        || $build_dir->child('config')->exists
+        || $build_dir->child('Configure')->exists )
     {
         my $builder = Pakket::Builder::Native::Makefile->new();
         $builder->build_package( $package, $build_dir, $prefix, $flags );
     } else {
         croak( $log->critical(
-            "I cannot build this native package. No 'configure'.") );
+            "Cannot build native package '$package', no '[Cc]onfigure' or 'config'.") );
     }
 
     return;

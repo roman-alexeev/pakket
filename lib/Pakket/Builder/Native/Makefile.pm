@@ -14,7 +14,7 @@ with qw<Pakket::Role::Builder>;
 sub build_package {
     my ( $self, $package, $build_dir, $prefix, $flags ) = @_;
 
-    $log->info("Building Native library: $package");
+    $log->info("Building native package '$package'");
 
     my $opts = {
         'env' => {
@@ -30,8 +30,8 @@ sub build_package {
     } elsif ( -f $build_dir->child('Configure') ) {
         $configurator = './Configure';
     } else {
-        croak( $log->critical( "Don't know how to configure $package"
-                . " (Cannot find executale 'configure' or 'config')" ) );
+        croak( $log->critical( "Don't know how to configure native package '$package'"
+                . " (Cannot find executale '[Cc]onfigure' or 'config')" ) );
     }
 
     my @seq = (
@@ -56,10 +56,10 @@ sub build_package {
     my $success = $self->run_command_sequence(@seq);
 
     if ( !$success ) {
-        croak( $log->critical("Failed to build $package") );
+        croak( $log->critical("Failed to build native package '$package'") );
     }
 
-    $log->info("Done preparing $package");
+    $log->info("Done building native package '$package'");
 
     return;
 }
