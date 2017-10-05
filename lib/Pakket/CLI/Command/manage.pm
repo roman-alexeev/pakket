@@ -356,5 +356,5 @@ __END__
 
 The C<manage> command does all management with the repositories. This
 includes listing, adding, and removing packages. It includes listing
-all information across repositories (specs, sources, parlces), as well
+all information across repositories (specs, sources, parcels), as well
 as dependencies for any package.
