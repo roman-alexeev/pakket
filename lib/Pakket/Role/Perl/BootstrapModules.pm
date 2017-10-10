@@ -6,16 +6,15 @@ use Moose::Role;
 # hardcoded list of packages we have to build first
 # using core modules to break cyclic dependencies.
 # we have to maintain the order in order for packages to build
-# this list is an arrayref to maintain order, the elements
-# of the list are arrayref tuples of [ module_name, distribution_name ]
+# this list is an arrayref to maintain order
 has 'perl_bootstrap_modules' => (
     'is'      => 'ro',
     'isa'     => 'ArrayRef',
     'default' => sub {
         [
-            [ 'ExtUtils::MakeMaker'     => 'ExtUtils-MakeMaker' ],
-            [ 'Module::Build'           => 'Module-Build' ],
-            [ 'Module::Build::WithXSpp' => 'Module-Build-WithXSpp' ],
+            'ExtUtils-MakeMaker',
+            'Module-Build',
+            'Module-Build-WithXSpp',
         ]
     },
 );
@@ -34,8 +33,6 @@ __END__
 
 =head2 perl_bootstrap_modules
 
-An arrayref of arrayrefs, containing a module name and distribution
-name.
+An arrayref containing distribution names of bootstrap modules.
 
-It is used as a list of Perl modules to bootstrap. They are mapped from
-module to distribution for look up.
+It is used as a list of Perl modules to bootstrap.

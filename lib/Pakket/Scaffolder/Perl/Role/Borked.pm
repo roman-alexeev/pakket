@@ -47,7 +47,7 @@ has 'known_incorrect_dependencies' => (
     },
 );
 
-has 'known_names_to_skip' => (
+has 'known_modules_to_skip' => (
     'is'      => 'ro',
     'isa'     => 'HashRef',
     'default' => sub {
