@@ -341,7 +341,7 @@ sub add_source_for_package {
 
 sub add_spec_for_package {
     my ($self, $package, $release_info, $spec) = @_;
-    if ( $self->spec_repo->retrieve_location( $package->full_name ) ) {
+    if ( $self->spec_repo->has_object( $package->id ) ) {
         $log->debugf("Package %s already exists in spec repo (skipping)",
                         $package->full_name);
         return;
