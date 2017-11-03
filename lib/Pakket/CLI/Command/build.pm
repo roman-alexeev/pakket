@@ -21,15 +21,16 @@ sub description { 'Build a package' }
 
 sub opt_spec {
     return (
-        [ 'input-file=s',   'build stuff from this file' ],
-        [ 'build-dir=s',    'use an existing build directory' ],
-        [ 'keep-build-dir', 'do not delete the build directory' ],
-        [ 'spec-dir=s',     'directory holding the specs' ],
-        [ 'source-dir=s',   'directory holding the sources' ],
-        [ 'output-dir=s',   'output directory (default: .)' ],
-        [ 'config|c=s',     'configuration file' ],
-        [ 'verbose|v+',     'verbose output (can be provided multiple times)' ],
-        [ 'log-file=s',     'Log file (default: build.log)' ],
+        [ 'input-file=s',    'build stuff from this file' ],
+        [ 'build-dir=s',     'use an existing build directory' ],
+        [ 'keep-build-dir',  'do not delete the build directory' ],
+        [ 'spec-dir=s',      'directory holding the specs' ],
+        [ 'source-dir=s',    'directory holding the sources' ],
+        [ 'output-dir=s',    'output directory (default: .)' ],
+        [ 'config|c=s',      'configuration file' ],
+        [ 'verbose|v+',      'verbose output (can be provided multiple times)' ],
+        [ 'log-file=s',      'Log file (default: build.log)' ],
+        [ 'ignore-failures', 'Continue even if some builds fail' ],
     );
 }
 
@@ -134,7 +135,20 @@ sub execute {
         ), qw< build_dir keep_build_dir > ),
     );
 
-    $builder->build( @{ $self->{'queries'} } );
+    if ( ! $opt->{'ignore_failures'} ) {
+        $builder->build( @{ $self->{'queries'} } );
+        return;
+    }
+
+    foreach my $query ( @{ $self->{'queries'} } ) {
+        eval {
+            $builder->build($query);
+            1;
+        } or do {
+            my $error = $@ || 'Zombie error';
+            $log->warnf('Failed to install %s, skipping.', $query->full_name );
+        };
+    }
 }
 
 1;
@@ -160,6 +174,7 @@ __END__
         -c STR --config STR  configuration file
         -v --verbose         verbose output (can be provided multiple times)
         --log-file STR       Log file (default: build.log)
+        --ignore-failures    Continue even if one the builds failed
 
 =head1 DESCRIPTION
 
