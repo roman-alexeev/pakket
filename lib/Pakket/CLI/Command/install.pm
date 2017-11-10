@@ -9,8 +9,9 @@ use Pakket::Config;
 use Pakket::Log;
 use Pakket::Package;
 use Pakket::Constants qw< PAKKET_PACKAGE_SPEC >;
+use Log::Any          qw< $log >;
 use Log::Any::Adapter;
-use Path::Tiny      qw< path >;
+use Path::Tiny        qw< path >;
 
 sub abstract    { 'Install a package' }
 sub description { 'Install a package' }
@@ -124,31 +125,38 @@ sub validate_args {
 sub execute {
     my ( $self, $opt ) = @_;
 
-    my $installer = Pakket::Installer->new(
+    if ( $opt->{'show_installed'} ) {
+        my $installer = _create_installer($opt);
+        return $installer->show_installed();
+    }
+
+    if ( $opt->{'ignore_failures'} ) {
+        foreach my $package ( @{ $opt->{'packages'} } ) {
+            my $installer = _create_installer($opt);
+
+            eval {
+                $installer->install($package);
+                1;
+            } or do {
+                my $error = $@ || 'Zombie error';
+                $log->warnf( 'Failed to install %s, skipping.',
+                    $package->full_name );
+            };
+        }
+    }
+
+    my $installer = _create_installer($opt);
+    return $installer->install( @{ $opt->{'packages'} } );
+}
+
+sub _create_installer {
+    my $opt = shift;
+
+    return Pakket::Installer->new(
         'config'     => $opt->{'config'},
         'pakket_dir' => $opt->{'config'}{'install_dir'},
         'force'      => $opt->{'force'},
     );
-
-    $opt->{'show_installed'}
-        and return $installer->show_installed();
-
-    if ( ! $opt->{'ignore_failures'} ) {
-        return $installer->install( @{ $opt->{'packages'} } );
-    }
-
-    foreach my $package ( @{ $opt->{'packages'} } ) {
-        eval {
-            $installer->install($package);
-            1;
-        } or do {
-            my $error = $@ || 'Zombie error';
-            $log->warnf( 'Failed to install %s, skipping.',
-                $package->full_name );
-        };
-    }
-
-
 }
 
 1;
