@@ -146,7 +146,7 @@ sub execute {
             1;
         } or do {
             my $error = $@ || 'Zombie error';
-            $log->warnf('Failed to install %s, skipping.', $query->full_name );
+            $log->warnf('Failed to build %s, skipping.', $query->full_name );
         };
     }
 }
