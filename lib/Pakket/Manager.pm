@@ -184,7 +184,7 @@ sub show_package_deps {
             }
         }
 
-        foreach (@deps) { push @queue, $_ };
+        push @queue, @deps;
     }
 }
 
