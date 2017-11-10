@@ -124,9 +124,9 @@ sub execute {
     my ( $self, $opt ) = @_;
 
     my $installer = Pakket::Installer->new(
-        'config'          => $opt->{'config'},
-        'pakket_dir'      => $opt->{'config'}{'install_dir'},
-        'force' => $opt->{'force'},
+        'config'     => $opt->{'config'},
+        'pakket_dir' => $opt->{'config'}{'install_dir'},
+        'force'      => $opt->{'force'},
     );
 
     $opt->{'show_installed'}
