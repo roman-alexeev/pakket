@@ -99,6 +99,7 @@ sub opt_spec {
         [ 'input-file=s',   'install everything listed in this file' ],
         [ 'config|c=s',     'configuration file' ],
         [ 'show-installed', 'print list of installed packages' ],
+        [ 'ignore-failures', 'Continue even if some installs fail' ],
         [ 'force|f',        'force reinstall if package exists' ],
         [
             'verbose|v+',
@@ -132,7 +133,22 @@ sub execute {
     $opt->{'show_installed'}
         and return $installer->show_installed();
 
-    return $installer->install( @{ $opt->{'packages'} } );
+    if ( ! $opt->{'ignore_failures'} ) {
+        return $installer->install( @{ $opt->{'packages'} } );
+    }
+
+    foreach my $package ( @{ $opt->{'packages'} } ) {
+        eval {
+            $installer->install($package);
+            1;
+        } or do {
+            my $error = $@ || 'Zombie error';
+            $log->warnf( 'Failed to install %s, skipping.',
+                $package->full_name );
+        };
+    }
+
+
 }
 
 1;
@@ -154,9 +170,9 @@ __END__
         --input-file STR     install everything listed in this file
         -c STR --config STR  configuration file
         --show-installed     print list of installed packages
+        --ignore-failures    Continue even if some installs fail
         -f --force           force reinstall if package exists
         -v --verbose         verbose output (can be provided multiple times)
-
 
 =head1 DESCRIPTION
 
