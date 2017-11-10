@@ -5,7 +5,7 @@ use strict;
 use warnings;
 
 use Path::Tiny qw< path  >;
-use Ref::Util  qw< is_arrayref >;
+use Ref::Util  qw< is_arrayref is_coderef >;
 use Log::Any   qw< $log >; # to log
 use Log::Any::Adapter;     # to set the logger
 
@@ -21,8 +21,25 @@ use Pakket::Constants qw<
     PAKKET_VALID_PHASES
 >;
 
-sub abstract    { 'Scaffold a project' }
-sub description { 'Scaffold a project' }
+sub abstract    { 'Manage Pakket packages and repositories' }
+sub description { return <<'_END_DESC';
+This command manages Pakket packages across repositories.
+It allows you to add new specs, sources, and packages, as well
+as edit existing ones, and view your repositories.
+_END_DESC
+}
+
+my %commands = map +( $_ => 1 ), qw<
+    add-package
+    remove-package
+    show-package
+    remove-parcel
+    add-deps
+    list-deps
+    list-specs
+    list-sources
+    list-parcels
+>;
 
 sub opt_spec {
     return (
@@ -36,9 +53,9 @@ sub opt_spec {
         ],
         [ 'config|c=s',   'configuration file' ],
         [ 'verbose|v+',   'verbose output (can be provided multiple times)' ],
-        [ 'add=s%',       '(deps) add the following dependency (phase=category/name=version[:release])' ],
-        [ 'remove=s%',    '(deps) remove the following dependency (phase=category/name=version[:release])' ],
-        [ 'cpan-02packages=s', '02packages file (optional)' ],
+        [ 'phase=s',      '(deps) What phase is the dependency' ],
+        [ 'on=s',         '(deps) What is the dependency on'    ],
+        [ 'cpan-02packages=s', '02packages file (optional)'     ],
         [ 'no-deps',      'do not add dependencies (top-level only)' ],
         [ 'is-local=s@',  'do not use upstream sources (i.e. CPAN) for given packages' ],
         [ 'requires-only', 'do not set recommended/suggested dependencies' ],
@@ -86,31 +103,35 @@ sub execute {
         source_archive  => $self->{'source_archive'},
     );
 
-    if ( $command eq 'add' ) {
-        $manager->add_package;
+    my %actions = (
+        'add-package'    => sub { $manager->add_package; },
+        'remove-package' => sub {
+            # TODO: check we are allowed to remove package (dependencies)
+            $manager->remove_package('spec');
+            $manager->remove_package('source');
+        },
 
-    } elsif ( $command eq 'remove' ) {
-        # TODO: check we are allowed to remove package (dependencies)
-        $manager->remove_package('spec');
-        $manager->remove_package('source');
+        'remove-parcel'  => sub {
+            # TODO: check we are allowed to remove package (dependencies)
+            $manager->remove_package('parcel');
+        },
 
-    } elsif ( $command eq 'remove_parcel' ) {
-        # TODO: check we are allowed to remove package (dependencies)
-        $manager->remove_package('parcel');
+        'add-deps'       => sub {
+            $manager->add_dependency( $self->{'dependency'} );
+        },
 
-    } elsif ( $command eq 'deps' ) {
-        $self->{'opt'}{'add'}    and $manager->add_dependency( $self->{'dependency'} );
-        $self->{'opt'}{'remove'} and $manager->remove_dependency( $self->{'dependency'} );
+        'remove-deps'    => sub {
+            $manager->remove_dependency( $self->{'dependency'} );
+        },
 
-    } elsif ( $command eq 'list' ) {
-        $manager->list_ids( $self->{'list_type'} );
+        'list-specs'     => sub { $manager->list_ids('spec'); },
+        'list-sources'   => sub { $manager->list_ids('source'); },
+        'list-parcels'   => sub { $manager->list_ids('parcel'); },
+        'show-package'   => sub { $manager->show_package_config; },
+        'list-deps'      => sub { $manager->show_package_deps; },
+    );
 
-    } elsif ( $command eq 'show' ) {
-        $manager->show_package_config;
-
-    } elsif ( $command eq 'show_deps' ) {
-        $manager->show_package_deps;
-    }
+    return $actions{$command}->();
 }
 
 sub _read_config {
@@ -130,27 +151,22 @@ sub _validate_repos {
     my $self = shift;
 
     my %cmd2repo = (
-        'add'           => [ 'spec', 'source' ],
-        'remove'        => [ 'spec', 'source' ],
-        'remove_parcel' => [ 'parcel' ],
-        'deps'          => [ 'spec' ],
-        'show'          => [ 'spec' ],
-        'show_deps'     => [ 'spec' ],
-        'list'          => {
-            spec   => [ 'spec'   ],
-            parcel => [ 'parcel' ],
-            source => [ 'source' ],
-        },
+        'add-package'    => [ 'spec', 'source' ],
+        'remove-package' => [ 'spec', 'source' ],
+        'remove-parcel'  => [ 'parcel' ],
+        'show-package'   => [ 'spec'   ],
+        'add-deps'       => [ 'spec'   ],
+        'remove-deps'    => [ 'spec'   ],
+        'list-deps'      => [ 'spec'   ],
+        'list-specs'     => [ 'spec'   ],
+        'list-parcels'   => [ 'parcel' ],
+        'list-sources'   => [ 'source' ],
     );
 
     my $config  = $self->{'config'};
     my $command = $self->{'command'};
 
-    my @required_repos = @{
-        $command eq 'list'
-            ? $cmd2repo{$command}{ $self->{'list_type'} }
-            : $cmd2repo{$command}
-    };
+    my @required_repos = @{ $cmd2repo{$command} };
 
     my %repo_opt = (
         'spec'   => 'spec_dir',
@@ -171,23 +187,25 @@ sub _validate_repos {
 }
 
 sub _validate_arg_command {
-    my $self = shift;
+    my $self     = shift;
+    my @cmd_list = sort keys %commands;
 
     my $command = shift @{ $self->{'args'} }
-        or $self->usage_error("Must pick action (add/remove/remove_parcel/deps/list/show/show_deps)");
+        or $self->usage_error( "Must pick action (@{[ join '/', @cmd_list ]})" );
 
-    grep { $command eq $_ } qw< add remove remove_parcel deps list show show_deps >
-        or $self->usage_error( "Wrong command (add/remove/remove_parcel/deps/list/show/show_deps)" );
+    $commands{$command}
+        or $self->usage_error( "Wrong command (@{[ join '/', @cmd_list ]})" );
 
     $self->{'command'} = $command;
 
-    $command eq 'add'    and $self->_validate_args_add;
-    $command eq 'remove' and $self->_validate_args_remove;
-    $command eq 'deps'   and $self->_validate_args_dependency;
-    $command eq 'list'   and $self->_validate_args_list;
-    $command eq 'show'   and $self->_validate_args_show;
-    $command eq 'show_deps'     and $self->_validate_args_show_deps;
-    $command eq 'remove_parcel' and $self->_validate_args_remove_parcel;
+    $command eq 'add-package'    and $self->_validate_args_add;       # FIXME: Rename method
+    $command eq 'remove-package' and $self->_validate_args_remove;    # FIXME: Rename method
+    $command eq 'remove-parcel'  and $self->_validate_args_remove_parcel;
+    $command eq 'list-deps'      and $self->_validate_args_show_deps; # FIXME: Rename method
+    $command eq 'show-package'   and $self->_validate_args_show;      # FIXME: Rename method
+
+    $command eq 'add-deps' || $command eq 'remove-deps'
+       and $self->_validate_args_dependency;
 }
 
 sub _validate_arg_cache_dir {
@@ -245,30 +263,17 @@ sub _validate_args_dependency {
     # spec
     $self->_read_set_spec_str;
 
-    # dependency
-    my $action = $opt->{'add'} || $opt->{'remove'};
-    $action or $self->usage_error( "Missing arg: add/remove (mandatory for 'deps')" );
+    # pakket manage add-deps perl/Dancer2=0.9 --phase runtime --on perl/Moo=2
+    defined $opt->{$_} or $self->usage_error("Missing argument $_")
+        for qw< phase on >;
 
-    my ( $phase, $dep_str ) = %{ $action };
-    $phase or $self->usage_error( "Invalid dependency: missing phase" );
+    my $dep = $self->_read_spec_str( $opt->{'on'} );
 
-    my $dep = $self->_read_spec_str($dep_str);
     defined $dep->{'version'}
         or $self->usage_error( "Invalid dependency: missing version" );
-    $dep->{'phase'} = $phase;
 
-    $self->{'dependency'}  = $dep;
-}
-
-sub _validate_args_list {
-    my $self = shift;
-
-    my $type = shift @{ $self->{'args'} };
-
-    $type and grep { $type eq $_ or $type eq $_.'s' } qw< parcel spec source >
-        or $self->usage_error( "Invalid type of list (parcels/specs/sources): " . ($type||"") );
-
-    $self->{'list_type'} = $type =~ s/s?$//r;
+    $dep->{'phase'}       = $opt->{'phase'}; # FIXME: Should be in instantiation above
+    $self->{'dependency'} = $dep;
 }
 
 sub _validate_args_show {
@@ -285,7 +290,7 @@ sub _read_spec_str {
     my ( $self, $spec_str ) = @_;
 
     my $spec;
-    if ( $self->{'command'} eq 'add' ) {
+    if ( $self->{'command'} eq 'add-package' ) {
         my ( $c, $n, $v ) = $spec_str =~ PAKKET_PACKAGE_SPEC();
         !defined $v and $spec = Pakket::Requirement->new( category => $c, name => $n );
     }
@@ -317,43 +322,17 @@ __END__
 
 =head1 SYNOPSIS
 
-    $ pakket manage add perl/Dancer2=0.205000:1
-    $ pakket manage remove perl/Dancer2=0.205000:1
-    $ pakket manage remove_parcel perl/Dancer2=0.205000:1
-    $ pakket manage deps
-    $ pakket manage show
-    $ pakket manage list specs
-    $ pakket manage list sources
-    $ pakket manage list parcels
-    $ pakket manage show_deps perl/Dancer2=0.205000:1
+    $ pakket manage add-package perl/Dancer2=0.205000:1
+    $ pakket manage show-package perl/Dancer2=0.205000:1
+    $ pakket manage remove-package perl/Dancer2=0.205000:1
+    $ pakket manage remove-parcel perl/Dancer2=0.205000:1
+
+    $ pakket manage list-deps perl/Dancer2=0.205000:1
+    $ pakket manage list-specs
+    $ pakket manage list-sources
+    $ pakket manage list-parcels
 
     $ pakket manage [-cv] [long options...]
-
-    Scaffold a project
-            --cpanfile STR             cpanfile to configure from
-            --spec-dir STR             directory to write the spec to (JSON files)
-            --source-dir STR           directory to write the sources to
-                                       (downloads if provided)
-            --parcel-dir STR           directory where build output (parcels) are
-            --cache-dir STR            directory to get sources from (optional)
-            --additional-phase STR...  additional phases to use ('develop' =
-                                       author_requires, 'test' = test_requires).
-                                       configure & runtime are done by default.
-            -c STR --config STR        configuration file
-            -v --verbose               verbose output (can be provided multiple
-                                       times)
-            --add KEY=STR...           (deps) add the following dependency
-                                       (phase=category/name=version[:release])
-            --remove KEY=STR...        (deps) remove the following dependency
-                                       (phase=category/name=version[:release])
-            --cpan-02packages STR      02packages file (optional)
-            --no-deps                  do not add dependencies (top-level only)
-            --is-local STR...          do not use upstream sources (i.e. CPAN)
-                                       for given packages
-            --requires-only            do not set recommended/suggested
-                                       dependencies
-            --no-bootstrap             skip bootstrapping phase (toolchain
-                                       packages)
 
 =head1 DESCRIPTION
 
