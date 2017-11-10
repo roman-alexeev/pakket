@@ -143,6 +143,8 @@ sub execute {
                     $package->full_name );
             };
         }
+
+        return;
     }
 
     my $installer = _create_installer($opt);
