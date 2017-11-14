@@ -95,8 +95,13 @@ sub build_logger {
 }
 
 sub _build_logger {
-    my $class = shift;
-    my $file  = shift || Path::Tiny::path('/tmp/build.log')->stringify;
+    my ($class, $file) = @_;
+
+    if (!$file) {
+        my $dir = Path::Tiny::path('~/.pakket');
+        $dir->mkpath;
+        $file = $dir->child("pakket.log")->stringify;
+    }
 
     return [
         'File',
